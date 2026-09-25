@@ -1,0 +1,266 @@
+.
+├── app
+│   ├── App.tsx
+│   ├── query-client.ts
+│   └── router.tsx
+├── assets
+│   ├── favicon.png
+│   └── mypageseo-logo.png
+├── components
+│   ├── layout
+│   ├── mypageseo
+│   │   ├── access.tsx
+│   │   ├── app-shell.tsx
+│   │   ├── auth.tsx
+│   │   ├── automation-form.tsx
+│   │   ├── automations.tsx
+│   │   ├── citation-detail.tsx
+│   │   ├── citations.tsx
+│   │   ├── competitor-detail.tsx
+│   │   ├── competitor-rankings.tsx
+│   │   ├── competitors.tsx
+│   │   ├── dashboard.tsx
+│   │   ├── data-display.tsx
+│   │   ├── empty-states.tsx
+│   │   ├── failure-states.tsx
+│   │   ├── form.tsx
+│   │   ├── gbp-audit-competitors.tsx
+│   │   ├── gbp-audit.tsx
+│   │   ├── gbp-overview.tsx
+│   │   ├── gbp-posts.tsx
+│   │   ├── gbp-reviews.tsx
+│   │   ├── global-search.tsx
+│   │   ├── keyword-groups.tsx
+│   │   ├── keyword-rankings.tsx
+│   │   ├── landing.tsx
+│   │   ├── local-search-grid.tsx
+│   │   ├── location-setup.tsx
+│   │   ├── location-workspace.tsx
+│   │   ├── locations-table.tsx
+│   │   ├── map-rankings.tsx
+│   │   ├── not-found.tsx
+│   │   ├── onboarding-flow.tsx
+│   │   ├── onboarding.tsx
+│   │   ├── plan.tsx
+│   │   ├── ranking-overview.tsx
+│   │   ├── report-detail.tsx
+│   │   ├── report-schedules.tsx
+│   │   ├── reports.tsx
+│   │   ├── settings-nav.tsx
+│   │   ├── states.tsx
+│   │   └── table.tsx
+│   ├── shared
+│   └── ui
+│       ├── accordion.tsx
+│       ├── alert-dialog.tsx
+│       ├── alert.tsx
+│       ├── aspect-ratio.tsx
+│       ├── avatar.tsx
+│       ├── badge.tsx
+│       ├── breadcrumb.tsx
+│       ├── button.tsx
+│       ├── calendar.tsx
+│       ├── card.tsx
+│       ├── carousel.tsx
+│       ├── chart.tsx
+│       ├── checkbox.tsx
+│       ├── collapsible.tsx
+│       ├── command.tsx
+│       ├── context-menu.tsx
+│       ├── dialog.tsx
+│       ├── drawer.tsx
+│       ├── dropdown-menu.tsx
+│       ├── form.tsx
+│       ├── hover-card.tsx
+│       ├── input-otp.tsx
+│       ├── input.tsx
+│       ├── label.tsx
+│       ├── menubar.tsx
+│       ├── navigation-menu.tsx
+│       ├── pagination.tsx
+│       ├── popover.tsx
+│       ├── progress.tsx
+│       ├── radio-group.tsx
+│       ├── resizable.tsx
+│       ├── scroll-area.tsx
+│       ├── select.tsx
+│       ├── separator.tsx
+│       ├── sheet.tsx
+│       ├── sidebar.tsx
+│       ├── skeleton.tsx
+│       ├── slider.tsx
+│       ├── sonner.tsx
+│       ├── switch.tsx
+│       ├── table.tsx
+│       ├── tabs.tsx
+│       ├── textarea.tsx
+│       ├── toggle-group.tsx
+│       ├── toggle.tsx
+│       └── tooltip.tsx
+├── folder_structure.txt
+├── hooks
+│   ├── use-mobile.tsx
+│   ├── use-required-params.ts
+│   └── use-typed-search.ts
+├── lib
+│   ├── mypageseo
+│   │   ├── access.ts
+│   │   ├── auth-recovery.ts
+│   │   ├── automations.ts
+│   │   ├── billing.ts
+│   │   ├── citations.ts
+│   │   ├── client-users.ts
+│   │   ├── clients-data.ts
+│   │   ├── competitor-rankings.ts
+│   │   ├── competitors.ts
+│   │   ├── countries.ts
+│   │   ├── dashboard-data.ts
+│   │   ├── demo
+│   │   │   ├── automations.ts
+│   │   │   ├── billing.ts
+│   │   │   ├── citations.ts
+│   │   │   ├── client-users.ts
+│   │   │   ├── competitors.ts
+│   │   │   ├── credentials.ts
+│   │   │   ├── dashboard.ts
+│   │   │   ├── demo-mode.ts
+│   │   │   ├── entities.ts
+│   │   │   ├── gbp.ts
+│   │   │   ├── integrations.ts
+│   │   │   ├── notification-settings.ts
+│   │   │   ├── notifications.ts
+│   │   │   ├── onboarding.ts
+│   │   │   ├── organization-settings.ts
+│   │   │   ├── posts.ts
+│   │   │   ├── profile.ts
+│   │   │   ├── rankings.ts
+│   │   │   ├── reports.ts
+│   │   │   ├── reviews.ts
+│   │   │   ├── team.ts
+│   │   │   └── white-label.ts
+│   │   ├── errors.ts
+│   │   ├── gbp-audit-competitors.ts
+│   │   ├── gbp-audit.ts
+│   │   ├── gbp-overview.ts
+│   │   ├── gbp-posts.ts
+│   │   ├── gbp-reviews.ts
+│   │   ├── global-search.ts
+│   │   ├── help.ts
+│   │   ├── integrations.ts
+│   │   ├── keyword-groups.ts
+│   │   ├── keyword-rankings.ts
+│   │   ├── local-search-grid.ts
+│   │   ├── locations-data.ts
+│   │   ├── map-rankings.ts
+│   │   ├── navigation.ts
+│   │   ├── notification-settings.ts
+│   │   ├── notifications.ts
+│   │   ├── onboarding-state.ts
+│   │   ├── onboarding.ts
+│   │   ├── organization-settings.ts
+│   │   ├── plan.ts
+│   │   ├── profile.ts
+│   │   ├── ranking-overview.ts
+│   │   ├── reports.ts
+│   │   ├── resource.ts
+│   │   ├── team.ts
+│   │   ├── white-label.ts
+│   │   └── workspace.tsx
+│   └── utils.ts
+├── main.tsx
+├── pages
+│   ├── auth
+│   │   ├── ForgotPasswordPage.tsx
+│   │   ├── LoginPage.tsx
+│   │   ├── ResetPasswordPage.tsx
+│   │   ├── SignupPage.tsx
+│   │   └── VerifyEmailPage.tsx
+│   ├── automations
+│   │   ├── AutomationDetailPage.tsx
+│   │   ├── AutomationsCreatePage.tsx
+│   │   └── AutomationsIndexPage.tsx
+│   ├── citations
+│   │   └── CitationsPage.tsx
+│   ├── clients
+│   │   ├── ClientsIndexPage.tsx
+│   │   └── client-detail
+│   │       ├── ClientIndexPage.tsx
+│   │       ├── ClientLayout.tsx
+│   │       ├── ClientLocationsPage.tsx
+│   │       └── ClientUsersPage.tsx
+│   ├── competitors
+│   │   └── CompetitorsPage.tsx
+│   ├── dashboard
+│   │   └── DashboardPage.tsx
+│   ├── errors
+│   │   ├── ForbiddenPage.tsx
+│   │   └── NotFoundPage.tsx
+│   ├── gbp
+│   │   ├── GbpAuditPage.tsx
+│   │   ├── GbpIndexPage.tsx
+│   │   ├── GbpPostsPage.tsx
+│   │   └── GbpReviewsPage.tsx
+│   ├── help
+│   │   └── HelpPage.tsx
+│   ├── home
+│   │   └── HomePage.tsx
+│   ├── locations
+│   │   ├── LocationsAddPage.tsx
+│   │   ├── LocationsIndexPage.tsx
+│   │   ├── LocationsLayout.tsx
+│   │   └── location-detail
+│   │       ├── LocationDetailIndexPage.tsx
+│   │       ├── LocationReportsPage.tsx
+│   │       ├── citations
+│   │       │   ├── CitationDetailPage.tsx
+│   │       │   └── CitationsIndexPage.tsx
+│   │       ├── competitors
+│   │       │   ├── CompetitorDetailPage.tsx
+│   │       │   └── CompetitorsIndexPage.tsx
+│   │       ├── gbp
+│   │       │   ├── GbpIndexPage.tsx
+│   │       │   ├── GbpLayout.tsx
+│   │       │   ├── GbpPostsPage.tsx
+│   │       │   ├── GbpReviewsPage.tsx
+│   │       │   └── audit
+│   │       │       ├── GbpAuditCompetitorsPage.tsx
+│   │       │       ├── GbpAuditIndexPage.tsx
+│   │       │       └── GbpAuditLayout.tsx
+│   │       └── rankings
+│   │           ├── RankingsCompetitorsPage.tsx
+│   │           ├── RankingsGridPage.tsx
+│   │           ├── RankingsGroupsPage.tsx
+│   │           ├── RankingsIndexPage.tsx
+│   │           ├── RankingsKeywordsPage.tsx
+│   │           ├── RankingsLayout.tsx
+│   │           └── RankingsMapPage.tsx
+│   ├── notifications
+│   │   └── NotificationsPage.tsx
+│   ├── onboarding
+│   │   ├── OnboardingAgencyPage.tsx
+│   │   ├── OnboardingBusinessPage.tsx
+│   │   └── OnboardingIndexPage.tsx
+│   ├── rankings
+│   │   ├── RankingsIndexPage.tsx
+│   │   ├── RankingsKeywordGroupsPage.tsx
+│   │   ├── RankingsKeywordsPage.tsx
+│   │   ├── RankingsLocalSearchGridPage.tsx
+│   │   └── RankingsMapRankingsPage.tsx
+│   ├── reports
+│   │   ├── ReportDetailPage.tsx
+│   │   ├── ReportsCreatePage.tsx
+│   │   ├── ReportsIndexPage.tsx
+│   │   └── ReportsScheduledPage.tsx
+│   └── settings
+│       ├── SettingsBillingPage.tsx
+│       ├── SettingsIndexPage.tsx
+│       ├── SettingsIntegrationsPage.tsx
+│       ├── SettingsLayout.tsx
+│       ├── SettingsNotificationsPage.tsx
+│       ├── SettingsProfilePage.tsx
+│       ├── SettingsTeamPage.tsx
+│       └── SettingsWhiteLabelPage.tsx
+├── styles.css
+└── vite-env.d.ts
+
+36 directories, 228 files
