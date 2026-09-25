@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, Mail, Search } from "lucide-react";
-import { AppShell } from "@/components/mypageseo/app-shell";
-import { PageHeader, Panel, SectionHeader } from "@/components/mypageseo/data-display";
-import { EmptyState, ErrorState } from "@/components/mypageseo/states";
+import { AppShell } from "@/components/layout/shared/app-shell";
+import { PageHeader, Panel, SectionHeader } from "@/components/layout/shared/data-display";
+import { EmptyState, ErrorState } from "@/components/layout/shared/feedback/states";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";

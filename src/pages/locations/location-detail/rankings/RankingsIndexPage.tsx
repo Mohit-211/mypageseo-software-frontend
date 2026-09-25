@@ -1,12 +1,12 @@
 import { useTypedSearch } from "@/hooks/use-typed-search";
 import { useNavigate } from "react-router-dom";
 import { z } from "zod";
-import { RankingsNavigation } from "@/components/mypageseo/location-workspace";
-import { RankingDistribution, RankingHistory, RankingMetricSummary, RankingFilterBar, RankingOverviewLoading, RankingTable } from "@/components/mypageseo/ranking-overview";
-import { PageHeader } from "@/components/mypageseo/data-display";
-import { EmptyState, ErrorState } from "@/components/mypageseo/states";
-import { getRankingOverview } from "@/lib/mypageseo/ranking-overview";
-import { NoKeywordsEmpty, NoRankingDataEmpty } from "@/components/mypageseo/empty-states";
+import { RankingsNavigation } from "@/components/location_component/location-workspace";
+import { RankingDistribution, RankingHistory, RankingMetricSummary, RankingFilterBar, RankingOverviewLoading, RankingTable } from "@/components/raking/ranking-overview";
+import { PageHeader } from "@/components/layout/shared/data-display";
+import { EmptyState, ErrorState } from "@/components/layout/shared/feedback/states";
+import { getRankingOverview } from "@/lib/raking-lib/ranking-overview";
+import { NoKeywordsEmpty, NoRankingDataEmpty } from "@/components/layout/shared/feedback/empty-states";
 import { useRequiredParams } from "@/hooks/use-required-params";
 
 const searchSchema = z.object({

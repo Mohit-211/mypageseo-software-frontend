@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import { Link, generatePath } from "react-router-dom";
 import { ArrowLeft, Search, UserPlus } from "lucide-react";
-import { AppShell } from "@/components/mypageseo/app-shell";
-import { PageHeader, Panel, StatusBadge } from "@/components/mypageseo/data-display";
-import { EmptyState, ErrorState, TableSkeleton } from "@/components/mypageseo/states";
+import { AppShell } from "@/components/layout/shared/app-shell";
+import { PageHeader, Panel, StatusBadge } from "@/components/layout/shared/data-display";
+import { EmptyState, ErrorState, TableSkeleton } from "@/components/layout/shared/feedback/states";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {

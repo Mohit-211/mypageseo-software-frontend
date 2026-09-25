@@ -2,10 +2,10 @@ import { useState } from "react";
 import { RequireAccess } from "@/components/mypageseo/access";
 import { Link } from "react-router-dom";
 import { Building2, MapPin, Users } from "lucide-react";
-import { AppShell } from "@/components/mypageseo/app-shell";
-import { PageHeader, Panel, SectionHeader } from "@/components/mypageseo/data-display";
+import { AppShell } from "@/components/layout/shared/app-shell";
+import { PageHeader, Panel, SectionHeader } from "@/components/layout/shared/data-display";
 import { SettingsNav } from "@/components/mypageseo/settings-nav";
-import { EmptyState, ErrorState, TableSkeleton } from "@/components/mypageseo/states";
+import { EmptyState, ErrorState, TableSkeleton } from "@/components/layout/shared/feedback/states";
 import { Button } from "@/components/ui/button";
 import {
   FormGrid,
@@ -13,8 +13,8 @@ import {
   FormSelectField,
   FormTextField,
   RequiredFieldsNote,
-} from "@/components/mypageseo/form";
-import { countries } from "@/lib/mypageseo/countries";
+} from "@/components/layout/shared/form-fields";
+import { countries } from "@/lib/mock-data/countries";
 import {
   ORGANIZATION_NAME_MAX_LENGTH,
   REPORT_COMPARISON_PERIODS,

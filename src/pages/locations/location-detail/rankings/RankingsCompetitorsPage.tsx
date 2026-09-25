@@ -1,8 +1,8 @@
 import { useNavigate } from "react-router-dom";
 import { z } from "zod";
-import { CompetitorRankingFilterBar, CompetitorRankingsTable, type CompetitorFilterValues } from "@/components/mypageseo/competitor-rankings";
-import { PageHeader } from "@/components/mypageseo/data-display";
-import { RankingsNavigation } from "@/components/mypageseo/location-workspace";
+import { CompetitorRankingFilterBar, CompetitorRankingsTable, type CompetitorFilterValues } from "@/components/competitor/competitor-rankings";
+import { PageHeader } from "@/components/layout/shared/data-display";
+import { RankingsNavigation } from "@/components/location_component/location-workspace";
 import { getCompetitorRankings, type CompetitorRankingOrder, type CompetitorRankingSort } from "@/lib/mypageseo/competitor-rankings";
 import { useTypedSearch } from "@/hooks/use-typed-search";
 import { useRequiredParams } from "@/hooks/use-required-params";

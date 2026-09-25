@@ -1,8 +1,8 @@
 import { ArrowDown, ArrowRight, ArrowUp, MapPin } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { EmptyState, ErrorState, TableSkeleton } from "@/components/mypageseo/states";
-import { Panel, StatusBadge, TrendIndicator } from "@/components/mypageseo/data-display";
+import { EmptyState, ErrorState, TableSkeleton } from "@/components/layout/shared/feedback/states";
+import { Panel, StatusBadge, TrendIndicator } from "@/components/layout/shared/data-display";
 import type { MapRankingData, MapRankingPoint, MapRankingResultType } from "@/lib/mypageseo/map-rankings";
 import { cn } from "@/lib/utils";
 

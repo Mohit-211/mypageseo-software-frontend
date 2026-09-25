@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { AlertCircle, Check, Plus, X } from "lucide-react";
-import { AuthLayout, AuthWordmark } from "@/components/mypageseo/auth";
+import { AuthLayout, AuthWordmark } from "@/components/auth/auth";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Check, CheckCheck, Undo2 } from "lucide-react";
-import { AppShell } from "@/components/mypageseo/app-shell";
-import { PageHeader, Panel, StatusBadge } from "@/components/mypageseo/data-display";
-import { EmptyState } from "@/components/mypageseo/states";
+import { AppShell } from "@/components/layout/shared/app-shell";
+import { PageHeader, Panel, StatusBadge } from "@/components/layout/shared/data-display";
+import { EmptyState } from "@/components/layout/shared/feedback/states";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,7 +27,7 @@ import {
 } from "@/lib/mypageseo/notifications";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
 import { cn } from "@/lib/utils";
-import { NoNotificationsEmpty, NoResultsEmpty } from "@/components/mypageseo/empty-states";
+import { NoNotificationsEmpty, NoResultsEmpty } from "@/components/layout/shared/feedback/empty-states";
 
 const DESCRIPTION =
   "Important updates and alerts from your Mypageseo account, newest first.";

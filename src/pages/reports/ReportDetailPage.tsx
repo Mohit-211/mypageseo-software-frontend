@@ -1,8 +1,8 @@
 import { Link } from "react-router-dom";
-import { AppShell } from "@/components/mypageseo/app-shell";
-import { PageHeader } from "@/components/mypageseo/data-display";
+import { AppShell } from "@/components/layout/shared/app-shell";
+import { PageHeader } from "@/components/layout/shared/data-display";
 import { ReportBody, ReportIdentity } from "@/components/mypageseo/report-detail";
-import { EmptyState, ErrorState } from "@/components/mypageseo/states";
+import { EmptyState, ErrorState } from "@/components/layout/shared/feedback/states";
 import { Button } from "@/components/ui/button";
 import { REPORT_TYPE_LABEL, getReportDetail } from "@/lib/mypageseo/reports";
 import { useWorkspace } from "@/lib/mypageseo/workspace";

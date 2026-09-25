@@ -2,10 +2,10 @@ import { useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { z } from "zod";
 import { ArrowLeft, MapPinPlus, Search, SlidersHorizontal, X } from "lucide-react";
-import { AppShell } from "@/components/mypageseo/app-shell";
-import { PageHeader, StatusBadge } from "@/components/mypageseo/data-display";
-import { EmptyState, ErrorState, TableSkeleton } from "@/components/mypageseo/states";
-import { LocationsTable, type LocationSort, type SortOrder } from "@/components/mypageseo/locations-table";
+import { AppShell } from "@/components/layout/shared/app-shell";
+import { PageHeader, StatusBadge } from "@/components/layout/shared/data-display";
+import { EmptyState, ErrorState, TableSkeleton } from "@/components/layout/shared/feedback/states";
+import { LocationsTable, type LocationSort, type SortOrder } from "@/components/location_component/locations-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -14,7 +14,7 @@ import {
   buildManagedClients,
   type ClientAccountStatus,
 } from "@/lib/mypageseo/clients-data";
-import { buildManagedLocations, type LocationStatus, type ManagedLocation } from "@/lib/mypageseo/locations-data";
+import { buildManagedLocations, type LocationStatus, type ManagedLocation } from "@/lib/mock-data/locations-data";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
 import { useTypedSearch } from "@/hooks/use-typed-search";
 import { useRequiredParams } from "@/hooks/use-required-params";

@@ -1,16 +1,16 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { z } from "zod";
-import { AppShell } from "@/components/mypageseo/app-shell";
-import { PageHeader, Panel, StatusBadge } from "@/components/mypageseo/data-display";
-import { ErrorState } from "@/components/mypageseo/states";
+import { AppShell } from "@/components/layout/shared/app-shell";
+import { PageHeader, Panel, StatusBadge } from "@/components/layout/shared/data-display";
+import { ErrorState } from "@/components/layout/shared/feedback/states";
 import {
   FieldMessage,
   FormGrid,
   FormSelectField,
   FormTextField,
   RequiredFieldsNote,
-} from "@/components/mypageseo/form";
+} from "@/components/layout/shared/form-fields";
 import { Button } from "@/components/ui/button";
 import { getReportCreationOptions, type ReportType } from "@/lib/mypageseo/reports";
 import { useWorkspace } from "@/lib/mypageseo/workspace";

@@ -1,10 +1,10 @@
 import { Link, Outlet } from "react-router-dom";
 import { useEffect } from "react";
 import { ArrowLeft } from "lucide-react";
-import { AppShell } from "@/components/mypageseo/app-shell";
-import { PageHeader } from "@/components/mypageseo/data-display";
-import { LocationHeader, LocationNavigation } from "@/components/mypageseo/location-workspace";
-import { EmptyState, ErrorState } from "@/components/mypageseo/states";
+import { AppShell } from "@/components/layout/shared/app-shell";
+import { PageHeader } from "@/components/layout/shared/data-display";
+import { LocationHeader, LocationNavigation } from "@/components/location_component/location-workspace";
+import { EmptyState, ErrorState } from "@/components/layout/shared/feedback/states";
 import { Button } from "@/components/ui/button";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
 import { useRequiredParams } from "@/hooks/use-required-params";

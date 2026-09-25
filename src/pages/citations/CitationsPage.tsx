@@ -1,7 +1,7 @@
-import { AppShell } from "@/components/mypageseo/app-shell";
-import { PageHeader } from "@/components/mypageseo/data-display";
-import { CitationsContent } from "@/components/mypageseo/citations";
-import { EmptyState } from "@/components/mypageseo/states";
+import { AppShell } from "@/components/layout/shared/app-shell";
+import { PageHeader } from "@/components/layout/shared/data-display";
+import { CitationsContent } from "@/components/citation/citations";
+import { EmptyState } from "@/components/layout/shared/feedback/states";
 import { getCitations } from "@/lib/mypageseo/citations";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
 

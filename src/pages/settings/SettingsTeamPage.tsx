@@ -3,10 +3,10 @@ import { RequireAccess } from "@/components/mypageseo/access";
 import { Link } from "react-router-dom";
 import { ArrowLeft, MoreHorizontal, Search, UserPlus } from "lucide-react";
 import { toast } from "sonner";
-import { AppShell } from "@/components/mypageseo/app-shell";
+import { AppShell } from "@/components/layout/shared/app-shell";
 import { SettingsNav } from "@/components/mypageseo/settings-nav";
-import { PageHeader, Panel, StatusBadge } from "@/components/mypageseo/data-display";
-import { EmptyState, ErrorState, TableSkeleton } from "@/components/mypageseo/states";
+import { PageHeader, Panel, StatusBadge } from "@/components/layout/shared/data-display";
+import { EmptyState, ErrorState, TableSkeleton } from "@/components/layout/shared/feedback/states";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -18,7 +18,7 @@ import {
   RequiredFieldsNote,
   SubmitButton,
   useSubmitGuard,
-} from "@/components/mypageseo/form";
+} from "@/components/layout/shared/form-fields";
 import {
   Dialog,
   DialogContent,

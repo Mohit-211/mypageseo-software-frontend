@@ -1,5 +1,5 @@
 import { Outlet } from "react-router-dom";
-import { GbpNavigation } from "@/components/mypageseo/location-workspace";
+import { GbpNavigation } from "@/components/location_component/location-workspace";
 import { useRequiredParams } from "@/hooks/use-required-params";
 
 

@@ -1,5 +1,5 @@
 import { withDemoFallback, demoDate, seedFrom } from "./demo/demo-mode";
-import { buildManagedLocations, type ManagedLocation } from "./locations-data";
+import { buildManagedLocations, type ManagedLocation } from "../mock-data/locations-data";
 import type { Client, LocationSummary } from "./workspace";
 
 export type ClientAccountStatus = "active" | "setup_required" | "disconnected";

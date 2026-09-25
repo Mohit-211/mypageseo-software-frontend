@@ -1,4 +1,4 @@
-import type { RankingMovement, RankingResultType } from "./ranking-overview";
+import type { RankingMovement, RankingResultType } from "../raking-lib/ranking-overview";
 import { withDemoFallback } from "./demo/demo-mode";
 import { demoCompetitorRankings } from "./demo/rankings";
 

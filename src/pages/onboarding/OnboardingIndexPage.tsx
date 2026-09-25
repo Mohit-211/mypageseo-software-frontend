@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
-import { AuthLayout, AuthWordmark } from "@/components/mypageseo/auth";
+import { AuthLayout, AuthWordmark } from "@/components/auth/auth";
 import {
   getOnboardingSession,
   startOnboardingSession,
-} from "@/lib/mypageseo/onboarding-state";
+} from "@/lib/auth-lib/onboarding-state";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
 
 const DESCRIPTION =

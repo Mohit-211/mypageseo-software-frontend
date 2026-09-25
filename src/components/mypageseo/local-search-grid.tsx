@@ -2,8 +2,8 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { EmptyState, ErrorState, MetricSkeletonGrid } from "@/components/mypageseo/states";
-import { MetricCard, Panel, TrendIndicator } from "@/components/mypageseo/data-display";
+import { EmptyState, ErrorState, MetricSkeletonGrid } from "@/components/layout/shared/feedback/states";
+import { MetricCard, Panel, TrendIndicator } from "@/components/layout/shared/data-display";
 import type { GridMetric, GridPoint, GridSearchType, LocalSearchGridData } from "@/lib/mypageseo/local-search-grid";
 import { cn } from "@/lib/utils";
 

@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { AppShell } from "@/components/mypageseo/app-shell";
-import { ComparisonControl, PageHeader } from "@/components/mypageseo/data-display";
-import { EmptyState, ErrorState } from "@/components/mypageseo/states";
-import { SectionError, SectionErrorBoundary } from "@/components/mypageseo/failure-states";
+import { AppShell } from "@/components/layout/shared/app-shell";
+import { ComparisonControl, PageHeader } from "@/components/layout/shared/data-display";
+import { EmptyState, ErrorState } from "@/components/layout/shared/feedback/states";
+import { SectionError, SectionErrorBoundary } from "@/components/layout/shared/feedback/failure-states";
 import {
   AgencyDashboardView,
   BusinessDashboardView,

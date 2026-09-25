@@ -1,6 +1,6 @@
-import { AppShell } from "@/components/mypageseo/app-shell";
-import { PageHeader } from "@/components/mypageseo/data-display";
-import { AutomationsContent } from "@/components/mypageseo/automations";
+import { AppShell } from "@/components/layout/shared/app-shell";
+import { PageHeader } from "@/components/layout/shared/data-display";
+import { AutomationsContent } from "@/components/automation/automations";
 import { getAutomations } from "@/lib/mypageseo/automations";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
 

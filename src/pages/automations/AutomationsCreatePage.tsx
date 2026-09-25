@@ -1,7 +1,7 @@
-import { AppShell } from "@/components/mypageseo/app-shell";
-import { PageHeader } from "@/components/mypageseo/data-display";
-import { EmptyState } from "@/components/mypageseo/states";
-import { AutomationBackLink, AutomationForm } from "@/components/mypageseo/automation-form";
+import { AppShell } from "@/components/layout/shared/app-shell";
+import { PageHeader } from "@/components/layout/shared/data-display";
+import { EmptyState } from "@/components/layout/shared/feedback/states";
+import { AutomationBackLink, AutomationForm } from "@/components/automation/automation-form";
 import { emptyAutomationForm, getAutomations } from "@/lib/mypageseo/automations";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
 

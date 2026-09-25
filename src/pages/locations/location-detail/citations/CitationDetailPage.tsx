@@ -1,11 +1,11 @@
 import { Link } from "react-router-dom";
 import { useEffect } from "react";
 import { ArrowLeft } from "lucide-react";
-import { AppShell } from "@/components/mypageseo/app-shell";
-import { PageHeader, StatusBadge } from "@/components/mypageseo/data-display";
-import { LocationHeader, LocationNavigation } from "@/components/mypageseo/location-workspace";
-import { CitationDetailContent } from "@/components/mypageseo/citation-detail";
-import { EmptyState, ErrorState } from "@/components/mypageseo/states";
+import { AppShell } from "@/components/layout/shared/app-shell";
+import { PageHeader, StatusBadge } from "@/components/layout/shared/data-display";
+import { LocationHeader, LocationNavigation } from "@/components/location_component/location-workspace";
+import { CitationDetailContent } from "@/components/citation/citation-detail";
+import { EmptyState, ErrorState } from "@/components/layout/shared/feedback/states";
 import { Button } from "@/components/ui/button";
 import { CITATION_STATE_LABEL, getCitationDetail } from "@/lib/mypageseo/citations";
 import { useWorkspace } from "@/lib/mypageseo/workspace";

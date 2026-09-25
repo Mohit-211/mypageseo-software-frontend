@@ -1,8 +1,8 @@
 import { useNavigate } from "react-router-dom";
 import { z } from "zod";
 import { KeywordGroupSearch, KeywordGroupsTable } from "@/components/mypageseo/keyword-groups";
-import { RankingsNavigation } from "@/components/mypageseo/location-workspace";
-import { PageHeader } from "@/components/mypageseo/data-display";
+import { RankingsNavigation } from "@/components/location_component/location-workspace";
+import { PageHeader } from "@/components/layout/shared/data-display";
 import { getKeywordGroups } from "@/lib/mypageseo/keyword-groups";
 import { useTypedSearch } from "@/hooks/use-typed-search";
 import { useRequiredParams } from "@/hooks/use-required-params";

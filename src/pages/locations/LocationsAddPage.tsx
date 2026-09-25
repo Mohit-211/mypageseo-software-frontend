@@ -1,15 +1,15 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft, CheckCircle2, Info } from "lucide-react";
-import { AppShell } from "@/components/mypageseo/app-shell";
-import { PageHeader } from "@/components/mypageseo/data-display";
+import { AppShell } from "@/components/layout/shared/app-shell";
+import { PageHeader } from "@/components/layout/shared/data-display";
 import {
   BusinessProfileSelector,
   GoogleBusinessConnection,
   LocationConfirmation,
   type GoogleBusinessProfile,
   type GoogleConnectionState,
-} from "@/components/mypageseo/location-setup";
+} from "@/components/location_component/location-setup";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";

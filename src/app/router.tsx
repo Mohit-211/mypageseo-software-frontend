@@ -2,13 +2,14 @@
 // Nesting mirrors TanStack's flat-file rules. Safe to hand-edit from here on.
 import { createBrowserRouter } from "react-router-dom";
 import { AppRoot, RootErrorBoundary, RootNotFound } from "./App";
+import { GuestOnly, RequireAuth } from "@/lib/auth-lib/auth-guards";
 import HomePage from "@/pages/home/HomePage";
 import DashboardPage from "@/pages/dashboard/DashboardPage";
 import LocationsLayout from "@/pages/locations/LocationsLayout";
 import LocationsIndexPage from "@/pages/locations/LocationsIndexPage";
 import LocationsAddPage from "@/pages/locations/LocationsAddPage";
 import LocationDetailIndexPage from "@/pages/locations/location-detail/LocationDetailIndexPage";
-import LocationReportsPage from "@/pages/locations/location-detail/LocationReportsPage";
+import LocationReportsPage from "@/pages/locations/location-detail/report/LocationReportsPage";
 import GbpLayout from "@/pages/locations/location-detail/gbp/GbpLayout";
 import LocationGbpIndexPage from "@/pages/locations/location-detail/gbp/GbpIndexPage";
 import LocationGbpPostsPage from "@/pages/locations/location-detail/gbp/GbpPostsPage";
@@ -68,6 +69,7 @@ import SignupPage from "@/pages/auth/SignupPage";
 import ForgotPasswordPage from "@/pages/auth/ForgotPasswordPage";
 import ResetPasswordPage from "@/pages/auth/ResetPasswordPage";
 import VerifyEmailPage from "@/pages/auth/VerifyEmailPage";
+import VerifyOtpPage from "@/pages/auth/VerifyOtpPage";
 import ForbiddenPage from "@/pages/errors/ForbiddenPage";
 import NotFoundPage from "@/pages/errors/NotFoundPage";
 
@@ -78,101 +80,114 @@ export const router = createBrowserRouter([
     ErrorBoundary: RootErrorBoundary,
     children: [
       { index: true, Component: HomePage },
-      { path: "dashboard", Component: DashboardPage },
       {
-        path: "locations",
-        Component: LocationsLayout,
+        // Signed-in pages: no valid token sends the user to /login.
+        Component: RequireAuth,
         children: [
-          { index: true, Component: LocationsIndexPage },
-          { path: "add", Component: LocationsAddPage },
-          { path: ":locationId", Component: LocationDetailIndexPage },
-          { path: ":locationId/reports", Component: LocationReportsPage },
+          { path: "dashboard", Component: DashboardPage },
           {
-            path: ":locationId/gbp",
-            Component: GbpLayout,
+            path: "locations",
+            Component: LocationsLayout,
             children: [
-              { index: true, Component: LocationGbpIndexPage },
-              { path: "posts", Component: LocationGbpPostsPage },
-              { path: "reviews", Component: LocationGbpReviewsPage },
+              { index: true, Component: LocationsIndexPage },
+              { path: "add", Component: LocationsAddPage },
+              { path: ":locationId", Component: LocationDetailIndexPage },
+              { path: ":locationId/reports", Component: LocationReportsPage },
               {
-                path: "audit",
-                Component: GbpAuditLayout,
+                path: ":locationId/gbp",
+                Component: GbpLayout,
                 children: [
-                  { index: true, Component: GbpAuditIndexPage },
-                  { path: "competitors", Component: GbpAuditCompetitorsPage },
+                  { index: true, Component: LocationGbpIndexPage },
+                  { path: "posts", Component: LocationGbpPostsPage },
+                  { path: "reviews", Component: LocationGbpReviewsPage },
+                  {
+                    path: "audit",
+                    Component: GbpAuditLayout,
+                    children: [
+                      { index: true, Component: GbpAuditIndexPage },
+                      { path: "competitors", Component: GbpAuditCompetitorsPage },
+                    ],
+                  },
                 ],
               },
+              {
+                path: ":locationId/rankings",
+                Component: RankingsLayout,
+                children: [
+                  { index: true, Component: LocationRankingsIndexPage },
+                  { path: "keywords", Component: LocationRankingsKeywordsPage },
+                  { path: "groups", Component: RankingsGroupsPage },
+                  { path: "grid", Component: RankingsGridPage },
+                  { path: "map", Component: RankingsMapPage },
+                  { path: "competitors", Component: RankingsCompetitorsPage },
+                ],
+              },
+              { path: ":locationId/citations", Component: CitationsIndexPage },
+              { path: ":locationId/citations/:citationId", Component: CitationDetailPage },
+              { path: ":locationId/competitors", Component: CompetitorsIndexPage },
+              { path: ":locationId/competitors/:competitorId", Component: CompetitorDetailPage },
             ],
           },
+          { path: "rankings", Component: RankingsIndexPage },
+          { path: "rankings/keywords", Component: RankingsKeywordsPage },
+          { path: "rankings/keyword-groups", Component: RankingsKeywordGroupsPage },
+          { path: "rankings/map-rankings", Component: RankingsMapRankingsPage },
+          { path: "rankings/local-search-grid", Component: RankingsLocalSearchGridPage },
+          { path: "gbp", Component: GbpIndexPage },
+          { path: "gbp/audit", Component: GbpAuditPage },
+          { path: "gbp/reviews", Component: GbpReviewsPage },
+          { path: "gbp/posts", Component: GbpPostsPage },
+          { path: "citations", Component: CitationsPage },
+          { path: "competitors", Component: CompetitorsPage },
+          { path: "reports", Component: ReportsIndexPage },
+          { path: "reports/create", Component: ReportsCreatePage },
+          { path: "reports/scheduled", Component: ReportsScheduledPage },
+          { path: "reports/:reportId", Component: ReportDetailPage },
+          { path: "clients", Component: ClientsIndexPage },
           {
-            path: ":locationId/rankings",
-            Component: RankingsLayout,
+            path: "clients/:clientId",
+            Component: ClientLayout,
             children: [
-              { index: true, Component: LocationRankingsIndexPage },
-              { path: "keywords", Component: LocationRankingsKeywordsPage },
-              { path: "groups", Component: RankingsGroupsPage },
-              { path: "grid", Component: RankingsGridPage },
-              { path: "map", Component: RankingsMapPage },
-              { path: "competitors", Component: RankingsCompetitorsPage },
+              { index: true, Component: ClientIndexPage },
+              { path: "locations", Component: ClientLocationsPage },
+              { path: "users", Component: ClientUsersPage },
             ],
           },
-          { path: ":locationId/citations", Component: CitationsIndexPage },
-          { path: ":locationId/citations/:citationId", Component: CitationDetailPage },
-          { path: ":locationId/competitors", Component: CompetitorsIndexPage },
-          { path: ":locationId/competitors/:competitorId", Component: CompetitorDetailPage },
+          { path: "automations", Component: AutomationsIndexPage },
+          { path: "automations/create", Component: AutomationsCreatePage },
+          { path: "automations/:automationId", Component: AutomationDetailPage },
+          {
+            path: "settings",
+            Component: SettingsLayout,
+            children: [
+              { index: true, Component: SettingsIndexPage },
+              { path: "profile", Component: SettingsProfilePage },
+              { path: "billing", Component: SettingsBillingPage },
+              { path: "team", Component: SettingsTeamPage },
+              { path: "integrations", Component: SettingsIntegrationsPage },
+              { path: "notifications", Component: SettingsNotificationsPage },
+              { path: "white-label", Component: SettingsWhiteLabelPage },
+            ],
+          },
+          { path: "notifications", Component: NotificationsPage },
+          { path: "help", Component: HelpPage },
+          { path: "onboarding", Component: OnboardingIndexPage },
+          { path: "onboarding/business", Component: OnboardingBusinessPage },
+          { path: "onboarding/agency", Component: OnboardingAgencyPage },
         ],
       },
-      { path: "rankings", Component: RankingsIndexPage },
-      { path: "rankings/keywords", Component: RankingsKeywordsPage },
-      { path: "rankings/keyword-groups", Component: RankingsKeywordGroupsPage },
-      { path: "rankings/map-rankings", Component: RankingsMapRankingsPage },
-      { path: "rankings/local-search-grid", Component: RankingsLocalSearchGridPage },
-      { path: "gbp", Component: GbpIndexPage },
-      { path: "gbp/audit", Component: GbpAuditPage },
-      { path: "gbp/reviews", Component: GbpReviewsPage },
-      { path: "gbp/posts", Component: GbpPostsPage },
-      { path: "citations", Component: CitationsPage },
-      { path: "competitors", Component: CompetitorsPage },
-      { path: "reports", Component: ReportsIndexPage },
-      { path: "reports/create", Component: ReportsCreatePage },
-      { path: "reports/scheduled", Component: ReportsScheduledPage },
-      { path: "reports/:reportId", Component: ReportDetailPage },
-      { path: "clients", Component: ClientsIndexPage },
       {
-        path: "clients/:clientId",
-        Component: ClientLayout,
+        // Sign In / Sign Up: an already signed-in user goes straight to the app.
+        Component: GuestOnly,
         children: [
-          { index: true, Component: ClientIndexPage },
-          { path: "locations", Component: ClientLocationsPage },
-          { path: "users", Component: ClientUsersPage },
+          { path: "login", Component: LoginPage },
+          { path: "signup", Component: SignupPage },
         ],
       },
-      { path: "automations", Component: AutomationsIndexPage },
-      { path: "automations/create", Component: AutomationsCreatePage },
-      { path: "automations/:automationId", Component: AutomationDetailPage },
-      {
-        path: "settings",
-        Component: SettingsLayout,
-        children: [
-          { index: true, Component: SettingsIndexPage },
-          { path: "profile", Component: SettingsProfilePage },
-          { path: "billing", Component: SettingsBillingPage },
-          { path: "team", Component: SettingsTeamPage },
-          { path: "integrations", Component: SettingsIntegrationsPage },
-          { path: "notifications", Component: SettingsNotificationsPage },
-          { path: "white-label", Component: SettingsWhiteLabelPage },
-        ],
-      },
-      { path: "notifications", Component: NotificationsPage },
-      { path: "help", Component: HelpPage },
-      { path: "onboarding", Component: OnboardingIndexPage },
-      { path: "onboarding/business", Component: OnboardingBusinessPage },
-      { path: "onboarding/agency", Component: OnboardingAgencyPage },
-      { path: "login", Component: LoginPage },
-      { path: "signup", Component: SignupPage },
       { path: "forgot-password", Component: ForgotPasswordPage },
       { path: "reset-password", Component: ResetPasswordPage },
       { path: "verify-email", Component: VerifyEmailPage },
+      { path: "verify-otp", Component: VerifyOtpPage },
       { path: "403", Component: ForbiddenPage },
       { path: "404", Component: NotFoundPage },
       { path: "*", Component: RootNotFound },

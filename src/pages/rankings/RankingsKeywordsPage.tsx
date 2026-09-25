@@ -1,5 +1,5 @@
-import { AppShell } from "@/components/mypageseo/app-shell";
-import { PageHeader } from "@/components/mypageseo/data-display";
+import { AppShell } from "@/components/layout/shared/app-shell";
+import { PageHeader } from "@/components/layout/shared/data-display";
 import { KeywordRankingsTable } from "@/components/mypageseo/keyword-rankings";
 import { getKeywordRankings } from "@/lib/mypageseo/keyword-rankings";
 

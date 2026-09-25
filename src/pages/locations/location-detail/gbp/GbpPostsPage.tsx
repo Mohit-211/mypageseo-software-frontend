@@ -1,6 +1,6 @@
-import { PageHeader } from "@/components/mypageseo/data-display";
-import { GbpNavigation } from "@/components/mypageseo/location-workspace";
-import { GbpPostsContent } from "@/components/mypageseo/gbp-posts";
+import { PageHeader } from "@/components/layout/shared/data-display";
+import { GbpNavigation } from "@/components/location_component/location-workspace";
+import { GbpPostsContent } from "@/components/gbp-audit/gbp-posts";
 import { getGbpPosts } from "@/lib/mypageseo/gbp-posts";
 import { useRequiredParams } from "@/hooks/use-required-params";
 

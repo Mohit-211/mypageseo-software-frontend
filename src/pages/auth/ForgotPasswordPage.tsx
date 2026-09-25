@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
-import { ArrowLeft, Loader2, MailCheck } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { ArrowLeft, Loader2 } from "lucide-react";
 import {
   AuthField,
   AuthFooterNote,
@@ -8,22 +8,18 @@ import {
   AuthHeading,
   AuthInput,
   AuthLayout,
-  AuthStatePanel,
-} from "@/components/mypageseo/auth";
+} from "@/components/auth/auth";
 import { Button } from "@/components/ui/button";
-import { authRecoveryCapabilities, resetEmailSchema } from "@/lib/mypageseo/auth-recovery";
-
-const description = "Request a password reset link for your Mypageseo account.";
-
-
+import { isApiError, sendOtp } from "@/api";
+import { authRecoveryCapabilities, resetEmailSchema } from "@/lib/auth-lib/auth-recovery";
 
 function ForgotPasswordPage() {
+  const navigate = useNavigate();
   const capabilities = authRecoveryCapabilities();
   const [email, setEmail] = useState("");
   const [fieldError, setFieldError] = useState<string | undefined>(undefined);
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [requested, setRequested] = useState(false);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -39,53 +35,27 @@ function ForgotPasswordPage() {
     setSubmitting(true);
     setFormError(null);
     try {
-      // The authentication service answers this request identically for known
-      // and unknown addresses, so the screen never reveals whether an account
-      // exists.
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      setRequested(true);
-    } catch {
-      setFormError("We couldn't send the reset link right now. Please try again in a moment.");
+      const target = parsed.data;
+      await sendOtp({ email: target, type: "FORGOT_PASSWORD" });
+      // The backend emails a one-time code; the user confirms it on the OTP page.
+      await navigate(`/verify-otp?email=${encodeURIComponent(target)}&type=FORGOT_PASSWORD`);
+    } catch (error) {
+      if (isApiError(error) && error.fieldErrors?.email) setFieldError(error.fieldErrors.email);
+      setFormError(
+        isApiError(error) && error.status > 0 && error.status < 500
+          ? error.message
+          : "We couldn't send the reset code right now. Please try again in a moment.",
+      );
     } finally {
       setSubmitting(false);
     }
-  }
-
-  if (requested) {
-    return (
-      <AuthLayout>
-        <AuthStatePanel
-          tone="success"
-          icon={<MailCheck className="size-5" />}
-          title="Check your email"
-          description={
-            <>
-              If an account exists for that email address, we&apos;ve sent a link to reset the
-              password. The link can only be used once and expires after a short time.
-            </>
-          }
-        >
-          <Button asChild className="w-full">
-            <Link to="/login">Back to sign in</Link>
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full"
-            onClick={() => setRequested(false)}
-          >
-            Use a different email address
-          </Button>
-        </AuthStatePanel>
-      </AuthLayout>
-    );
   }
 
   return (
     <AuthLayout>
       <AuthHeading
         title="Reset your password"
-        description="Enter the email address on your account and we'll send a link to set a new password."
+        description="Enter the email address on your account and we'll send a code to set a new password."
       />
 
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
@@ -99,7 +69,7 @@ function ForgotPasswordPage() {
           label="Email address"
           htmlFor="recovery-email"
           error={fieldError}
-          hint="We send the link to this address only — nothing is revealed about the account."
+          hint="We send the code to this address only."
         >
           <AuthInput
             id="recovery-email"
@@ -125,10 +95,10 @@ function ForgotPasswordPage() {
           {submitting ? (
             <>
               <Loader2 className="size-4 animate-spin" aria-hidden />
-              Sending link…
+              Sending code…
             </>
           ) : (
-            "Send reset link"
+            "Send reset code"
           )}
         </Button>
 

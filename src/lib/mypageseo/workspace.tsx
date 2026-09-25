@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { AccountType } from "./navigation";
 import { DEMO_CLIENTS, DEMO_LOCATIONS, DEMO_ORGANIZATIONS } from "./demo/entities";
-import { useOnboardingSession } from "./onboarding-state";
+import { useOnboardingSession } from "../auth-lib/onboarding-state";
 
 export type Organization = {
   id: string;

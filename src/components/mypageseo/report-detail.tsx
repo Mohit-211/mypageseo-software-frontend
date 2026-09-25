@@ -6,8 +6,8 @@ import {
   SectionHeader,
   StatusBadge,
   type StatusTone,
-} from "@/components/mypageseo/data-display";
-import { EmptyState } from "@/components/mypageseo/states";
+} from "@/components/layout/shared/data-display";
+import { EmptyState } from "@/components/layout/shared/feedback/states";
 import { Button } from "@/components/ui/button";
 import {
   REPORT_STATE_LABEL,

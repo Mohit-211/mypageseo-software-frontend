@@ -2,12 +2,12 @@ import { useMemo, useState } from "react";
 import { RequireAccess } from "@/components/mypageseo/access";
 import { Link } from "react-router-dom";
 import { AlertTriangle, ExternalLink, Link2, Link2Off, RefreshCw } from "lucide-react";
-import { AppShell } from "@/components/mypageseo/app-shell";
-import { PageHeader, Panel, SectionHeader, StatusBadge } from "@/components/mypageseo/data-display";
+import { AppShell } from "@/components/layout/shared/app-shell";
+import { PageHeader, Panel, SectionHeader, StatusBadge } from "@/components/layout/shared/data-display";
 import { SettingsNav } from "@/components/mypageseo/settings-nav";
-import { EmptyState, ErrorState, TableSkeleton } from "@/components/mypageseo/states";
+import { EmptyState, ErrorState, TableSkeleton } from "@/components/layout/shared/feedback/states";
 import { Button } from "@/components/ui/button";
-import { ConfirmDialog } from "@/components/mypageseo/form";
+import { ConfirmDialog } from "@/components/layout/shared/form-fields";
 import {
   CONNECTION_LABEL,
   CONNECTION_TONE,

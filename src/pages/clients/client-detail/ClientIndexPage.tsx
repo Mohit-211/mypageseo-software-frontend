@@ -1,16 +1,16 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeft, MapPinPlus } from "lucide-react";
-import { AppShell } from "@/components/mypageseo/app-shell";
+import { AppShell } from "@/components/layout/shared/app-shell";
 import {
   MetricCard,
   PageHeader,
   Panel,
   SectionHeader,
   StatusBadge,
-} from "@/components/mypageseo/data-display";
-import { EmptyState, ErrorState, TableSkeleton } from "@/components/mypageseo/states";
-import { LocationsTable, type LocationSort, type SortOrder } from "@/components/mypageseo/locations-table";
+} from "@/components/layout/shared/data-display";
+import { EmptyState, ErrorState, TableSkeleton } from "@/components/layout/shared/feedback/states";
+import { LocationsTable, type LocationSort, type SortOrder } from "@/components/location_component/locations-table";
 import { Button } from "@/components/ui/button";
 import {
   CLIENT_STATUS_LABEL,
@@ -18,7 +18,7 @@ import {
   getClientCapabilities,
   type ClientAccountStatus,
 } from "@/lib/mypageseo/clients-data";
-import { buildManagedLocations } from "@/lib/mypageseo/locations-data";
+import { buildManagedLocations } from "@/lib/mock-data/locations-data";
 import { getReports } from "@/lib/mypageseo/reports";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
 import { useRequiredParams } from "@/hooks/use-required-params";

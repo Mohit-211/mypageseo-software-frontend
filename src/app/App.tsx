@@ -1,6 +1,6 @@
 import { Outlet, isRouteErrorResponse, useRouteError } from 'react-router-dom';
-import { NotFoundScreen } from '@/components/mypageseo/not-found';
-import { AppErrorState } from '@/components/mypageseo/failure-states';
+import { NotFoundScreen } from '@/components/layout/shared/feedback/not-found';
+import { AppErrorState } from '@/components/layout/shared/feedback/failure-states';
 
 /** Root layout. Providers live in main.tsx. */
 export function AppRoot() {

@@ -1,11 +1,11 @@
 import { Link } from "react-router-dom";
 import { useEffect } from "react";
 import { ArrowLeft } from "lucide-react";
-import { AppShell } from "@/components/mypageseo/app-shell";
-import { PageHeader } from "@/components/mypageseo/data-display";
-import { LocationHeader, LocationNavigation } from "@/components/mypageseo/location-workspace";
-import { CompetitorDetailContent } from "@/components/mypageseo/competitor-detail";
-import { EmptyState, ErrorState } from "@/components/mypageseo/states";
+import { AppShell } from "@/components/layout/shared/app-shell";
+import { PageHeader } from "@/components/layout/shared/data-display";
+import { LocationHeader, LocationNavigation } from "@/components/location_component/location-workspace";
+import { CompetitorDetailContent } from "@/components/competitor/competitor-detail";
+import { EmptyState, ErrorState } from "@/components/layout/shared/feedback/states";
 import { Button } from "@/components/ui/button";
 import { getCompetitorDetail } from "@/lib/mypageseo/competitors";
 import { useWorkspace } from "@/lib/mypageseo/workspace";

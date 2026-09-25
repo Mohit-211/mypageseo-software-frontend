@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { CheckCircle2, LinkIcon, Loader2, TimerOff } from "lucide-react";
+import { CheckCircle2, Loader2, ShieldAlert } from "lucide-react";
 import { z } from "zod";
 import {
   AuthField,
@@ -10,18 +10,17 @@ import {
   AuthPasswordInput,
   AuthLayout,
   AuthStatePanel,
-} from "@/components/mypageseo/auth";
+} from "@/components/auth/auth";
 import { Button } from "@/components/ui/button";
 import {
   authRecoveryCapabilities,
   passwordSchema,
-  resolveResetTokenState,
-} from "@/lib/mypageseo/auth-recovery";
+} from "@/lib/auth-lib/auth-recovery";
 import { useTypedSearch } from "@/hooks/use-typed-search";
-
-const description = "Set a new password for your Mypageseo account.";
+import { forgotPassword, isApiError, resetPassword } from "@/api";
 
 const searchSchema = z.object({
+  email: z.string().email().optional(),
   token: z.string().optional(),
 });
 
@@ -40,8 +39,7 @@ const formSchema = z
 type FieldErrors = { password?: string | undefined; confirmPassword?: string | undefined };
 
 function ResetPasswordPage() {
-  const [{ token }, setSearch] = useTypedSearch(searchSchema);
-  const tokenState = resolveResetTokenState(token);
+  const [{ email, token }] = useTypedSearch(searchSchema);
   const capabilities = authRecoveryCapabilities();
 
   const [values, setValues] = useState({ password: "", confirmPassword: "" });
@@ -50,22 +48,19 @@ function ResetPasswordPage() {
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
 
-  if (tokenState !== "valid") {
-    const expired = tokenState === "expired";
+  // The token comes from verify-otp; without it (or the email) there's nothing to reset.
+  // An expired token is reported by the backend when the form is submitted.
+  if (!email || !token) {
     return (
       <AuthLayout>
         <AuthStatePanel
           tone="critical"
-          icon={expired ? <TimerOff className="size-5" /> : <LinkIcon className="size-5" />}
-          title={expired ? "This reset link has expired" : "This reset link isn't valid"}
-          description={
-            expired
-              ? "Password reset links can only be used once and stay valid for a limited time. Request a new link to continue."
-              : "The link may be incomplete or already used. Request a new password reset link to continue."
-          }
+          icon={<ShieldAlert className="size-5" />}
+          title="Verify your code first"
+          description="To set a new password, request a reset code and enter it to continue."
         >
           <Button asChild className="w-full">
-            <Link to="/forgot-password">Request a new link</Link>
+            <Link to="/forgot-password">Request a new code</Link>
           </Button>
           <Button asChild variant="outline" className="w-full">
             <Link to="/login">Back to sign in</Link>
@@ -116,10 +111,23 @@ function ResetPasswordPage() {
     setSubmitting(true);
     setFormError(null);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await forgotPassword({
+        email: email ?? "",
+        password: parsed.data.password,
+        confirm_password: parsed.data.confirmPassword,
+        token: token ?? "",
+      });
       setDone(true);
-    } catch {
-      setFormError("We couldn't update your password right now. Please try again in a moment.");
+    } catch (error) {
+      if (isApiError(error) && error.fieldErrors) {
+        const { password, confirm_password } = error.fieldErrors;
+        setErrors({ password, confirmPassword: confirm_password });
+      }
+      setFormError(
+        isApiError(error) && error.status > 0 && error.status < 500
+          ? error.message
+          : "We couldn't update your password right now. Please try again in a moment.",
+      );
     } finally {
       setSubmitting(false);
     }

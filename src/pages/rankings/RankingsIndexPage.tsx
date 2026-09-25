@@ -1,7 +1,7 @@
-import { AppShell } from "@/components/mypageseo/app-shell";
-import { PageHeader } from "@/components/mypageseo/data-display";
-import { RankingDistribution, RankingHistory, RankingMetricSummary, RankingTable } from "@/components/mypageseo/ranking-overview";
-import { getRankingOverview } from "@/lib/mypageseo/ranking-overview";
+import { AppShell } from "@/components/layout/shared/app-shell";
+import { PageHeader } from "@/components/layout/shared/data-display";
+import { RankingDistribution, RankingHistory, RankingMetricSummary, RankingTable } from "@/components/raking/ranking-overview";
+import { getRankingOverview } from "@/lib/raking-lib/ranking-overview";
 
 
 

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { z } from "zod";
 import {
@@ -10,18 +10,24 @@ import {
   AuthInput,
   LoginAuthLayout,
   AuthPasswordInput,
-} from "@/components/mypageseo/auth";
+} from "@/components/auth/auth";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { DEMO_CREDENTIALS, matchDemoCredential } from "@/lib/mypageseo/demo/credentials";
-import {
-  clearOnboardingSession,
-  startOnboardingSession,
-} from "@/lib/mypageseo/onboarding-state";
+import { isApiError, login, sendOtp } from "@/api";
+import { getPostLoginPath } from "@/lib/auth-lib/auth-session";
 
 const description = "Sign in to continue managing your local search performance.";
 
 
+
+/** The backend refuses sign-in for accounts that haven't confirmed their OTP yet. */
+function isUnverifiedError(error: unknown): boolean {
+  if (!isApiError(error)) return false;
+  return /not verified|verify your otp/i.test(error.message) || error.code === "USER_NOT_VERIFIED";
+}
+
+/** How long the unverified message stays on screen before redirecting. */
+const UNVERIFIED_REDIRECT_MS = 1500;
 
 const loginSchema = z.object({
   email: z
@@ -35,6 +41,7 @@ const loginSchema = z.object({
 
 function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [values, setValues] = useState({ email: "", password: "" });
   const [rememberMe, setRememberMe] = useState(false);
   const [errors, setErrors] = useState<{ email?: string | undefined; password?: string | undefined }>({});
@@ -60,36 +67,36 @@ function LoginPage() {
     setSubmitting(true);
     setFormError(null);
     try {
-      // Sign-in runs through the project's authentication backend, which is
-      // not connected to this frontend yet. The demo credentials below open the
-      // flows locally so setup and the product can be walked end to end.
-      const demo = matchDemoCredential(result.data.email, result.data.password);
-      if (!demo) throw new Error("auth-unavailable");
-
-      if (demo.destination === "onboarding") {
-        startOnboardingSession({
-          accountType: demo.accountType,
-          organizationName: demo.organizationName,
-          country: demo.country,
-        });
-        await navigate("/onboarding");
-      } else {
-        clearOnboardingSession();
-        await navigate("/dashboard");
+      await login({ ...result.data, rememberMe });
+      // Unfinished setup first, then the page that sent the user here, then the dashboard.
+      await navigate(getPostLoginPath(location.state), { replace: true });
+    } catch (error) {
+      if (isUnverifiedError(error)) {
+        const email = result.data.email;
+        setFormError(
+          isApiError(error) ? error.message : "User is not verified yet. Please verify your OTP first.",
+        );
+        // Send a fresh code so the user has one waiting on the verify page.
+        sendOtp({ email, type: "EMAIL_VERIFICATION" }).catch(() => undefined);
+        setTimeout(() => {
+          void navigate(`/verify-otp?email=${encodeURIComponent(email)}&type=EMAIL_VERIFICATION`, {
+            state: { unverified: true },
+          });
+        }, UNVERIFIED_REDIRECT_MS);
+        return;
       }
-    } catch {
+      if (isApiError(error) && error.fieldErrors) {
+        const { email, password } = error.fieldErrors;
+        setErrors({ email, password });
+      }
       setFormError(
-        "We couldn't sign you in with those details. Real sign-in isn't available on this environment yet — use one of the demo sign-ins listed below.",
+        isApiError(error) && error.status > 0 && error.status < 500
+          ? error.message
+          : "We couldn't sign you in right now. Please try again, or contact support if it keeps happening.",
       );
     } finally {
       setSubmitting(false);
     }
-  }
-
-  function fillDemo(email: string, password: string) {
-    setValues({ email, password });
-    setErrors({});
-    setFormError(null);
   }
 
   return (
@@ -160,39 +167,7 @@ function LoginPage() {
         </Button>
       </form>
 
-      <section
-        aria-label="Demo sign-in details"
-        className="mt-6 rounded-md border border-border bg-surface p-3"
-      >
-        <h2 className="text-[13px] font-semibold text-foreground">Demo sign-in</h2>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          Real accounts aren&apos;t available on this environment. Use one of these to walk
-          through setup and the product.
-        </p>
-        <ul className="mt-2.5 space-y-2">
-          {DEMO_CREDENTIALS.map((entry) => (
-            <li
-              key={entry.email}
-              className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/70 px-2.5 py-2"
-            >
-              <div className="min-w-0">
-                <p className="truncate text-[13px] font-medium text-foreground">{entry.email}</p>
-                <p className="text-xs text-muted-foreground">
-                  Password: {entry.password} · {entry.label}
-                </p>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => fillDemo(entry.email, entry.password)}
-              >
-                Use
-              </Button>
-            </li>
-          ))}
-        </ul>
-      </section>
+    
 
       <AuthFooterNote>
         Don&apos;t have an account?{" "}

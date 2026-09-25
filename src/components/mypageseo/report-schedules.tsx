@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
-import { Panel, StatusBadge, type StatusTone } from "@/components/mypageseo/data-display";
-import { EmptyState, ErrorState, TableSkeleton } from "@/components/mypageseo/states";
+import { Panel, StatusBadge, type StatusTone } from "@/components/layout/shared/data-display";
+import { EmptyState, ErrorState, TableSkeleton } from "@/components/layout/shared/feedback/states";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";

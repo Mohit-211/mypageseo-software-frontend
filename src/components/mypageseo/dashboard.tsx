@@ -20,8 +20,8 @@ import {
   StatusBadge,
   TrendIndicator,
   healthTone,
-} from "@/components/mypageseo/data-display";
-import { EmptyState, MetricSkeletonGrid } from "@/components/mypageseo/states";
+} from "@/components/layout/shared/data-display";
+import { EmptyState, MetricSkeletonGrid } from "@/components/layout/shared/feedback/states";
 import type {
   AgencyDashboard,
   BusinessDashboard,

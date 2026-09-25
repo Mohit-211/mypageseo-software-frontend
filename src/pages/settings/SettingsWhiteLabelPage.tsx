@@ -2,17 +2,17 @@ import { useState } from "react";
 import { RequireAccess } from "@/components/mypageseo/access";
 import { Link } from "react-router-dom";
 import { ArrowLeft, ImageUp, Save } from "lucide-react";
-import { AppShell } from "@/components/mypageseo/app-shell";
+import { AppShell } from "@/components/layout/shared/app-shell";
 import { SettingsNav } from "@/components/mypageseo/settings-nav";
-import { PageHeader, Panel, StatusBadge } from "@/components/mypageseo/data-display";
-import { EmptyState, ErrorState, TableSkeleton } from "@/components/mypageseo/states";
+import { PageHeader, Panel, StatusBadge } from "@/components/layout/shared/data-display";
+import { EmptyState, ErrorState, TableSkeleton } from "@/components/layout/shared/feedback/states";
 import { Button } from "@/components/ui/button";
 import {
   FormAlert,
   FormTextField,
   SubmitButton,
   useSubmitGuard,
-} from "@/components/mypageseo/form";
+} from "@/components/layout/shared/form-fields";
 import {
   COMPANY_NAME_MAX_LENGTH,
   getWhiteLabelSettings,

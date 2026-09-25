@@ -7,13 +7,13 @@ import {
   AuthFormError,
   AuthLayout,
   AuthStatePanel,
-} from "@/components/mypageseo/auth";
+} from "@/components/auth/auth";
 import { Button } from "@/components/ui/button";
 import {
   authRecoveryCapabilities,
   resolveVerificationState,
   type VerificationState,
-} from "@/lib/mypageseo/auth-recovery";
+} from "@/lib/auth-lib/auth-recovery";
 import { useTypedSearch } from "@/hooks/use-typed-search";
 
 const description = "Confirm your email address to activate your Mypageseo account.";

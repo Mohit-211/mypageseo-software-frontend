@@ -2,11 +2,11 @@ import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, RotateCcw, Search } from
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { EmptyState, ErrorState, TableSkeleton } from "@/components/mypageseo/states";
-import { StatusBadge } from "@/components/mypageseo/data-display";
+import { EmptyState, ErrorState, TableSkeleton } from "@/components/layout/shared/feedback/states";
+import { StatusBadge } from "@/components/layout/shared/data-display";
 import type { KeywordRankingRow, KeywordRankingsData, KeywordSort, SortOrder } from "@/lib/mypageseo/keyword-rankings";
 import { cn } from "@/lib/utils";
-import { NoKeywordsEmpty, NoRankingDataEmpty, NoResultsEmpty } from "@/components/mypageseo/empty-states";
+import { NoKeywordsEmpty, NoRankingDataEmpty, NoResultsEmpty } from "@/components/layout/shared/feedback/empty-states";
 
 export type KeywordFilterValues = {
   query: string;

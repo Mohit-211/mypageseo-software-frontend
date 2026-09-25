@@ -1,5 +1,5 @@
-import { AppShell } from "@/components/mypageseo/app-shell";
-import { PageHeader } from "@/components/mypageseo/data-display";
+import { AppShell } from "@/components/layout/shared/app-shell";
+import { PageHeader } from "@/components/layout/shared/data-display";
 import { MapRankingContent } from "@/components/mypageseo/map-rankings";
 import { getMapRankings } from "@/lib/mypageseo/map-rankings";
 

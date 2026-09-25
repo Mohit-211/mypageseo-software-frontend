@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Link, NavLink } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
-import { GbpAuditCompetitorsContent } from "@/components/mypageseo/gbp-audit-competitors";
-import { PageHeader } from "@/components/mypageseo/data-display";
+import { GbpAuditCompetitorsContent } from "@/components/gbp-audit/gbp-audit-competitors";
+import { PageHeader } from "@/components/layout/shared/data-display";
 import { Button } from "@/components/ui/button";
 import { getGbpAuditCompetitors, type GbpAuditCompetitorOrder, type GbpAuditCompetitorSort } from "@/lib/mypageseo/gbp-audit-competitors";
 import { useRequiredParams } from "@/hooks/use-required-params";

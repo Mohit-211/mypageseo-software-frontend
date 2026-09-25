@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { CheckCircle2, Loader2, Lock, Save } from "lucide-react";
-import { AppShell } from "@/components/mypageseo/app-shell";
-import { PageHeader, Panel, SectionHeader, StatusBadge } from "@/components/mypageseo/data-display";
+import { AppShell } from "@/components/layout/shared/app-shell";
+import { PageHeader, Panel, SectionHeader, StatusBadge } from "@/components/layout/shared/data-display";
 import { SettingsNav } from "@/components/mypageseo/settings-nav";
-import { EmptyState, ErrorState, TableSkeleton } from "@/components/mypageseo/states";
+import { EmptyState, ErrorState, TableSkeleton } from "@/components/layout/shared/feedback/states";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";

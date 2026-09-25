@@ -1,16 +1,16 @@
 import { useState } from "react";
 import { RequireAccess } from "@/components/mypageseo/access";
 import { AlertTriangle, CreditCard, ExternalLink } from "lucide-react";
-import { AppShell } from "@/components/mypageseo/app-shell";
+import { AppShell } from "@/components/layout/shared/app-shell";
 import {
   MetricCard,
   PageHeader,
   Panel,
   SectionHeader,
   StatusBadge,
-} from "@/components/mypageseo/data-display";
+} from "@/components/layout/shared/data-display";
 import { SettingsNav } from "@/components/mypageseo/settings-nav";
-import { EmptyState, ErrorState, MetricSkeletonGrid } from "@/components/mypageseo/states";
+import { EmptyState, ErrorState, MetricSkeletonGrid } from "@/components/layout/shared/feedback/states";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,

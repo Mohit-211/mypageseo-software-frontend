@@ -1,5 +1,5 @@
-import { GbpAuditContent } from "@/components/mypageseo/gbp-audit";
-import { PageHeader } from "@/components/mypageseo/data-display";
+import { GbpAuditContent } from "@/components/gbp-audit/gbp-audit-main";
+import { PageHeader } from "@/components/layout/shared/data-display";
 import { getGbpAudit } from "@/lib/mypageseo/gbp-audit";
 import { useRequiredParams } from "@/hooks/use-required-params";
 

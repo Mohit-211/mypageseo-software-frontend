@@ -10,13 +10,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { AlertCircle, ArrowLeft, ArrowRight, Check, Loader2 } from "lucide-react";
-import { AuthField, AuthHeading, AuthInput } from "@/components/mypageseo/auth";
+import { AuthField, AuthHeading, AuthInput } from "@/components/auth/auth";
 import {
   BusinessProfileSelector,
   GoogleBusinessConnection,
   LocationConfirmation,
   type GoogleConnectionState,
-} from "@/components/mypageseo/location-setup";
+} from "@/components/location_component/location-setup";
 import { ChipStep, OnboardingFrame, StepProgress, SummaryRow } from "@/components/mypageseo/onboarding";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -28,7 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { countries } from "@/lib/mypageseo/countries";
+import { countries } from "@/lib/mock-data/countries";
 import { SUPPORTED_TIMEZONES } from "@/lib/mypageseo/organization-settings";
 import {
   MAX_ONBOARDING_COMPETITORS,
@@ -52,7 +52,7 @@ import {
   startOnboardingSession,
   updateOnboardingSession,
   useOnboardingSession,
-} from "@/lib/mypageseo/onboarding-state";
+} from "@/lib/auth-lib/onboarding-state";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
 
 type AccountType = "business" | "agency";

@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { z } from "zod";
-import { PageHeader } from "@/components/mypageseo/data-display";
-import { RankingsNavigation } from "@/components/mypageseo/location-workspace";
+import { PageHeader } from "@/components/layout/shared/data-display";
+import { RankingsNavigation } from "@/components/location_component/location-workspace";
 import { MapRankingContent, MapRankingFilterBar, type MapRankingFilters } from "@/components/mypageseo/map-rankings";
 import { getMapRankings } from "@/lib/mypageseo/map-rankings";
 import { useTypedSearch } from "@/hooks/use-typed-search";

@@ -1,8 +1,8 @@
 import { Link } from "react-router-dom";
-import { AppShell } from "@/components/mypageseo/app-shell";
-import { PageHeader } from "@/components/mypageseo/data-display";
+import { AppShell } from "@/components/layout/shared/app-shell";
+import { PageHeader } from "@/components/layout/shared/data-display";
 import { ReportSchedulesContent } from "@/components/mypageseo/report-schedules";
-import { ErrorState } from "@/components/mypageseo/states";
+import { ErrorState } from "@/components/layout/shared/feedback/states";
 import { Button } from "@/components/ui/button";
 import { getReportSchedules } from "@/lib/mypageseo/reports";
 import { useWorkspace } from "@/lib/mypageseo/workspace";

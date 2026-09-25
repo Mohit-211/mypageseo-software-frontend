@@ -17,7 +17,7 @@ import type {
   RankingKeywordRow,
   RankingMovement,
   RankingOverviewData,
-} from "../ranking-overview";
+} from "../../raking-lib/ranking-overview";
 import type { KeywordRankingRow, KeywordRankingsData } from "../keyword-rankings";
 import type { KeywordGroupRow, KeywordGroupsData } from "../keyword-groups";
 import type {

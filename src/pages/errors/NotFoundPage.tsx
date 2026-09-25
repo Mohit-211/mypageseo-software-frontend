@@ -1,6 +1,6 @@
 
-import { AppShell } from "@/components/mypageseo/app-shell";
-import { NotFoundScreen } from "@/components/mypageseo/not-found";
+import { AppShell } from "@/components/layout/shared/app-shell";
+import { NotFoundScreen } from "@/components/layout/shared/feedback/not-found";
 
 
 

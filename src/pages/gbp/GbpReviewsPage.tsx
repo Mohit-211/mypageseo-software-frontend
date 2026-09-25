@@ -1,7 +1,7 @@
-import { AppShell } from "@/components/mypageseo/app-shell";
-import { PageHeader } from "@/components/mypageseo/data-display";
-import { GbpReviewsContent } from "@/components/mypageseo/gbp-reviews";
-import { EmptyState } from "@/components/mypageseo/states";
+import { AppShell } from "@/components/layout/shared/app-shell";
+import { PageHeader } from "@/components/layout/shared/data-display";
+import { GbpReviewsContent } from "@/components/gbp-audit/gbp-reviews";
+import { EmptyState } from "@/components/layout/shared/feedback/states";
 import { getGbpReviews } from "@/lib/mypageseo/gbp-reviews";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
 
