@@ -37,8 +37,14 @@ import GbpIndexPage from "@/pages/gbp/GbpIndexPage";
 import GbpAuditPage from "@/pages/gbp/GbpAuditPage";
 import GbpReviewsPage from "@/pages/gbp/GbpReviewsPage";
 import GbpPostsPage from "@/pages/gbp/GbpPostsPage";
+import GbpAiPostsPage from "@/pages/gbp/GbpAiPostsPage";
+import GbpAiPostCreatePage from "@/pages/gbp/GbpAiPostCreatePage";
+import GbpAiPostDetailPage from "@/pages/gbp/GbpAiPostDetailPage";
+import GbpReviewManagementPage from "@/pages/gbp/GbpReviewManagementPage";
+import GbpReviewAutomationPage from "@/pages/gbp/GbpReviewAutomationPage";
 import CitationsPage from "@/pages/citations/CitationsPage";
 import CompetitorsPage from "@/pages/competitors/CompetitorsPage";
+import AiVisibilityPage from "@/pages/ai-visibility/AiVisibilityPage";
 import ReportsIndexPage from "@/pages/reports/ReportsIndexPage";
 import ReportsCreatePage from "@/pages/reports/ReportsCreatePage";
 import ReportsScheduledPage from "@/pages/reports/ReportsScheduledPage";
@@ -139,8 +145,14 @@ export const router = createBrowserRouter([
           { path: "gbp/audit", Component: GbpAuditPage },
           { path: "gbp/reviews", Component: GbpReviewsPage },
           { path: "gbp/posts", Component: GbpPostsPage },
+          { path: "gbp/ai-posts", Component: GbpAiPostsPage },
+          { path: "gbp/ai-posts/create", Component: GbpAiPostCreatePage },
+          { path: "gbp/ai-posts/:postId", Component: GbpAiPostDetailPage },
+          { path: "gbp/review-management", Component: GbpReviewManagementPage },
+          { path: "gbp/review-management/automation", Component: GbpReviewAutomationPage },
           { path: "citations", Component: CitationsPage },
           { path: "competitors", Component: CompetitorsPage },
+          { path: "ai-visibility", Component: AiVisibilityPage },
           { path: "reports", Component: ReportsIndexPage },
           { path: "reports/create", Component: ReportsCreatePage },
           { path: "reports/scheduled", Component: ReportsScheduledPage },

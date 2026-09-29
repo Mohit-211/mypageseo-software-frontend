@@ -8,6 +8,7 @@ import {
   FileBarChart,
   Workflow,
   Settings,
+  Sparkles,
   type LucideIcon,
 } from "lucide-react";
 
@@ -46,11 +47,14 @@ export const primaryNavigation: NavItem[] = [
       { label: "Overview", to: "/gbp" },
       { label: "Audit", to: "/gbp/audit" },
       { label: "Reviews", to: "/gbp/reviews" },
+      { label: "Review Management", to: "/gbp/review-management" },
       { label: "Posts", to: "/gbp/posts" },
+      { label: "AI Posts", to: "/gbp/ai-posts" },
     ],
   },
   { label: "Citations", to: "/citations", icon: ListChecks },
   { label: "Competitors", to: "/competitors", icon: Users },
+  { label: "AI Visibility", to: "/ai-visibility", icon: Sparkles },
   { label: "Reports", to: "/reports", icon: FileBarChart },
   { label: "Clients", to: "/clients", icon: Users, accountTypes: ["agency"] },
   { label: "Automations", to: "/automations", icon: Workflow },
