@@ -1,9 +1,9 @@
 import { useNavigate } from "react-router-dom";
 import { z } from "zod";
 import { PageHeader } from "@/components/layout/shared/data-display";
-import { RankingsNavigation } from "@/components/location_component/location-workspace";
-import { MapRankingContent, MapRankingFilterBar, type MapRankingFilters } from "@/components/mypageseo/map-rankings";
-import { getMapRankings } from "@/lib/mypageseo/map-rankings";
+import { RankingsNavigation } from "@/components/location/location-workspace";
+import { MapRankingContent, MapRankingFilterBar, type MapRankingFilters } from "@/components/ranking/map-rankings";
+import { getMapRankings } from "@/lib/raking/map-rankings";
 import { useTypedSearch } from "@/hooks/use-typed-search";
 import { useRequiredParams } from "@/hooks/use-required-params";
 

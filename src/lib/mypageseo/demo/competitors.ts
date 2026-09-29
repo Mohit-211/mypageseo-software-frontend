@@ -24,7 +24,7 @@ import type {
   CompetitorsCapabilities,
   CompetitorsData,
   MetricComparison,
-} from "../competitors";
+} from "../../competitors/competitors";
 
 const CAPABILITIES: CompetitorsCapabilities = {
   canSearch: true,

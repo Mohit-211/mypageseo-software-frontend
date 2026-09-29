@@ -15,14 +15,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  CITATION_CAMPAIGN_LABEL,
-  CITATION_STATE_LABEL,
-  type CitationDetailData,
-  type CitationNap,
-  type CitationState,
-} from "@/lib/mypageseo/citations";
 import { cn } from "@/lib/utils";
+import { CITATION_CAMPAIGN_LABEL, CITATION_STATE_LABEL, CitationDetailData, CitationNap, CitationState } from "@/lib/citations/citations";
 
 const stateTone: Record<CitationState, StatusTone> = {
   correct: "success",

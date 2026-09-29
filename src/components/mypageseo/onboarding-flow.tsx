@@ -16,7 +16,7 @@ import {
   GoogleBusinessConnection,
   LocationConfirmation,
   type GoogleConnectionState,
-} from "@/components/location_component/location-setup";
+} from "@/components/location/location-setup";
 import { ChipStep, OnboardingFrame, StepProgress, SummaryRow } from "@/components/mypageseo/onboarding";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -52,7 +52,7 @@ import {
   startOnboardingSession,
   updateOnboardingSession,
   useOnboardingSession,
-} from "@/lib/auth-lib/onboarding-state";
+} from "@/lib/auth/onboarding-state";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
 
 type AccountType = "business" | "agency";

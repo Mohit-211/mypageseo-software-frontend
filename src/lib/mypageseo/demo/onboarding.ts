@@ -9,7 +9,7 @@
 
 import { DEMO_CLIENTS, DEMO_LOCATIONS, demoLocationsForClient } from "./entities";
 import type { OnboardingClientOption, OnboardingResult } from "../onboarding";
-import type { GoogleBusinessProfile } from "@/components/location_component/location-setup";
+import type { GoogleBusinessProfile } from "@/components/location/location-setup";
 
 function profilesFor(accountType: "business" | "agency"): GoogleBusinessProfile[] {
   const source = accountType === "business" ? demoLocationsForClient("cl_riverside") : DEMO_LOCATIONS;

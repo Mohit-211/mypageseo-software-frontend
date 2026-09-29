@@ -3,11 +3,11 @@ import { useEffect } from "react";
 import { ArrowLeft } from "lucide-react";
 import { AppShell } from "@/components/layout/shared/app-shell";
 import { PageHeader } from "@/components/layout/shared/data-display";
-import { LocationHeader, LocationNavigation } from "@/components/location_component/location-workspace";
+import { LocationHeader, LocationNavigation } from "@/components/location/location-workspace";
 import { CompetitorDetailContent } from "@/components/competitor/competitor-detail";
 import { EmptyState, ErrorState } from "@/components/layout/shared/feedback/states";
 import { Button } from "@/components/ui/button";
-import { getCompetitorDetail } from "@/lib/mypageseo/competitors";
+import { getCompetitorDetail } from "@/lib/competitors/competitors";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
 import { useRequiredParams } from "@/hooks/use-required-params";
 

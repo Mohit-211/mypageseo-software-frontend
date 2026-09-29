@@ -2,7 +2,7 @@ import { Link, Outlet } from "react-router-dom";
 import { useEffect } from "react";
 import { ArrowLeft } from "lucide-react";
 import { AppShell } from "@/components/layout/shared/app-shell";
-import { LocationHeader, LocationNavigation } from "@/components/location_component/location-workspace";
+import { LocationHeader, LocationNavigation } from "@/components/location/location-workspace";
 import { PageHeader } from "@/components/layout/shared/data-display";
 import { EmptyState, ErrorState } from "@/components/layout/shared/feedback/states";
 import { Button } from "@/components/ui/button";

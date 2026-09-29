@@ -1,7 +1,7 @@
 /** Demo Google Business Profile posts, derived from `demoLocation()` facts. */
 import { demoDate, demoDateAhead, pickInt, pickOne, seedFrom } from "./demo-mode";
 import { demoLocation, type DemoLocationFacts } from "./entities";
-import type { GbpPost, GbpPostType, GbpPostsData, PostLifecycle } from "../gbp-posts";
+import type { GbpPost, GbpPostType, GbpPostsData, PostLifecycle } from "../../gbp/gbp-posts";
 
 type PostSeed = { title: string; summary: string; type: GbpPostType; ctaLabel: string; ctaUrl: string };
 

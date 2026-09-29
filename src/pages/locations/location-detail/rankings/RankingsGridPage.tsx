@@ -1,9 +1,9 @@
 import { useNavigate } from "react-router-dom";
 import { z } from "zod";
 import { PageHeader } from "@/components/layout/shared/data-display";
-import { LocalGridFilterBar, LocalSearchGridContent, type LocalGridFilters } from "@/components/mypageseo/local-search-grid";
-import { RankingsNavigation } from "@/components/location_component/location-workspace";
-import { getLocalSearchGrid } from "@/lib/mypageseo/local-search-grid";
+import { LocalGridFilterBar, LocalSearchGridContent, type LocalGridFilters } from "@/components/ranking/local-search-grid";
+import { RankingsNavigation } from "@/components/location/location-workspace";
+import { getLocalSearchGrid } from "@/lib/raking/local-search-grid";
 import { useTypedSearch } from "@/hooks/use-typed-search";
 import { useRequiredParams } from "@/hooks/use-required-params";
 

@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/layout/shared/data-display";
 import { ReportBody, ReportIdentity } from "@/components/mypageseo/report-detail";
 import { EmptyState, ErrorState } from "@/components/layout/shared/feedback/states";
 import { Button } from "@/components/ui/button";
-import { REPORT_TYPE_LABEL, getReportDetail } from "@/lib/mypageseo/reports";
+import { REPORT_TYPE_LABEL, getReportDetail } from "@/lib/reports/reports";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
 import { useRequiredParams } from "@/hooks/use-required-params";
 

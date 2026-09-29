@@ -11,7 +11,7 @@ import {
   type AccessProfile,
   type Permission,
 } from "@/lib/mypageseo/access";
-import { useAccountType } from "@/lib/mypageseo/workspace";
+import { useAccountType, useWorkspace } from "@/lib/mypageseo/workspace";
 
 /** Access for the signed-in user, for gating routes, menu items and actions. */
 export function useAccess(): AccessProfile & { can: (permission: Permission) => boolean } {
@@ -80,6 +80,15 @@ export function RequireAccess({
   children: ReactNode;
 }) {
   const access = useAccess();
+  const { status } = useWorkspace();
+  // Wait for the real account type before deciding, so access is never denied on a guess.
+  if (status === "loading") {
+    return (
+      <AppShell>
+        <div role="status" aria-live="polite" aria-label="Loading" className="h-64 animate-pulse rounded-lg bg-muted" />
+      </AppShell>
+    );
+  }
   if (access.can(permission)) return <>{children}</>;
   return <AccessDeniedScreen description={accessDeniedReason(permission, access.accountType)} />;
 }

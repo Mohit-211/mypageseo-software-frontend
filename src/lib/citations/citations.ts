@@ -1,5 +1,5 @@
-import { withDemoFallback } from "./demo/demo-mode";
-import { demoCitationDetail, demoCitationsData } from "./demo/citations";
+import { withDemoFallback } from "../mypageseo/demo/demo-mode";
+import { demoCitationDetail, demoCitationsData } from "../mypageseo/demo/citations";
 
 export type CitationsStatus = "loading" | "ready" | "not_scanned" | "error";
 

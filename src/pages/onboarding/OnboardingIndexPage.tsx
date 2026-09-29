@@ -5,7 +5,7 @@ import { AuthLayout, AuthWordmark } from "@/components/auth/auth";
 import {
   getOnboardingSession,
   startOnboardingSession,
-} from "@/lib/auth-lib/onboarding-state";
+} from "@/lib/auth/onboarding-state";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
 
 const DESCRIPTION =

@@ -10,7 +10,7 @@ import {
   StatusBadge,
 } from "@/components/layout/shared/data-display";
 import { EmptyState, ErrorState, TableSkeleton } from "@/components/layout/shared/feedback/states";
-import { LocationsTable, type LocationSort, type SortOrder } from "@/components/location_component/locations-table";
+import { LocationsTable, type LocationSort, type SortOrder } from "@/components/location/locations-table";
 import { Button } from "@/components/ui/button";
 import {
   CLIENT_STATUS_LABEL,
@@ -19,7 +19,7 @@ import {
   type ClientAccountStatus,
 } from "@/lib/mypageseo/clients-data";
 import { buildManagedLocations } from "@/lib/mock-data/locations-data";
-import { getReports } from "@/lib/mypageseo/reports";
+import { getReports } from "@/lib/reports/reports";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
 import { useRequiredParams } from "@/hooks/use-required-params";
 

@@ -14,7 +14,7 @@ import {
   type Citation,
   type CitationState,
   type CitationsData,
-} from "@/lib/mypageseo/citations";
+} from "@/lib/citations/citations";
 import { cn } from "@/lib/utils";
 import { RotateCcw } from "lucide-react";
 import {

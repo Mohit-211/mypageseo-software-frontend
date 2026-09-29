@@ -27,7 +27,7 @@ import {
   type GbpPostType,
   type GbpPostsData,
   type PostLifecycle,
-} from "@/lib/mypageseo/gbp-posts";
+} from "@/lib/gbp/gbp-posts";
 import { cn } from "@/lib/utils";
 import { TablePagination } from "@/components/layout/shared/data-table";
 

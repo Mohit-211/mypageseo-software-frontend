@@ -14,7 +14,9 @@ export const ENDPOINTS = {
     sendOtp: "user/auth/otp",
     verifyOtp: "user/auth/verify-otp",
     forgotPassword: "user/auth/forgot-password",
-   
+  },
+  profile: {
+    get: "user/profile",
   },
   location: {
     countries: "countries",

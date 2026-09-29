@@ -1,6 +1,6 @@
-import type { RankingMovement, RankingResultType } from "../raking-lib/ranking-overview";
-import { withDemoFallback } from "./demo/demo-mode";
-import { demoKeywordRankings } from "./demo/rankings";
+import type { RankingMovement, RankingResultType } from "./ranking-overview";
+import { withDemoFallback } from "../mypageseo/demo/demo-mode";
+import { demoKeywordRankings } from "../mypageseo/demo/rankings";
 
 export type KeywordRankingStatus = "loading" | "ready" | "no_keywords" | "no_data" | "error";
 export type KeywordSort = "keyword" | "current" | "previous" | "movement";

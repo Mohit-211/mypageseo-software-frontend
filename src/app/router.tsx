@@ -2,7 +2,7 @@
 // Nesting mirrors TanStack's flat-file rules. Safe to hand-edit from here on.
 import { createBrowserRouter } from "react-router-dom";
 import { AppRoot, RootErrorBoundary, RootNotFound } from "./App";
-import { GuestOnly, RequireAuth } from "@/lib/auth-lib/auth-guards";
+import { GuestOnly, RequireAuth } from "@/lib/auth/auth-guards";
 import HomePage from "@/pages/home/HomePage";
 import DashboardPage from "@/pages/dashboard/DashboardPage";
 import LocationsLayout from "@/pages/locations/LocationsLayout";
@@ -129,6 +129,8 @@ export const router = createBrowserRouter([
             ],
           },
           { path: "rankings", Component: RankingsIndexPage },
+          { path: "white-label", Component: SettingsWhiteLabelPage },
+
           { path: "rankings/keywords", Component: RankingsKeywordsPage },
           { path: "rankings/keyword-groups", Component: RankingsKeywordGroupsPage },
           { path: "rankings/map-rankings", Component: RankingsMapRankingsPage },

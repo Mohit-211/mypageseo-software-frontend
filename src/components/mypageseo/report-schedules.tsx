@@ -25,7 +25,7 @@ import {
   type ReportType,
   type ScheduleStatus,
   type SchedulesData,
-} from "@/lib/mypageseo/reports";
+} from "@/lib/reports/reports";
 
 const statusTone: Record<ScheduleStatus, StatusTone> = {
   active: "success",

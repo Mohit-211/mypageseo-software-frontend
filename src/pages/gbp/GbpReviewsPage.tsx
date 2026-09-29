@@ -2,7 +2,7 @@ import { AppShell } from "@/components/layout/shared/app-shell";
 import { PageHeader } from "@/components/layout/shared/data-display";
 import { GbpReviewsContent } from "@/components/gbp-audit/gbp-reviews";
 import { EmptyState } from "@/components/layout/shared/feedback/states";
-import { getGbpReviews } from "@/lib/mypageseo/gbp-reviews";
+import { getGbpReviews } from "@/lib/gbp/gbp-reviews";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
 
 

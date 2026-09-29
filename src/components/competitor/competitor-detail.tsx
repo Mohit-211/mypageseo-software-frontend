@@ -18,7 +18,7 @@ import {
   COMPETITOR_SOURCE_LABEL,
   type CompetitorDetailData,
   type MetricComparison,
-} from "@/lib/mypageseo/competitors";
+} from "@/lib/competitors/competitors";
 import { cn } from "@/lib/utils";
 
 export function CompetitorDetailLoading() {

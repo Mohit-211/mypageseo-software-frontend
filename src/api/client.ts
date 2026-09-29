@@ -145,12 +145,16 @@ async function send<T>(path: string, options: RequestOptions): Promise<T> {
   signal?.addEventListener("abort", forwardAbort, { once: true });
 
   const isFormData = body instanceof FormData;
-  const finalHeaders: Record<string, string> = { Accept: "application/json", ...headers };
-  if (body !== undefined && !isFormData) finalHeaders["Content-Type"] = "application/json";
+  const finalHeaders: Record<string, string> = {
+    Accept: "application/json",
+    // FormData needs the browser to set its own multipart boundary, so no Content-Type for it.
+    ...(body !== undefined && !isFormData ? { "Content-Type": "application/json" } : {}),
+    ...headers,
+  };
 
   if (auth) {
     const token = getValidAccessToken();
-    if (token) finalHeaders.Authorization = `${token}`;
+    if (token) finalHeaders.Authorization = `Bearer ${token}`;
   }
 
   let response: Response;

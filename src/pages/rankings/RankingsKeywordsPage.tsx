@@ -1,7 +1,7 @@
 import { AppShell } from "@/components/layout/shared/app-shell";
 import { PageHeader } from "@/components/layout/shared/data-display";
-import { KeywordRankingsTable } from "@/components/mypageseo/keyword-rankings";
-import { getKeywordRankings } from "@/lib/mypageseo/keyword-rankings";
+import { KeywordRankingsTable } from "@/components/ranking/keyword-rankings";
+import { getKeywordRankings } from "@/lib/raking/keyword-rankings";
 
 
 

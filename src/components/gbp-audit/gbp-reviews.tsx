@@ -25,7 +25,7 @@ import {
   REVIEWS_PAGE_SIZE,
   type GbpReview,
   type GbpReviewsData,
-} from "@/lib/mypageseo/gbp-reviews";
+} from "@/lib/gbp/gbp-reviews";
 import { cn } from "@/lib/utils";
 import { TablePagination } from "@/components/layout/shared/data-table";
 

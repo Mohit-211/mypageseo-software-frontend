@@ -15,7 +15,7 @@ import type {
   CitationState,
   CitationsCapabilities,
   CitationsData,
-} from "@/lib/mypageseo/citations";
+} from "@/lib/citations/citations";
 
 const DIRECTORY_TYPE: Record<string, string> = {
   "Google Business Profile": "Search engine",

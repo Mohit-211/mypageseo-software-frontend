@@ -1,11 +1,11 @@
 import { useTypedSearch } from "@/hooks/use-typed-search";
 import { useNavigate } from "react-router-dom";
 import { z } from "zod";
-import { RankingsNavigation } from "@/components/location_component/location-workspace";
-import { RankingDistribution, RankingHistory, RankingMetricSummary, RankingFilterBar, RankingOverviewLoading, RankingTable } from "@/components/raking/ranking-overview";
+import { RankingsNavigation } from "@/components/location/location-workspace";
+import { RankingDistribution, RankingHistory, RankingMetricSummary, RankingFilterBar, RankingOverviewLoading, RankingTable } from "@/components/ranking/ranking-overview";
 import { PageHeader } from "@/components/layout/shared/data-display";
 import { EmptyState, ErrorState } from "@/components/layout/shared/feedback/states";
-import { getRankingOverview } from "@/lib/raking-lib/ranking-overview";
+import { getRankingOverview } from "@/lib/raking/ranking-overview";
 import { NoKeywordsEmpty, NoRankingDataEmpty } from "@/components/layout/shared/feedback/empty-states";
 import { useRequiredParams } from "@/hooks/use-required-params";
 

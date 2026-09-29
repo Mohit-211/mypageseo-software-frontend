@@ -9,7 +9,7 @@ import {
   LocationConfirmation,
   type GoogleBusinessProfile,
   type GoogleConnectionState,
-} from "@/components/location_component/location-setup";
+} from "@/components/location/location-setup";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";

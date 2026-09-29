@@ -1,5 +1,5 @@
-import { withDemoFallback } from "./demo/demo-mode";
-import { demoMapRankings } from "./demo/rankings";
+import { withDemoFallback } from "../mypageseo/demo/demo-mode";
+import { demoMapRankings } from "../mypageseo/demo/rankings";
 
 export type MapRankingStatus =
   | "loading"

@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChartContainer, MetricCard, Panel, StatusBadge, TrendIndicator } from "@/components/layout/shared/data-display";
 import { EmptyState, ErrorState, MetricSkeletonGrid, TableSkeleton } from "@/components/layout/shared/feedback/states";
-import type { RankingMetric, RankingOverviewData, RankingKeywordRow } from "@/lib/raking-lib/ranking-overview";
+import type { RankingMetric, RankingOverviewData, RankingKeywordRow } from "@/lib/raking/ranking-overview";
 
 export function RankingFilterBar({ disabled = false }: { disabled?: boolean }) {
   return (

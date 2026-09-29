@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { StatusBadge, TrendIndicator } from "@/components/layout/shared/data-display";
 import { EmptyState, ErrorState, TableSkeleton } from "@/components/layout/shared/feedback/states";
-import type { KeywordGroupRow, KeywordGroupsData } from "@/lib/mypageseo/keyword-groups";
+import type { KeywordGroupRow, KeywordGroupsData } from "@/lib/raking/keyword-groups";
 
 export function KeywordGroupSearch({ value, disabled, onChange, onReset }: { value: string; disabled: boolean; onChange: (value: string) => void; onReset: () => void }) {
   return (

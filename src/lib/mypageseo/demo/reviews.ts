@@ -1,7 +1,7 @@
 /** Demo Google Business Profile reviews, derived from `demoLocation()` facts. */
 import { demoDate, pickInt, pickOne, seedFrom } from "./demo-mode";
 import { demoLocation, type DemoLocationFacts } from "./entities";
-import type { GbpReview, GbpReviewsData } from "../gbp-reviews";
+import type { GbpReview, GbpReviewsData } from "../../gbp/gbp-reviews";
 
 const REVIEWER_FIRST = ["Sarah", "Michael", "Jessica", "David", "Amanda", "Chris", "Emily", "Brian", "Nicole", "Kevin", "Rachel", "Jason", "Laura", "Andrew", "Megan", "Tyler", "Danielle", "Ryan", "Ashley", "Marcus", "Grace", "Jordan", "Olivia", "Sean", "Priya", "Carlos", "Hannah", "Derek", "Monica", "Alex"];
 const REVIEWER_LAST = ["T.", "R.", "M.", "K.", "S.", "B.", "L.", "H.", "W.", "P.", "G.", "D.", "C.", "N.", "F."];

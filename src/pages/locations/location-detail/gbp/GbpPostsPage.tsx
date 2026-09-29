@@ -1,7 +1,7 @@
 import { PageHeader } from "@/components/layout/shared/data-display";
-import { GbpNavigation } from "@/components/location_component/location-workspace";
+import { GbpNavigation } from "@/components/location/location-workspace";
 import { GbpPostsContent } from "@/components/gbp-audit/gbp-posts";
-import { getGbpPosts } from "@/lib/mypageseo/gbp-posts";
+import { getGbpPosts } from "@/lib/gbp/gbp-posts";
 import { useRequiredParams } from "@/hooks/use-required-params";
 
 const description = "Create, schedule, publish, and manage Google Business Profile posts for this location.";

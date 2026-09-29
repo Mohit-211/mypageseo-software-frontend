@@ -5,8 +5,8 @@
  */
 import { demoDate, pickInt, seedFrom } from "./demo-mode";
 import { demoCompetitors, demoKeywords, demoLocation, type DemoLocationFacts } from "./entities";
-import type { GbpAction, GbpHealthFactor, GbpItemStatus, GbpOverviewData, GbpProfileField } from "../gbp-overview";
-import type { AuditCategory, AuditFinding, AuditFindingStatus, GbpAuditData } from "../gbp-audit";
+import type { GbpAction, GbpHealthFactor, GbpItemStatus, GbpOverviewData, GbpProfileField } from "../../gbp/gbp-overview";
+import type { AuditCategory, AuditFinding, AuditFindingStatus, GbpAuditData } from "../../gbp/gbp-audit";
 import type {
   GbpAuditCompetitiveFinding,
   GbpAuditCompetitorEntity,

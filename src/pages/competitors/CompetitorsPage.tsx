@@ -2,7 +2,7 @@ import { AppShell } from "@/components/layout/shared/app-shell";
 import { PageHeader } from "@/components/layout/shared/data-display";
 import { CompetitorsContent } from "@/components/competitor/competitors";
 import { EmptyState } from "@/components/layout/shared/feedback/states";
-import { getCompetitors } from "@/lib/mypageseo/competitors";
+import { getCompetitors } from "@/lib/competitors/competitors";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
 
 

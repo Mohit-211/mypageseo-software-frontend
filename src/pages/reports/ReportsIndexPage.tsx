@@ -1,10 +1,10 @@
 import { Link } from "react-router-dom";
 import { AppShell } from "@/components/layout/shared/app-shell";
 import { PageHeader } from "@/components/layout/shared/data-display";
-import { ReportsContent } from "@/components/location_component/location_reports/reports";
+import { ReportsContent } from "@/components/location/reports";
 import { ErrorState } from "@/components/layout/shared/feedback/states";
 import { Button } from "@/components/ui/button";
-import { getReports } from "@/lib/mypageseo/reports";
+import { getReports } from "@/lib/reports/reports";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
 
 const description =

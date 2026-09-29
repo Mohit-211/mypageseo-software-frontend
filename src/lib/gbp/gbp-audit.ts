@@ -1,5 +1,5 @@
-import { withDemoFallback } from "./demo/demo-mode";
-import { demoGbpAudit } from "./demo/gbp";
+import { withDemoFallback } from "../mypageseo/demo/demo-mode";
+import { demoGbpAudit } from "../mypageseo/demo/gbp";
 
 export type GbpAuditStatus = "loading" | "ready" | "partial" | "disconnected" | "not_generated" | "error";
 export type AuditFindingStatus = "healthy" | "attention" | "warning" | "incomplete" | "unavailable";

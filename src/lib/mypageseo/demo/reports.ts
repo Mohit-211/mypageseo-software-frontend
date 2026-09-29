@@ -23,7 +23,7 @@ import type {
   ReportState,
   ReportTableSection,
   ReportType,
-} from "../reports";
+} from "../../reports/reports";
 
 function clientName(clientId: string): string {
   return DEMO_CLIENTS.find((c) => c.id === clientId)?.name ?? clientId;

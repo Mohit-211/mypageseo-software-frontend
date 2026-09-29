@@ -2,7 +2,7 @@ import { AlertCircle, CheckCircle2, Image, MapPin, MessageSquareText } from "luc
 import { MetricCard, Panel, ScoreIndicator, StatusBadge } from "@/components/layout/shared/data-display";
 import { EmptyState, ErrorState, MetricSkeletonGrid, TableSkeleton } from "@/components/layout/shared/feedback/states";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { GbpHealthFactor, GbpOverviewData } from "@/lib/mypageseo/gbp-overview";
+import type { GbpHealthFactor, GbpOverviewData } from "@/lib/gbp/gbp-overview";
 import { GbpNotConnectedState } from "@/components/layout/shared/feedback/empty-states";
 
 function FactorStatus({ item }: { item: GbpHealthFactor }) {

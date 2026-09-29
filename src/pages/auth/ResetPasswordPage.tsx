@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import {
   authRecoveryCapabilities,
   passwordSchema,
-} from "@/lib/auth-lib/auth-recovery";
+} from "@/lib/auth/auth-recovery";
 import { useTypedSearch } from "@/hooks/use-typed-search";
 import { forgotPassword, isApiError, resetPassword } from "@/api";
 

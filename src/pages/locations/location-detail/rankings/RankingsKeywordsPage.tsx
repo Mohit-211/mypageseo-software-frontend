@@ -1,9 +1,9 @@
 import { useNavigate } from "react-router-dom";
 import { z } from "zod";
-import { KeywordFilterBar, KeywordRankingsTable, type KeywordFilterValues } from "@/components/mypageseo/keyword-rankings";
-import { RankingsNavigation } from "@/components/location_component/location-workspace";
+import { KeywordFilterBar, KeywordRankingsTable, type KeywordFilterValues } from "@/components/ranking/keyword-rankings";
+import { RankingsNavigation } from "@/components/location/location-workspace";
 import { PageHeader } from "@/components/layout/shared/data-display";
-import { getKeywordRankings, type KeywordSort, type SortOrder } from "@/lib/mypageseo/keyword-rankings";
+import { getKeywordRankings, type KeywordSort, type SortOrder } from "@/lib/raking/keyword-rankings";
 import { useTypedSearch } from "@/hooks/use-typed-search";
 import { useRequiredParams } from "@/hooks/use-required-params";
 

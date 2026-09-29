@@ -11,7 +11,7 @@ import {
   COMPETITOR_SOURCE_LABEL,
   type CompetitorRow,
   type CompetitorsData,
-} from "@/lib/mypageseo/competitors";
+} from "@/lib/competitors/competitors";
 import { cn } from "@/lib/utils";
 import { RotateCcw } from "lucide-react";
 import {

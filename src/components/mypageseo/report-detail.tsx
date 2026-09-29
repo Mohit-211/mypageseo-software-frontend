@@ -16,7 +16,7 @@ import {
   type ReportState,
   type ReportTableSection,
   type ReportType,
-} from "@/lib/mypageseo/reports";
+} from "@/lib/reports/reports";
 
 const stateTone: Record<ReportState, StatusTone> = {
   generated: "success",

@@ -1,5 +1,5 @@
-import { withDemoFallback } from "./demo/demo-mode";
-import { demoGbpPosts } from "./demo/posts";
+import { withDemoFallback } from "../mypageseo/demo/demo-mode";
+import { demoGbpPosts } from "../mypageseo/demo/posts";
 
 export type GbpPostsStatus = "loading" | "ready" | "no_posts" | "disconnected" | "error";
 

@@ -55,6 +55,8 @@ const AGENCY_ADMIN: Permission[] = [
  * agency-only permissions still exist only on agency accounts.
  */
 export function resolveAccessProfile(accountType: AccountType): AccessProfile {
+  console.log(accountType, "accountType")
+
   return {
     accountType,
     permissions: accountType === "agency" ? AGENCY_ADMIN : BUSINESS_ADMIN,
@@ -62,6 +64,9 @@ export function resolveAccessProfile(accountType: AccountType): AccessProfile {
 }
 
 export function hasPermission(profile: AccessProfile, permission: Permission): boolean {
+  console.log(profile, "profile")
+  console.log(permission, "permission")
+
   return profile.permissions.includes(permission);
 }
 

@@ -1,6 +1,6 @@
 import { GbpAuditContent } from "@/components/gbp-audit/gbp-audit-main";
 import { PageHeader } from "@/components/layout/shared/data-display";
-import { getGbpAudit } from "@/lib/mypageseo/gbp-audit";
+import { getGbpAudit } from "@/lib/gbp/gbp-audit";
 import { useRequiredParams } from "@/hooks/use-required-params";
 
 

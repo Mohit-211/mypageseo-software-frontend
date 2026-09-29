@@ -1,5 +1,5 @@
-import { DEMO_DATA_ENABLED, withDemoFallback } from "./demo/demo-mode";
-import { DEMO_CLIENTS, demoLocation } from "./demo/entities";
+import { DEMO_DATA_ENABLED, withDemoFallback } from "../mypageseo/demo/demo-mode";
+import { DEMO_CLIENTS, demoLocation } from "../mypageseo/demo/entities";
 import {
   DEMO_COMPARISON_PERIODS,
   DEMO_REPORT_BRANDING,
@@ -8,7 +8,7 @@ import {
   demoReportRows,
   demoReportSchedules,
   demoReportSeed,
-} from "./demo/reports";
+} from "../mypageseo/demo/reports";
 
 export type ReportsStatus = "loading" | "ready" | "no_reports" | "error";
 

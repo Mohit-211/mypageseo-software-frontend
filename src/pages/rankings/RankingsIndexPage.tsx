@@ -1,7 +1,7 @@
 import { AppShell } from "@/components/layout/shared/app-shell";
 import { PageHeader } from "@/components/layout/shared/data-display";
-import { RankingDistribution, RankingHistory, RankingMetricSummary, RankingTable } from "@/components/raking/ranking-overview";
-import { getRankingOverview } from "@/lib/raking-lib/ranking-overview";
+import { RankingDistribution, RankingHistory, RankingMetricSummary, RankingTable } from "@/components/ranking/ranking-overview";
+import { getRankingOverview } from "@/lib/raking/ranking-overview";
 
 
 

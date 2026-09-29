@@ -43,7 +43,9 @@ const statusTone: Record<ClientAccountStatus, StatusTone> = {
 };
 
 const ClientsIndexPage = () => (
+    // <RequireAccess permission="clients.view">
     <RequireAccess permission="clients.view">
+
       <ClientsPage />
     </RequireAccess>
   );

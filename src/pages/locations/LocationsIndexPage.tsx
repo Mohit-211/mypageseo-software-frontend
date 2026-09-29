@@ -5,7 +5,7 @@ import { MapPinPlus, Search, SlidersHorizontal, X } from "lucide-react";
 import { AppShell } from "@/components/layout/shared/app-shell";
 import { PageHeader } from "@/components/layout/shared/data-display";
 import { EmptyState, ErrorState, TableSkeleton } from "@/components/layout/shared/feedback/states";
-import { LocationsTable, type LocationSort, type SortOrder } from "@/components/location_component/locations-table";
+import { LocationsTable, type LocationSort, type SortOrder } from "@/components/location/locations-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";

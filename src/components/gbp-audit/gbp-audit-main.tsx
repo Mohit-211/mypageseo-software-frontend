@@ -5,7 +5,7 @@ import { EmptyState, ErrorState, MetricSkeletonGrid, TableSkeleton } from "@/com
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { AuditCategory, AuditFinding, AuditFindingStatus, GbpAuditData } from "@/lib/mypageseo/gbp-audit";
+import type { AuditCategory, AuditFinding, AuditFindingStatus, GbpAuditData } from "@/lib/gbp/gbp-audit";
 
 const labels: Record<AuditFindingStatus, string> = { healthy: "Healthy", attention: "Needs attention", warning: "Warning", incomplete: "Incomplete", unavailable: "Unavailable" };
 const tones: Record<AuditFindingStatus, StatusTone> = { healthy: "success", attention: "warning", warning: "warning", incomplete: "critical", unavailable: "neutral" };

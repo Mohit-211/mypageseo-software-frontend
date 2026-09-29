@@ -2,7 +2,7 @@ import { AppShell } from "@/components/layout/shared/app-shell";
 import { PageHeader } from "@/components/layout/shared/data-display";
 import { CitationsContent } from "@/components/citation/citations";
 import { EmptyState } from "@/components/layout/shared/feedback/states";
-import { getCitations } from "@/lib/mypageseo/citations";
+import { getCitations } from "@/lib/citations/citations";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
 
 

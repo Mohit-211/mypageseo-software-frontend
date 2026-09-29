@@ -11,7 +11,7 @@
 
 import { withDemoFallback } from "./demo/demo-mode";
 import { DEMO_WHITE_LABEL_BRANDING } from "./demo/white-label";
-import type { ReportBranding } from "./reports";
+import type { ReportBranding } from "../reports/reports";
 
 export type WhiteLabelCapabilities = {
   /** Persist the configuration through the settings backend. */

@@ -1,5 +1,5 @@
-import { withDemoFallback } from "./demo/demo-mode";
-import { demoCompetitorDetail, demoCompetitorsData } from "./demo/competitors";
+import { withDemoFallback } from "../mypageseo/demo/demo-mode";
+import { demoCompetitorDetail, demoCompetitorsData } from "../mypageseo/demo/competitors";
 
 export type CompetitorsStatus = "loading" | "ready" | "no_competitors" | "error";
 

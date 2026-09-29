@@ -1,5 +1,5 @@
-import { withDemoFallback } from "./demo/demo-mode";
-import { demoKeywordGroups } from "./demo/rankings";
+import { withDemoFallback } from "../mypageseo/demo/demo-mode";
+import { demoKeywordGroups } from "../mypageseo/demo/rankings";
 
 export type KeywordGroupStatus = "loading" | "ready" | "no_groups" | "error";
 export type GroupMovement = "improved" | "declined" | "unchanged" | "unavailable";

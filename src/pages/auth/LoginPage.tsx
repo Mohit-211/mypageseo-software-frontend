@@ -14,7 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { isApiError, login, sendOtp } from "@/api";
-import { getPostLoginPath } from "@/lib/auth-lib/auth-session";
+import { getPostLoginPath } from "@/lib/auth/auth-session";
 
 const description = "Sign in to continue managing your local search performance.";
 

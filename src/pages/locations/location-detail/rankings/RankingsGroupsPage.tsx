@@ -1,9 +1,9 @@
 import { useNavigate } from "react-router-dom";
 import { z } from "zod";
-import { KeywordGroupSearch, KeywordGroupsTable } from "@/components/mypageseo/keyword-groups";
-import { RankingsNavigation } from "@/components/location_component/location-workspace";
+import { KeywordGroupSearch, KeywordGroupsTable } from "@/components/ranking/keyword-groups";
+import { RankingsNavigation } from "@/components/location/location-workspace";
 import { PageHeader } from "@/components/layout/shared/data-display";
-import { getKeywordGroups } from "@/lib/mypageseo/keyword-groups";
+import { getKeywordGroups } from "@/lib/raking/keyword-groups";
 import { useTypedSearch } from "@/hooks/use-typed-search";
 import { useRequiredParams } from "@/hooks/use-required-params";
 

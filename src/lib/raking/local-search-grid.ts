@@ -1,5 +1,5 @@
-import { withDemoFallback } from "./demo/demo-mode";
-import { demoLocalSearchGrid } from "./demo/rankings";
+import { withDemoFallback } from "../mypageseo/demo/demo-mode";
+import { demoLocalSearchGrid } from "../mypageseo/demo/rankings";
 
 export type LocalSearchGridStatus = "loading" | "ready" | "no_keywords" | "grid_data_unavailable" | "no_scans" | "error";
 export type GridSearchType = "google_maps" | "local_finder";

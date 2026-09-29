@@ -17,17 +17,17 @@ import type {
   RankingKeywordRow,
   RankingMovement,
   RankingOverviewData,
-} from "../../raking-lib/ranking-overview";
-import type { KeywordRankingRow, KeywordRankingsData } from "../keyword-rankings";
-import type { KeywordGroupRow, KeywordGroupsData } from "../keyword-groups";
+} from "../../raking/ranking-overview";
+import type { KeywordRankingRow, KeywordRankingsData } from "../../raking/keyword-rankings";
+import type { KeywordGroupRow, KeywordGroupsData } from "../../raking/keyword-groups";
 import type {
   MapRankingData,
   MapRankingKeyword,
   MapRankingPoint,
   MapRankingResult,
   MapSearchContext,
-} from "../map-rankings";
-import type { GridDistributionBucket, GridPoint, LocalSearchGridData } from "../local-search-grid";
+} from "../../raking/map-rankings";
+import type { GridDistributionBucket, GridPoint, LocalSearchGridData } from "../../raking/local-search-grid";
 import type {
   CompetitorPosition,
   CompetitorRankingRow,

@@ -11,7 +11,7 @@ import {
 } from "@/components/auth/auth";
 import { Button } from "@/components/ui/button";
 import { isApiError, sendOtp } from "@/api";
-import { authRecoveryCapabilities, resetEmailSchema } from "@/lib/auth-lib/auth-recovery";
+import { authRecoveryCapabilities, resetEmailSchema } from "@/lib/auth/auth-recovery";
 
 function ForgotPasswordPage() {
   const navigate = useNavigate();

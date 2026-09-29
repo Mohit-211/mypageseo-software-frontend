@@ -2,7 +2,7 @@ import { AppShell } from "@/components/layout/shared/app-shell";
 import { PageHeader } from "@/components/layout/shared/data-display";
 import { GbpAuditContent } from "@/components/gbp-audit/gbp-audit-main";
 import { EmptyState } from "@/components/layout/shared/feedback/states";
-import { getGbpAudit } from "@/lib/mypageseo/gbp-audit";
+import { getGbpAudit } from "@/lib/gbp/gbp-audit";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
 
 

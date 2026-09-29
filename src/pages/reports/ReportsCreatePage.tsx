@@ -12,7 +12,7 @@ import {
   RequiredFieldsNote,
 } from "@/components/layout/shared/form-fields";
 import { Button } from "@/components/ui/button";
-import { getReportCreationOptions, type ReportType } from "@/lib/mypageseo/reports";
+import { getReportCreationOptions, type ReportType } from "@/lib/reports/reports";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
 import { cn } from "@/lib/utils";
 

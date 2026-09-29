@@ -22,7 +22,7 @@ import {
   type ReportState,
   type ReportType,
   type ReportsData,
-} from "@/lib/mypageseo/reports";
+} from "@/lib/reports/reports";
 import { cn } from "@/lib/utils";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import {

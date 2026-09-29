@@ -13,7 +13,7 @@ import {
   authRecoveryCapabilities,
   resolveVerificationState,
   type VerificationState,
-} from "@/lib/auth-lib/auth-recovery";
+} from "@/lib/auth/auth-recovery";
 import { useTypedSearch } from "@/hooks/use-typed-search";
 
 const description = "Confirm your email address to activate your Mypageseo account.";

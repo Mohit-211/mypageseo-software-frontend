@@ -11,7 +11,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-export type AccountType = "business" | "agency";
+export type AccountType = "agency" | "business";
 
 export type NavItem = {
   label: string;
@@ -58,6 +58,7 @@ export const primaryNavigation: NavItem[] = [
 ];
 
 export function navigationFor(accountType: AccountType): NavItem[] {
+  console.log(accountType,"accountType")
   return primaryNavigation.filter(
     (item) => !item.accountTypes || item.accountTypes.includes(accountType),
   );

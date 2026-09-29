@@ -20,7 +20,7 @@ import {
   demoOnboardingProfiles,
 } from "./demo/onboarding";
 import { demoCompetitors, demoKeywords } from "./demo/entities";
-import type { GoogleBusinessProfile } from "@/components/location_component/location-setup";
+import type { GoogleBusinessProfile } from "@/components/location/location-setup";
 
 export type OnboardingStepId =
   | "organization"

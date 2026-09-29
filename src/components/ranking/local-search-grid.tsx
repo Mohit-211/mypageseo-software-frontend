@@ -4,7 +4,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState, ErrorState, MetricSkeletonGrid } from "@/components/layout/shared/feedback/states";
 import { MetricCard, Panel, TrendIndicator } from "@/components/layout/shared/data-display";
-import type { GridMetric, GridPoint, GridSearchType, LocalSearchGridData } from "@/lib/mypageseo/local-search-grid";
+import type { GridMetric, GridPoint, GridSearchType, LocalSearchGridData } from "@/lib/raking/local-search-grid";
 import { cn } from "@/lib/utils";
 
 export type LocalGridFilters = { keyword: string; gridSize: string; radius: string; searchType: string; scanDate: string; compare: string };
