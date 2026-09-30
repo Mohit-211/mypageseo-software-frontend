@@ -27,7 +27,7 @@ import type {
   BusinessDashboard,
   MetricPoint,
   RecommendedAction,
-} from "@/lib/mypageseo/dashboard-data";
+} from "@/lib/dashboard/dashboard-data";
 
 /* ---------------------------------- utils --------------------------------- */
 

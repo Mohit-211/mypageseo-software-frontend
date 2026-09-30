@@ -8,13 +8,13 @@ import {
   AgencyDashboardView,
   BusinessDashboardView,
   DashboardSkeleton,
-} from "@/components/mypageseo/dashboard";
+} from "@/components/dashboard/dashboard";
 import { Button } from "@/components/ui/button";
 import {
   comparisonRanges,
   useDashboardData,
   type ComparisonRange,
-} from "@/lib/mypageseo/dashboard-data";
+} from "@/lib/dashboard/dashboard-data";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
 
 const title = "Dashboard | Mypageseo";

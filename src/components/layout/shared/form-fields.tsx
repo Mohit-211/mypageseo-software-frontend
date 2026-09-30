@@ -420,6 +420,7 @@ export function FormSaveBar({
   onSave,
   onDiscard,
   savedLabel = "Changes saved",
+  pendingLabel,
 }: {
   dirty: boolean;
   saving: boolean;
@@ -430,6 +431,8 @@ export function FormSaveBar({
   onSave: () => void;
   onDiscard: () => void;
   savedLabel?: string;
+  /** Label on the save button while saving (defaults to "Saving…"). */
+  pendingLabel?: string;
 }) {
   return (
     <div className="sticky bottom-0 -mx-1 border-t border-border bg-background/95 px-1 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
@@ -460,6 +463,7 @@ export function FormSaveBar({
           <SubmitButton
             type="button"
             pending={saving}
+            {...(pendingLabel ? { pendingLabel } : {})}
             onClick={onSave}
             disabled={!dirty || disabled}
             icon={<Save className="size-4" aria-hidden />}

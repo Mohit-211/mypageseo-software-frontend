@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { ArrowLeft, MoreHorizontal, Search, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/shared/app-shell";
-import { SettingsNav } from "@/components/mypageseo/settings-nav";
+import { SettingsNav } from "@/components/settings/settings-nav";
 import { PageHeader, Panel, StatusBadge } from "@/components/layout/shared/data-display";
 import { EmptyState, ErrorState, TableSkeleton } from "@/components/layout/shared/feedback/states";
 import { Button } from "@/components/ui/button";

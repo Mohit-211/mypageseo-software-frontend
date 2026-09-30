@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { AppShell } from "@/components/layout/shared/app-shell";
 import { PageHeader } from "@/components/layout/shared/data-display";
-import { ReportSchedulesContent } from "@/components/mypageseo/report-schedules";
+import { ReportSchedulesContent } from "@/components/report/report-schedules";
 import { ErrorState } from "@/components/layout/shared/feedback/states";
 import { Button } from "@/components/ui/button";
 import { getReportSchedules } from "@/lib/reports/reports";

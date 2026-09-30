@@ -64,7 +64,8 @@ import SettingsBillingPage from "@/pages/settings/SettingsBillingPage";
 import SettingsTeamPage from "@/pages/settings/SettingsTeamPage";
 import SettingsIntegrationsPage from "@/pages/settings/SettingsIntegrationsPage";
 import SettingsNotificationsPage from "@/pages/settings/SettingsNotificationsPage";
-import SettingsWhiteLabelPage from "@/pages/settings/SettingsWhiteLabelPage";
+import SettingsWhiteLabelPage from "@/pages/white-label/SettingsWhiteLabelPage";
+import WhiteLabelPreviewPage from "@/pages/white-label/WhiteLabelPreviewPage";
 import NotificationsPage from "@/pages/notifications/NotificationsPage";
 import HelpPage from "@/pages/help/HelpPage";
 import OnboardingIndexPage from "@/pages/onboarding/OnboardingIndexPage";
@@ -135,7 +136,6 @@ export const router = createBrowserRouter([
             ],
           },
           { path: "rankings", Component: RankingsIndexPage },
-          { path: "white-label", Component: SettingsWhiteLabelPage },
 
           { path: "rankings/keywords", Component: RankingsKeywordsPage },
           { path: "rankings/keyword-groups", Component: RankingsKeywordGroupsPage },
@@ -181,6 +181,7 @@ export const router = createBrowserRouter([
               { path: "integrations", Component: SettingsIntegrationsPage },
               { path: "notifications", Component: SettingsNotificationsPage },
               { path: "white-label", Component: SettingsWhiteLabelPage },
+              { path: "white-label/preview/:reportId?", Component: WhiteLabelPreviewPage },
             ],
           },
           { path: "notifications", Component: NotificationsPage },

@@ -11,7 +11,7 @@ import type {
   PortfolioRow,
   RankSeriesPoint,
   RecommendedAction,
-} from "../dashboard-data";
+} from "../../dashboard/dashboard-data";
 import {
   DEMO_CLIENTS,
   DEMO_LOCATIONS,

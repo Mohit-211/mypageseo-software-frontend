@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { BadgeCheck, ImageUp, KeyRound, LogOut, ShieldCheck } from "lucide-react";
 import { AppShell } from "@/components/layout/shared/app-shell";
 import { PageHeader, Panel, SectionHeader, StatusBadge } from "@/components/layout/shared/data-display";
-import { SettingsNav } from "@/components/mypageseo/settings-nav";
+import { SettingsNav } from "@/components/settings/settings-nav";
 import { EmptyState, ErrorState, TableSkeleton } from "@/components/layout/shared/feedback/states";
 import { Button } from "@/components/ui/button";
 import {

@@ -9,7 +9,7 @@ import {
   SectionHeader,
   StatusBadge,
 } from "@/components/layout/shared/data-display";
-import { SettingsNav } from "@/components/mypageseo/settings-nav";
+import { SettingsNav } from "@/components/settings/settings-nav";
 import { EmptyState, ErrorState, MetricSkeletonGrid } from "@/components/layout/shared/feedback/states";
 import { Button } from "@/components/ui/button";
 import {

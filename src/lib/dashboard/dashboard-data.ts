@@ -1,7 +1,7 @@
-import type { AccountType } from "./navigation";
-import { demoLatency, useResource } from "./resource";
-import { withDemoFallback } from "./demo/demo-mode";
-import { demoAgencyDashboard, demoBusinessDashboard } from "./demo/dashboard";
+import { demoLatency, useResource } from "../mypageseo/resource";
+import { withDemoFallback } from "../mypageseo/demo/demo-mode";
+import { demoAgencyDashboard, demoBusinessDashboard } from "../mypageseo/demo/dashboard";
+import { AccountType } from "../mypageseo/navigation";
 
 /**
  * Dashboard data contract.
