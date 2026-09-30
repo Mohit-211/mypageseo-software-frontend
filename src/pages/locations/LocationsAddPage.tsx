@@ -14,6 +14,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useGbpConnect } from "@/lib/gbp/use-gbp-connect";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
 import { PlanLimitNotice, PlanLimitPanel, usePlanLimit } from "@/components/mypageseo/plan";
 import { planLimitMessage } from "@/lib/mypageseo/plan";
@@ -23,17 +24,14 @@ import { planLimitMessage } from "@/lib/mypageseo/plan";
 function AddLocationPage() {
   const workspace = useWorkspace();
   const agency = workspace.organization?.accountType === "agency";
-  const [connectionState, setConnectionState] = useState<GoogleConnectionState>("disconnected");
+  // Google sign-in runs in a popup; the page moves to /locations once it finishes.
+  const { connect, connecting, error: connectError } = useGbpConnect();
+  const connectionState = (connecting ? "connecting" : connectError ? "error" : "disconnected") as GoogleConnectionState;
   const [profiles] = useState<GoogleBusinessProfile[]>([]);
   const [query, setQuery] = useState("");
   const [selectedProfile, setSelectedProfile] = useState<GoogleBusinessProfile | null>(null);
   const [clientId, setClientId] = useState(workspace.activeClient?.id ?? "");
   const locationLimit = usePlanLimit("locations");
-
-  const connect = () => {
-    setConnectionState("connecting");
-    window.setTimeout(() => setConnectionState("error"), 700);
-  };
 
   const canComplete = Boolean(selectedProfile && (!agency || clientId));
 
@@ -58,7 +56,7 @@ function AddLocationPage() {
           <>
         {locationLimit ? <PlanLimitNotice state={locationLimit} /> : null}
 
-        <GoogleBusinessConnection state={connectionState} onConnect={connect} onRetry={connect} />
+        <GoogleBusinessConnection state={connectionState} onConnect={() => void connect()} onRetry={() => void connect()} />
 
         {connectionState === "connected" ? (
           <div className="space-y-5">

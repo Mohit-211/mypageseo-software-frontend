@@ -12,6 +12,7 @@
  * backend is unavailable. Remove the demo fallback once it is connected.
  */
 
+import type { Profile, UpdateProfileRequest } from "@/api/types/profile";
 import { withDemoFallback } from "./demo/demo-mode";
 import { DEMO_USER_PROFILE } from "./demo/profile";
 
@@ -106,4 +107,49 @@ export function profileInitials(name: string, email: string): string {
   const first = parts[0]?.[0] ?? "U";
   const second = parts.length > 1 ? (parts[1]?.[0] ?? "") : "";
   return (first + second).toUpperCase();
+}
+
+/** Capabilities while connected to the live profile API. Security operations stay off until the auth service supports them. */
+export const LIVE_PROFILE_CAPABILITIES: ProfileCapabilities = {
+  canEditProfile: true,
+  canSaveProfile: true,
+  canUploadAvatar: false,
+  canResendEmailVerification: false,
+  canChangePassword: false,
+  canManageTwoFactor: false,
+  canSignOut: true,
+  canDeleteAccount: false,
+};
+
+function browserTimezone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone;
+  } catch {
+    return "UTC";
+  }
+}
+
+/** Maps the `auth/me` payload to the profile the settings screen works with. */
+export function toUserProfile(profile: Profile): UserProfile {
+  const verified = profile.email_verified ?? profile.is_email_verified;
+  return {
+    id: profile.id ?? profile._id ?? "",
+    name: profile.name ?? "",
+    email: profile.email ?? "",
+    emailVerification: verified === undefined ? "unknown" : verified ? "verified" : "unverified",
+    phone: profile.mobile ?? null,
+    jobTitle: profile.job_title ?? null,
+    timezone: profile.time_zone ?? profile.timezone ?? browserTimezone(),
+    avatarUrl: profile.avatar ?? profile.profile_image ?? null,
+  };
+}
+
+/** Builds the `PATCH auth/me` body from the validated form values. */
+export function toUpdateProfileRequest(values: ProfileFormValues): UpdateProfileRequest {
+  return {
+    name: values.name.trim(),
+    mobile: values.phone.trim() || null,
+    job_title: values.jobTitle.trim() || null,
+    time_zone: values.timezone,
+  };
 }

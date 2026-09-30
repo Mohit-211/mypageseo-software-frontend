@@ -103,11 +103,11 @@ export function DEMO_INTEGRATIONS(
       organizationState: "connected",
       locations: scoped.map(connectionFor),
       capabilities: {
-        // Google authorization runs through OAuth, which is not connected to
-        // this frontend yet. Keep these false until the flow is available.
-        canConnect: false,
-        canReconnect: false,
-        canDisconnect: false,
+        // Connect/reconnect run through `gbp/connect/url` → Google OAuth →
+        // `/gbp/connect/callback`; disconnect calls `gbp/disconnect`.
+        canConnect: true,
+        canReconnect: true,
+        canDisconnect: true,
         canManage: true,
       },
     },

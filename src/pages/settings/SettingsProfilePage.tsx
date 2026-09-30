@@ -1,10 +1,11 @@
 import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { BadgeCheck, ImageUp, KeyRound, LogOut, ShieldCheck } from "lucide-react";
 import { AppShell } from "@/components/layout/shared/app-shell";
 import { PageHeader, Panel, SectionHeader, StatusBadge } from "@/components/layout/shared/data-display";
 import { SettingsNav } from "@/components/settings/settings-nav";
-import { EmptyState, ErrorState, TableSkeleton } from "@/components/layout/shared/feedback/states";
+import { ErrorState, TableSkeleton } from "@/components/layout/shared/feedback/states";
 import { Button } from "@/components/ui/button";
 import {
   FormGrid,
@@ -13,30 +14,44 @@ import {
   FormTextField,
   RequiredFieldsNote,
 } from "@/components/layout/shared/form-fields";
+import { getProfile, updateProfile, type Profile } from "@/api";
+import { classifyError } from "@/lib/mypageseo/errors";
 import { SUPPORTED_TIMEZONES } from "@/lib/mypageseo/organization-settings";
 import {
   JOB_TITLE_MAX_LENGTH,
+  LIVE_PROFILE_CAPABILITIES,
   PROFILE_NAME_MAX_LENGTH,
-  getUserProfile,
   profileFormsAreEqual,
   profileInitials,
   profileToForm,
+  toUpdateProfileRequest,
+  toUserProfile,
   validateProfile,
   type ProfileCapabilities,
   type ProfileFormErrors,
   type ProfileFormValues,
+  type ProfileResult,
   type UserProfile,
 } from "@/lib/mypageseo/profile";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
-
-
 
 const DESCRIPTION = "Manage your personal Mypageseo account information and preferences.";
 
 function ProfileSettingsPage() {
   const workspace = useWorkspace();
   const isAgency = workspace.organization?.accountType === "agency";
-  const result = getUserProfile();
+  // Shares the ["profile"] cache with WorkspaceProvider, so this is usually already loaded.
+  const query = useQuery({
+    queryKey: ["profile"],
+    queryFn: ({ signal }) => getProfile(signal),
+    staleTime: 5 * 60_000,
+  });
+
+  const result: ProfileResult = query.isPending
+    ? { status: "loading" }
+    : query.isError
+      ? { status: "error", message: classifyError(query.error).description }
+      : { status: "ready", profile: toUserProfile(query.data), capabilities: LIVE_PROFILE_CAPABILITIES };
 
   return (
     <AppShell>
@@ -46,9 +61,7 @@ function ProfileSettingsPage() {
       {result.status === "loading" ? (
         <TableSkeleton rows={5} columns={2} />
       ) : result.status === "error" ? (
-        <ErrorState description={result.message} onRetry={() => window.location.reload()} />
-      ) : result.status === "unavailable" ? (
-        <EmptyState title="Your profile is unavailable" description={result.reason} />
+        <ErrorState description={result.message} onRetry={() => void query.refetch()} />
       ) : (
         <ProfileSections profile={result.profile} capabilities={result.capabilities} />
       )}
@@ -64,6 +77,8 @@ function ProfileSections({
   capabilities: ProfileCapabilities;
 }) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const mutation = useMutation({ mutationFn: updateProfile });
   const [saved, setSaved] = useState<UserProfile>(profile);
   const [values, setValues] = useState<ProfileFormValues>(profileToForm(profile));
   const [errors, setErrors] = useState<ProfileFormErrors>({});
@@ -94,17 +109,25 @@ function ProfileSections({
     }
     setSaving(true);
     setSaveError(null);
-    window.setTimeout(() => {
-      setSaved({
-        ...saved,
-        name: values.name.trim(),
-        phone: values.phone.trim() || null,
-        jobTitle: values.jobTitle.trim() || null,
-        timezone: values.timezone,
-      });
-      setSaving(false);
-      setSavedAt(new Date().toLocaleTimeString());
-    }, 500);
+    const body = toUpdateProfileRequest(values);
+    mutation.mutate(body, {
+      onSuccess: (updated) => {
+        // Prefer the server's copy; fall back to what was sent if the PATCH returns no profile.
+        const next: UserProfile = updated
+          ? toUserProfile(updated)
+          : { ...saved, name: body.name, phone: body.mobile, jobTitle: body.job_title, timezone: body.time_zone };
+        setSaved(next);
+        setValues(profileToForm(next));
+        queryClient.setQueryData<Profile>(["profile"], (current) =>
+          updated ? { ...current, ...updated } : current ? { ...current, ...body } : current,
+        );
+        setSavedAt(new Date().toLocaleTimeString());
+      },
+      onError: (error) => {
+        setSaveError(error instanceof Error && error.message ? error.message : "Your profile could not be saved.");
+      },
+      onSettled: () => setSaving(false),
+    });
   };
 
   const handleDiscard = () => {

@@ -6,17 +6,26 @@
  */
 export const ENDPOINTS = {
   auth: {
-    signup: "user/auth/register",
-    login: "user/auth/login",
-    logout: "user/auth/logout",
+    signup: "auth/signup",
+    login: "auth/login",
+    logout: "auth/logout",
     /** Exchanges `{ refresh_token }` for a new token pair. Confirm path with the backend. */
-    refresh: "user/auth/refresh-tokens",
-    sendOtp: "user/auth/otp",
-    verifyOtp: "user/auth/verify-otp",
-    forgotPassword: "user/auth/forgot-password",
+    refresh: "auth/refresh-tokens",
+    sendOtp: "auth/otp",
+    verifyOtp: "auth/verify-otp",
+    verifyEmail: "auth/verify-email",
+    forgotPassword: "auth/forgot-password",
+    resetPassword: "auth/reset-password",
+
   },
   profile: {
-    get: "user/profile",
+    get: "auth/me",
+    update: "auth/me",
+  },
+  gbp: {
+    get: "gbp",
+    connectUrl: "gbp/connect/url",
+    disconnect: "gbp/disconnect",
   },
   location: {
     countries: "countries",

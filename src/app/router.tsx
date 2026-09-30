@@ -42,6 +42,7 @@ import GbpAiPostCreatePage from "@/pages/gbp/GbpAiPostCreatePage";
 import GbpAiPostDetailPage from "@/pages/gbp/GbpAiPostDetailPage";
 import GbpReviewManagementPage from "@/pages/gbp/GbpReviewManagementPage";
 import GbpReviewAutomationPage from "@/pages/gbp/GbpReviewAutomationPage";
+import GbpConnectCallbackPage from "@/pages/gbp/GbpConnectCallbackPage";
 import CitationsPage from "@/pages/citations/CitationsPage";
 import CompetitorsPage from "@/pages/competitors/CompetitorsPage";
 import AiVisibilityPage from "@/pages/ai-visibility/AiVisibilityPage";
@@ -150,6 +151,8 @@ export const router = createBrowserRouter([
           { path: "gbp/ai-posts/:postId", Component: GbpAiPostDetailPage },
           { path: "gbp/review-management", Component: GbpReviewManagementPage },
           { path: "gbp/review-management/automation", Component: GbpReviewAutomationPage },
+          // Google OAuth redirect target for the Business Profile connection.
+          { path: "gbp/connect/callback", Component: GbpConnectCallbackPage },
           { path: "citations", Component: CitationsPage },
           { path: "competitors", Component: CompetitorsPage },
           { path: "ai-visibility", Component: AiVisibilityPage },

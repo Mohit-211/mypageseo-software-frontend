@@ -2,6 +2,7 @@ import { ArrowDown, ArrowUp, ExternalLink } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Panel, StatusBadge } from "@/components/layout/shared/data-display";
 import { EmptyState, ErrorState, MetricSkeletonGrid, TableSkeleton } from "@/components/layout/shared/feedback/states";
+import { ConnectGbpButton } from "@/components/gbp-audit/connect-gbp-button";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { GbpAuditCompetitorEntity, GbpAuditCompetitorOrder, GbpAuditCompetitorSort, GbpAuditCompetitorsData } from "@/lib/mypageseo/gbp-audit-competitors";
@@ -23,7 +24,7 @@ export function GbpAuditCompetitorsLoading() {
 export function GbpAuditCompetitorsContent({ data, locationId, sort, order, onSort, onContextChange, onRetry }: { data: GbpAuditCompetitorsData; locationId: string; sort: GbpAuditCompetitorSort; order: GbpAuditCompetitorOrder; onSort: (sort: GbpAuditCompetitorSort) => void; onContextChange: (contextId: string) => void; onRetry: () => void }) {
   if (data.status === "loading") return <GbpAuditCompetitorsLoading />;
   if (data.status === "error") return <ErrorState title="Competitor analysis could not be loaded" description="The selected location is still available. Retry this analysis without leaving the GBP audit." onRetry={onRetry} className="min-h-80" />;
-  if (data.status === "disconnected") return <EmptyState title="Connect Google Business Profile to compare competitors" description="This analysis requires a connected profile and supported local competitor data. Neither is currently available for this location." className="min-h-80" />;
+  if (data.status === "disconnected") return <EmptyState title="Connect Google Business Profile to compare competitors" description="This analysis requires a connected profile and supported local competitor data. Connect this location's Google Business Profile to get started." action={<ConnectGbpButton />} className="min-h-80" />;
   if (data.status === "no_competitors") return <EmptyState title="No audit competitors are available" description="Mypageseo does not currently have backend-provided Local Pack competitors or a supported discovery action for this location, so no comparison can be shown." action={<Button asChild variant="outline"><Link to={`/locations/${locationId}/rankings/competitors`}>Open ranking competitors <ExternalLink aria-hidden /></Link></Button>} className="min-h-80" />;
   if (data.status === "no_data") return <EmptyState title="No comparable competitor data is available" description="Competitors may exist, but no supported GBP or local SEO metrics are available for this search context." className="min-h-80" />;
 

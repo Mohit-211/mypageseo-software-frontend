@@ -6,10 +6,19 @@ import type { UserType } from "./auth";
 
 export type Profile = {
   id?: string;
+  _id?: string;
   name?: string;
   email?: string;
   user_type: UserType;
   role_id?: number;
+  mobile?: string | null;
+  job_title?: string | null;
+  time_zone?: string | null;
+  timezone?: string | null;
+  avatar?: string | null;
+  profile_image?: string | null;
+  email_verified?: boolean;
+  is_email_verified?: boolean;
 };
 
 export type GetProfileResponse = {
@@ -17,4 +26,12 @@ export type GetProfileResponse = {
   status?: number;
   message?: string;
   data: Profile;
+};
+
+/** Payload for `PATCH auth/me`, in the backend's field names. */
+export type UpdateProfileRequest = {
+  name: string;
+  mobile: string | null;
+  job_title: string | null;
+  time_zone: string;
 };

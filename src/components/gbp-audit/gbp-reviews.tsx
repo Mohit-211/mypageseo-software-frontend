@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { ExternalLink, Star } from "lucide-react";
 import { MetricCard, Panel, SectionHeader, StatusBadge } from "@/components/layout/shared/data-display";
 import { EmptyState, ErrorState, MetricSkeletonGrid, TableSkeleton } from "@/components/layout/shared/feedback/states";
+import { ConnectGbpButton } from "@/components/gbp-audit/connect-gbp-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -111,7 +112,8 @@ export function GbpReviewsContent({ data, onRetry }: { data: GbpReviewsData; onR
     return (
       <EmptyState
         title="Google Business Profile is not connected"
-        description="Connect this location's Google Business Profile before reviews, reply status, and response tools can be shown. Connection is not available in the current product integration."
+        description="Connect this location's Google Business Profile before reviews, reply status, and response tools can be shown."
+        action={<ConnectGbpButton />}
         className="min-h-72"
       />
     );

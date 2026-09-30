@@ -16,8 +16,10 @@ export {
   subscribeToAccessToken,
 } from "./token-storage";
 export * from "./auth";
+export * from "./gbp";
 export * from "./location";
 export * from "./profile";
 export type * from "./types/auth";
+export type * from "./types/gbp";
 export type * from "./types/location";
 export type * from "./types/profile";

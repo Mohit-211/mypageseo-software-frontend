@@ -2,6 +2,7 @@ import { useState } from "react";
 import { AlertCircle, ChevronRight } from "lucide-react";
 import { MetricCard, Panel, ScoreIndicator, StatusBadge, type StatusTone } from "@/components/layout/shared/data-display";
 import { EmptyState, ErrorState, MetricSkeletonGrid, TableSkeleton } from "@/components/layout/shared/feedback/states";
+import { ConnectGbpButton } from "@/components/gbp-audit/connect-gbp-button";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,7 +19,7 @@ export function GbpAuditContent({ data, onRetry }: { data: GbpAuditData; onRetry
   const [selected, setSelected] = useState<{ category: AuditCategory; finding: AuditFinding } | null>(null);
   if (data.status === "loading") return <GbpAuditLoading />;
   if (data.status === "error") return <ErrorState title="GBP audit could not be loaded" description="We couldn't load the current audit. Try again without leaving this location." onRetry={onRetry} />;
-  if (data.status === "disconnected") return <EmptyState title="Connect Google Business Profile to run an audit" description="This location needs a connected Google Business Profile before Mypageseo can evaluate profile information, reviews, media, duplicates, website signals, and local search signals. Connection is not available in the current product integration." className="min-h-72" />;
+  if (data.status === "disconnected") return <EmptyState title="Connect Google Business Profile to run an audit" description="This location needs a connected Google Business Profile before Mypageseo can evaluate profile information, reviews, media, duplicates, website signals, and local search signals." action={<ConnectGbpButton />} className="min-h-72" />;
   if (data.status === "not_generated") return <EmptyState title="No GBP audit is available yet" description={data.canRunAudit ? "Run the first audit to evaluate this profile's available GBP and local SEO signals." : "An audit can appear here after audit generation is available for this location."} className="min-h-72" />;
 
   return (

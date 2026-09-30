@@ -49,7 +49,7 @@ export function GoogleBusinessConnection({
         <AlertCircle aria-hidden />
         <AlertTitle>Google account could not be connected</AlertTitle>
         <AlertDescription>
-          <p>The Google Business Profile connection is not available in this environment. No account changes were made.</p>
+          <p>We couldn't start the Google sign-in. No account changes were made.</p>
           <Button variant="outline" size="sm" className="mt-3" onClick={onRetry}>Try again</Button>
         </AlertDescription>
       </Alert>

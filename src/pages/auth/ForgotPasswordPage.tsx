@@ -10,7 +10,7 @@ import {
   AuthLayout,
 } from "@/components/auth/auth";
 import { Button } from "@/components/ui/button";
-import { isApiError, sendOtp } from "@/api";
+import { forgotPassword, isApiError, sendOtp } from "@/api";
 import { authRecoveryCapabilities, resetEmailSchema } from "@/lib/auth/auth-recovery";
 
 function ForgotPasswordPage() {
@@ -35,8 +35,10 @@ function ForgotPasswordPage() {
     setSubmitting(true);
     setFormError(null);
     try {
-      const target = parsed.data;
-      await sendOtp({ email: target, type: "FORGOT_PASSWORD" });
+   const target = parsed.data;
+await forgotPassword({
+  email: target,
+});
       // The backend emails a one-time code; the user confirms it on the OTP page.
       await navigate(`/verify-otp?email=${encodeURIComponent(target)}&type=FORGOT_PASSWORD`);
     } catch (error) {

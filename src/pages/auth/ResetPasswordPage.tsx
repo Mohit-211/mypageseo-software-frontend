@@ -17,15 +17,12 @@ import {
   passwordSchema,
 } from "@/lib/auth/auth-recovery";
 import { useTypedSearch } from "@/hooks/use-typed-search";
-import { forgotPassword, isApiError, resetPassword } from "@/api";
-
+import { forgotPassword, isApiError } from "@/api";
+import { resetPassword } from "@/api/auth/reset-password";
 const searchSchema = z.object({
   email: z.string().email().optional(),
   token: z.string().optional(),
 });
-
-
-
 const formSchema = z
   .object({
     password: passwordSchema,
@@ -35,22 +32,18 @@ const formSchema = z
     path: ["confirmPassword"],
     message: "Both passwords must match.",
   });
-
 type FieldErrors = { password?: string | undefined; confirmPassword?: string | undefined };
-
 function ResetPasswordPage() {
-  const [{ email, token }] = useTypedSearch(searchSchema);
+  const [{ token }] = useTypedSearch(searchSchema);
   const capabilities = authRecoveryCapabilities();
-
   const [values, setValues] = useState({ password: "", confirmPassword: "" });
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
-
   // The token comes from verify-otp; without it (or the email) there's nothing to reset.
   // An expired token is reported by the backend when the form is submitted.
-  if (!email || !token) {
+  if (!token) {
     return (
       <AuthLayout>
         <AuthStatePanel
@@ -69,7 +62,6 @@ function ResetPasswordPage() {
       </AuthLayout>
     );
   }
-
   if (done) {
     return (
       <AuthLayout>
@@ -86,16 +78,13 @@ function ResetPasswordPage() {
       </AuthLayout>
     );
   }
-
   function update(key: keyof FieldErrors, value: string) {
     setValues((prev) => ({ ...prev, [key]: value }));
     setErrors((prev) => ({ ...prev, [key]: undefined }));
   }
-
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submitting || !capabilities.resetPassword) return;
-
     const parsed = formSchema.safeParse(values);
     if (!parsed.success) {
       const next: FieldErrors = {};
@@ -107,12 +96,10 @@ function ResetPasswordPage() {
       setFormError(null);
       return;
     }
-
     setSubmitting(true);
     setFormError(null);
     try {
-      await forgotPassword({
-        email: email ?? "",
+      await resetPassword({
         password: parsed.data.password,
         confirm_password: parsed.data.confirmPassword,
         token: token ?? "",
@@ -132,17 +119,14 @@ function ResetPasswordPage() {
       setSubmitting(false);
     }
   }
-
   return (
     <AuthLayout>
       <AuthHeading
         title="Set a new password"
         description="Choose a new password for your Mypageseo account."
       />
-
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         {formError ? <AuthFormError message={formError} /> : null}
-
         <AuthField
           label="New password"
           htmlFor="new-password"
@@ -159,7 +143,6 @@ function ResetPasswordPage() {
             onChange={(e) => update("password", e.target.value)}
           />
         </AuthField>
-
         <AuthField
           label="Confirm new password"
           htmlFor="confirm-password"
@@ -175,7 +158,6 @@ function ResetPasswordPage() {
             onChange={(e) => update("confirmPassword", e.target.value)}
           />
         </AuthField>
-
         <Button
           type="submit"
           className="h-10 w-full"
@@ -191,7 +173,6 @@ function ResetPasswordPage() {
           )}
         </Button>
       </form>
-
       <AuthFooterNote>
         Remembered it?{" "}
         <Link to="/login" className="font-medium text-primary underline-offset-4 hover:underline">
@@ -201,5 +182,4 @@ function ResetPasswordPage() {
     </AuthLayout>
   );
 }
-
 export default ResetPasswordPage;

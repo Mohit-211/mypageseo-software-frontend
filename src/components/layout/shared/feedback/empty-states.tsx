@@ -14,6 +14,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { EmptyState, NotConnectedState } from "@/components/layout/shared/feedback/states";
+import { ConnectGbpButton } from "@/components/gbp-audit/connect-gbp-button";
 
 /**
  * Canonical empty states.
@@ -73,13 +74,7 @@ export function GbpNotConnectedState({
     <NotConnectedState
       title="Google Business Profile not connected"
       description="Connect this location's Google Business Profile to see profile health, business information, reviews, photos and recommended actions."
-      action={
-        action ?? (
-          <Button asChild size="sm" variant="outline">
-            <Link to="/settings/integrations">Connect Google</Link>
-          </Button>
-        )
-      }
+      action={action ?? <ConnectGbpButton variant="outline" />}
       {...(className === undefined ? {} : { className })}
     />
   );

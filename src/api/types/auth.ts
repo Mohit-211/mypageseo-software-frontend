@@ -34,20 +34,14 @@ export type UserType = "BUSINESS" | "AGENCY";
 
 /** Payload for `POST user/auth/register`, in the backend's field names. */
 export type SignupRequest = {
+  account_type: AccountType;
   name: string;
   email: string;
-  mobile: string;
-  user_type: UserType;
   password: string;
-  confirm_password: string;
-  /** Location ids come from the location lookup endpoints (see api/location). */
-  country_id: string;
-  state_id: string;
-  city_id: string;
-  business_address: string;
-  website_url: string;
-  business_name: string;
-  zip_code: string;
+  organization_name: string;
+  /** ISO 3166-1 alpha-2 country code, e.g. "US". */
+  country: string;
+  accept_terms: true;
 };
 
 /**
@@ -110,14 +104,13 @@ export type RefreshTokenResponse = {
 
 export type ForgotPasswordRequest = {
   email: string;
-  password: string;
-  confirm_password: string;
-  token: string;
+  // password: string;
+  // confirm_password: string;
+  // token: string;
 };
 
 /** Payload for `POST user/auth/reset-password`; `token` comes from verify-otp. */
 export type ResetPasswordRequest = {
-  email: string;
   password: string;
   confirm_password: string;
   token: string;
@@ -127,9 +120,14 @@ export type VerifyEmailRequest = {
   token: string;
 };
 
-export type VerifyEmailResponse = {
-  status: "verified" | "already_verified";
-};
+export interface VerifyEmailResponse {
+  success: boolean;
+  message: string;
+  data: {
+    verified: boolean;
+    already_verified: boolean;
+  };
+}
 
 export type ResendVerificationRequest = {
   email: string;

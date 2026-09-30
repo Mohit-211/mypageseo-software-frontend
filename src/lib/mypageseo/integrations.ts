@@ -6,10 +6,10 @@
  * account can be linked, but each location must be matched to a Google
  * Business Profile individually, so both levels are reported separately.
  *
- * Authorization itself (connect, reconnect, disconnect) belongs to the Google
- * OAuth flow, which is not connected to this frontend. Those capabilities are
- * reported as unsupported rather than simulated. Real payloads always win;
- * the demo status is only used while the integrations backend is unavailable.
+ * Authorization (connect, reconnect) runs through the Google OAuth flow in
+ * lib/gbp/use-gbp-connect.ts; disconnect revokes it via `gbp/disconnect`.
+ * Real payloads always win; the demo status is only used while the
+ * integrations backend is unavailable.
  */
 
 import { withDemoFallback } from "./demo/demo-mode";
