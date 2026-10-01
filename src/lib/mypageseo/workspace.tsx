@@ -1,16 +1,24 @@
 import { useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { getProfile, hasUsableSession, subscribeToAccessToken } from "@/api";
-import type { UserType } from "@/api/types/auth";
+import {
+  getClients,
+  getLocationsList,
+  getProfile,
+  getSelectedOrganizationId,
+  hasUsableSession,
+  isApiError,
+  setSelectedOrganizationId,
+  subscribeToAccessToken,
+  type LocationRow,
+} from "@/api";
 import type { AccountType } from "./navigation";
-import { DEMO_CLIENTS, DEMO_LOCATIONS, DEMO_ORGANIZATIONS } from "./demo/entities";
-import { useOnboardingSession } from "../auth/onboarding-state";
 import { WorkspaceContext } from "./workspace-context";
 
 export type Organization = {
   id: string;
   name: string;
   accountType: AccountType;
+  role: string;
 };
 
 export type Client = {
@@ -33,168 +41,185 @@ export type WorkspaceStatus = "loading" | "ready" | "unavailable";
 export type WorkspaceValue = {
   status: WorkspaceStatus;
   organization: Organization | null;
+  /** Every organization the user belongs to (for the header switcher). */
+  organizations: Organization[];
   clients: Client[];
   activeClient: Client | null;
   locations: LocationSummary[];
   activeLocation: LocationSummary | null;
-  setAccountType: (type: AccountType) => void;
+  setOrganizationId: (id: string) => void;
   setActiveClientId: (id: string | null) => void;
   setActiveLocationId: (id: string | null) => void;
 };
 
-
 /**
- * Representative workspace context (organization -> client -> location).
- *
- * The backend that supplies organizations, clients and locations is not wired
- * into this frontend yet. These values stand in for the shape of that response
- * so every screen can be built against the real structure; replace this
- * provider's body with the backend read when it is available.
- */
-const REPRESENTATIVE_ORG: Record<AccountType, Organization> = {
-  business: { id: DEMO_ORGANIZATIONS.business.id, name: DEMO_ORGANIZATIONS.business.name, accountType: "business" },
-  agency: { id: DEMO_ORGANIZATIONS.agency.id, name: DEMO_ORGANIZATIONS.agency.name, accountType: "agency" },
-};
-
-const AGENCY_CLIENTS: Client[] = DEMO_CLIENTS.map((client) => ({
-  id: client.id,
-  name: client.name,
-}));
-
-const BUSINESS_LOCATIONS: LocationSummary[] = DEMO_LOCATIONS.filter(
-  (location) => location.clientId === "cl_riverside",
-).map((location) => ({
-  id: location.id,
-  businessName: location.businessName,
-  area: location.area,
-  rating: location.rating,
-  reviewCount: location.reviewCount,
-}));
-
-const AGENCY_LOCATIONS: LocationSummary[] = DEMO_LOCATIONS.map((location) => ({
-  id: location.id,
-  clientId: location.clientId,
-  businessName: location.businessName,
-  area: location.area,
-  rating: location.rating,
-  reviewCount: location.reviewCount,
-}));
-
-const DEFAULT_BUSINESS_LOCATION_ID = "loc_riverside_north";
-
-/**
- * Frontend-only persistence of the selected workspace context, so a refresh or
- * a direct link keeps the same organization, client and location. Replace with
- * the backend account read when it is available.
+ * The signed-in user's organization, clients and locations, from the API:
+ * organizations from `GET auth/me`, clients from `GET clients` (agency only) and
+ * locations from `GET locations`. The picked organization is sent as
+ * `X-Organization-Id`; the picked client and location are remembered in this browser.
  */
 const STORAGE_KEY = "mypageseo.workspace-context";
+/** `GET locations` returns at most 100 per page. */
+const LOCATIONS_PAGE_SIZE = 100;
 
-type StoredContext = {
-  accountType: AccountType;
-  activeClientId: string | null;
-  activeLocationId: string | null;
-};
+type StoredContext = { activeClientId: string | null; activeLocationId: string | null };
 
-function readStoredContext(): StoredContext | null {
+function readStoredContext(): StoredContext {
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<StoredContext>;
-    if (parsed.accountType !== "business" && parsed.accountType !== "agency") return null;
+    const parsed = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "{}") as Partial<StoredContext>;
     return {
-      accountType: parsed.accountType,
       activeClientId: typeof parsed.activeClientId === "string" ? parsed.activeClientId : null,
       activeLocationId: typeof parsed.activeLocationId === "string" ? parsed.activeLocationId : null,
     };
   } catch {
-    return null;
+    return { activeClientId: null, activeLocationId: null };
   }
 }
 
-function toAccountType(userType: UserType): AccountType {
-  return userType === "AGENCY" ? "agency" : "business";
+function toLocationSummary(row: LocationRow): LocationSummary {
+  return {
+    id: row.location_id,
+    ...(row.client ? { clientId: row.client.client_id } : {}),
+    businessName: row.name,
+    area: [row.city, row.country].filter(Boolean).join(", "),
+    ...(row.reviews?.rating != null ? { rating: row.reviews.rating } : {}),
+    ...(row.reviews?.count != null ? { reviewCount: row.reviews.count } : {}),
+  };
+}
+
+/** Every location of the organization, all pages. */
+async function loadAllLocations(signal: AbortSignal): Promise<LocationSummary[]> {
+  const rows: LocationRow[] = [];
+  for (let page = 1; ; page += 1) {
+    const result = await getLocationsList({ sort: "name", order: "asc", limit: LOCATIONS_PAGE_SIZE, page }, signal);
+    rows.push(...result.locations);
+    if (rows.length >= result.total || result.locations.length === 0) break;
+  }
+  return rows.map(toLocationSummary);
 }
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
-  // SPA: no server render to match, so read storage once, synchronously,
-  // in the initial state. Replaces the old post-hydration restore effect.
   const [stored] = useState(readStoredContext);
-  const [localAccountType, setAccountType] = useState<AccountType>(stored?.accountType ?? "business");
+  const [activeClientId, setActiveClientId] = useState<string | null>(stored.activeClientId);
+  const [activeLocationId, setActiveLocationId] = useState<string | null>(stored.activeLocationId);
+  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(getSelectedOrganizationId);
 
-  // The signed-in user's real account type comes from the profile endpoint and
-  // takes precedence over the stored / onboarding value once it has loaded.
   const signedIn = useSyncExternalStore(subscribeToAccessToken, hasUsableSession, () => false);
   const queryClient = useQueryClient();
   useEffect(() => {
-    // Drop the previous user's profile on sign-out so the next login refetches.
-    if (!signedIn) queryClient.removeQueries({ queryKey: ["profile"] });
+    // Drop the previous user's data on sign-out so the next login starts clean.
+    if (!signedIn) queryClient.clear();
   }, [signedIn, queryClient]);
+
   const profile = useQuery({
     queryKey: ["profile"],
     queryFn: ({ signal }) => getProfile(signal),
     enabled: signedIn,
     staleTime: 5 * 60_000,
   });
-  console.log(profile,"profile")
-  const profileAccountType =
-    signedIn && profile.data ? toAccountType(profile.data.user_type) : null;
-    console.log(profileAccountType,"profileAccountType")
-  const accountType = profileAccountType ?? localAccountType;
-  const profileLoading = signedIn && profile.isPending;
-  const [activeClientId, setActiveClientId] = useState<string | null>(
-    stored ? stored.activeClientId : null,
-  );
-  const [activeLocationId, setActiveLocationId] = useState<string | null>(
-    stored ? stored.activeLocationId : DEFAULT_BUSINESS_LOCATION_ID,
-  );
 
-  // Completed setup decides which account type, client and location the
-  // product opens in. Replace with the backend account read when available.
-  const session = useOnboardingSession();
+  const organizations = useMemo<Organization[]>(
+    () =>
+      (profile.data?.organizations ?? []).map((org) => ({
+        id: org.organization_id,
+        name: org.name,
+        accountType: org.type,
+        role: org.role,
+      })),
+    [profile.data],
+  );
+  // A remembered organization the user no longer belongs to is ignored (it would make every call 403).
+  const selectedIsMember = selectedOrgId !== null && organizations.some((org) => org.id === selectedOrgId);
+  const organization =
+    (selectedIsMember ? organizations.find((org) => org.id === selectedOrgId) : undefined) ??
+    organizations.find((org) => org.id === profile.data?.current_organization_id) ??
+    organizations[0] ??
+    null;
+
   useEffect(() => {
-    if (!session?.finishedAt) return;
-    setAccountType(session.accountType);
-    setActiveClientId(session.progress.clientId);
-    if (session.progress.selectedProfileId) setActiveLocationId(session.progress.selectedProfileId);
-  }, [session]);
+    if (selectedOrgId && profile.data && !selectedIsMember) {
+      setSelectedOrganizationId(null);
+      void queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] !== "profile" });
+    }
+  }, [selectedOrgId, selectedIsMember, profile.data, queryClient]);
+
+  const agency = organization?.accountType === "agency";
+  const orgKey = organization?.id ?? "none";
+  const ready = signedIn && Boolean(organization);
+
+  const clientsQuery = useQuery({
+    // Under the shared prefixes, so adding, binding or deleting a location refreshes the header too.
+    queryKey: ["clients", "workspace", orgKey],
+    queryFn: async ({ signal }) => {
+      try {
+        return (await getClients(signal)).clients.map((client) => ({ id: client.client_id, name: client.name }));
+      } catch (err) {
+        if (isApiError(err) && err.reason === "agency_only") return [];
+        throw err;
+      }
+    },
+    enabled: ready && agency,
+    staleTime: 60_000,
+  });
+
+  const locationsQuery = useQuery({
+    queryKey: ["locations", "workspace", orgKey],
+    queryFn: ({ signal }) => loadAllLocations(signal),
+    enabled: ready,
+    staleTime: 60_000,
+  });
 
   useEffect(() => {
     try {
-      window.localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({ accountType, activeClientId, activeLocationId } satisfies StoredContext),
-      );
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ activeClientId, activeLocationId } satisfies StoredContext));
     } catch {
-      // Persistence is a convenience only; ignore storage failures.
+      // Persistence is a convenience only.
     }
-  }, [accountType, activeClientId, activeLocationId]);
+  }, [activeClientId, activeLocationId]);
 
   const value = useMemo<WorkspaceValue>(() => {
-    const configuredName = session?.finishedAt
-      ? session.progress.organization.organizationName.trim()
-      : "";
-    const clients = accountType === "agency" ? AGENCY_CLIENTS : [];
-    const organization = {
-      ...REPRESENTATIVE_ORG[accountType],
-      ...(configuredName ? { name: configuredName } : {}),
-    };
-    const locations = accountType === "agency" ? AGENCY_LOCATIONS : BUSINESS_LOCATIONS;
+    const clients = agency ? (clientsQuery.data ?? []) : [];
+    const locations = locationsQuery.data ?? [];
+    const loading =
+      signedIn && (profile.isPending || (ready && (locationsQuery.isPending || (agency && clientsQuery.isPending))));
+    const failed = signedIn && (profile.isError || locationsQuery.isError);
     return {
-      status: profileLoading ? "loading" : "ready",
+      status: loading ? "loading" : failed ? "unavailable" : "ready",
       organization,
+      organizations,
       clients,
-      activeClient: clients.find((c) => c.id === activeClientId) ?? null,
+      activeClient: clients.find((client) => client.id === activeClientId) ?? null,
       locations,
-      activeLocation: locations.find((l) => l.id === activeLocationId) ?? null,
-      setAccountType: (type) => {
-        setAccountType(type);
+      activeLocation: locations.find((location) => location.id === activeLocationId) ?? null,
+      setOrganizationId: (id) => {
+        if (id === organization?.id) return;
+        setSelectedOrganizationId(id);
+        setSelectedOrgId(id);
         setActiveClientId(null);
-        setActiveLocationId(type === "business" ? DEFAULT_BUSINESS_LOCATION_ID : null);
+        setActiveLocationId(null);
+        // Everything cached belongs to the previous organization.
+        void queryClient.resetQueries({ predicate: (query) => query.queryKey[0] !== "profile" });
       },
       setActiveClientId,
       setActiveLocationId,
     };
-  }, [accountType, activeClientId, activeLocationId, session, profileLoading]);
+  }, [
+    agency,
+    clientsQuery.data,
+    clientsQuery.isPending,
+    locationsQuery.data,
+    locationsQuery.isPending,
+    locationsQuery.isError,
+    signedIn,
+    ready,
+    profile.isPending,
+    profile.isError,
+    organization,
+    organizations,
+    activeClientId,
+    activeLocationId,
+    queryClient,
+  ]);
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }

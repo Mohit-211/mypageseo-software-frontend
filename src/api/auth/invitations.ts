@@ -1,7 +1,7 @@
 import { api, unwrapData } from "../client";
 import { ENDPOINTS } from "../endpoints";
 import type { InvitationAcceptResult, InvitationInfo } from "../types/auth";
-import { storeSessionTokens } from "./session";
+import { startSession } from "./session";
 
 /** 404 unknown token; 410 `{ reason: expired | revoked | accepted }`. */
 export async function inspectInvitation(token: string): Promise<InvitationInfo> {
@@ -19,6 +19,6 @@ export async function acceptInvitation(body: {
   password?: string;
 }): Promise<InvitationAcceptResult> {
   const result = unwrapData<InvitationAcceptResult>(await api.post(ENDPOINTS.auth.acceptInvitation, body, { auth: false }));
-  if (!result.login_required) storeSessionTokens(result.tokens, false, result);
+  if (!result.login_required) startSession(result.tokens, false, result);
   return result;
 }

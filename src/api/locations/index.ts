@@ -10,6 +10,7 @@ import type {
   LocationsListResponse,
   PlaceSearchResponse,
   RankRun,
+  TrackingEstimate,
   TrackingResponse,
 } from "../types/locations";
 
@@ -60,10 +61,18 @@ export async function getTracking(locationId: string, signal?: AbortSignal): Pro
   return unwrapData(await api.get(ENDPOINTS.locations.tracking(locationId), withSignal(signal)));
 }
 
-/** Partial update: only the fields sent change. */
+/**
+ * Partial update: only the fields sent change. `grid` takes `radius_km` or `spacing_km`
+ * (400 `invalid_grid`); competitors are place IDs (400 `too_many_competitors`,
+ * `own_place_id`, `invalid_place_id`).
+ */
 export async function updateTracking(
   locationId: string,
-  patch: { keywords?: string[]; competitors?: string[] },
+  patch: {
+    keywords?: string[];
+    competitors?: string[];
+    grid?: { size: number; radius_km: number };
+  },
 ): Promise<TrackingResponse> {
   return unwrapData(await api.put(ENDPOINTS.locations.tracking(locationId), patch));
 }
@@ -93,4 +102,13 @@ export async function searchPlaces(
 
 export async function getRankRun(locationId: string, runId: string, signal?: AbortSignal): Promise<RankRun> {
   return unwrapData(await api.get(ENDPOINTS.locations.rankRun(locationId, runId), withSignal(signal)));
+}
+
+/** What a run would need with these settings (no Google calls, nothing saved). */
+export async function getTrackingEstimate(
+  locationId: string,
+  params: { size?: number; radius_km?: number; keywords?: number },
+  signal?: AbortSignal,
+): Promise<TrackingEstimate> {
+  return unwrapData(await api.get(ENDPOINTS.locations.trackingEstimate(locationId), { query: params, ...withSignal(signal) }));
 }

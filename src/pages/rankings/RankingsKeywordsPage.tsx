@@ -1,18 +1,7 @@
-import { AppShell } from "@/components/layout/shared/app-shell";
-import { PageHeader } from "@/components/layout/shared/data-display";
-import { KeywordRankingsTable } from "@/components/ranking/keyword-rankings";
-import { getKeywordRankings } from "@/lib/raking/keyword-rankings";
+import { RankingsRedirect } from "./rankings-redirect";
 
-
-
-function KeywordsPage() {
-  const data = getKeywordRankings();
-  return (
-    <AppShell>
-      <PageHeader title="Keywords" description="Tracked keywords and current local positions." />
-      <KeywordRankingsTable data={data} sort="keyword" order="asc" page={1} pageCount={1} onSort={() => {}} onPageChange={() => {}} onClearFilters={() => {}} onRetry={() => {}} />
-    </AppShell>
-  );
+function RankingsKeywordsPage() {
+  return <RankingsRedirect view="keywords" />;
 }
 
-export default KeywordsPage;
+export default RankingsKeywordsPage;

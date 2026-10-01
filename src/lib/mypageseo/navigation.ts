@@ -20,7 +20,13 @@ export type NavItem = {
   icon: LucideIcon;
   /** Only rendered for these account types. Omitted = both. */
   accountTypes?: AccountType[];
-  children?: { label: string; to: string }[];
+  /**
+   * The section inside a location (`/locations/:id/<section>`) that belongs to this
+   * entry, so it stays highlighted there instead of Locations.
+   */
+  locationSection?: string;
+  /** `locationPath`: the child's path under that section ("" = the section itself). */
+  children?: { label: string; to: string; locationPath?: string }[];
 };
 
 /** Primary product navigation. Terminology here is canonical across the app. */
@@ -31,12 +37,13 @@ export const primaryNavigation: NavItem[] = [
     label: "Rankings",
     to: "/rankings",
     icon: TrendingUp,
+    locationSection: "rankings",
     children: [
-      { label: "Rank Overview", to: "/rankings" },
-      { label: "Keywords", to: "/rankings/keywords" },
-      { label: "Keyword Groups", to: "/rankings/keyword-groups" },
-      { label: "Map Rankings", to: "/rankings/map-rankings" },
-      { label: "Local Search Grid", to: "/rankings/local-search-grid" },
+      { label: "Rank Tracker", to: "/rankings", locationPath: "" },
+      { label: "Keywords", to: "/rankings/keywords", locationPath: "keywords" },
+      { label: "Keyword Groups", to: "/rankings/keyword-groups", locationPath: "groups" },
+      { label: "Map Rankings", to: "/rankings/map-rankings", locationPath: "map" },
+      { label: "Local Search Grid", to: "/rankings/local-search-grid", locationPath: "grid" },
     ],
   },
   {
@@ -55,14 +62,13 @@ export const primaryNavigation: NavItem[] = [
   { label: "Citations", to: "/citations", icon: ListChecks },
   { label: "Competitors", to: "/competitors", icon: Users },
   { label: "AI Visibility", to: "/ai-visibility", icon: Sparkles },
-  { label: "Reports", to: "/reports", icon: FileBarChart },
+  { label: "Reports", to: "/reports", icon: FileBarChart, locationSection: "reports" },
   { label: "Clients", to: "/clients", icon: Users, accountTypes: ["agency"] },
   { label: "Automations", to: "/automations", icon: Workflow },
   { label: "Settings", to: "/settings", icon: Settings },
 ];
 
 export function navigationFor(accountType: AccountType): NavItem[] {
-  console.log(accountType,"accountType")
   return primaryNavigation.filter(
     (item) => !item.accountTypes || item.accountTypes.includes(accountType),
   );

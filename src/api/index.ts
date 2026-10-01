@@ -2,6 +2,7 @@ export { api, request, ApiError, isApiError, apiErrorData, unwrapData } from "./
 export type { ApiFieldErrors, HttpMethod, QueryParams, RequestOptions } from "./client";
 export { API_BASE_URL } from "./config";
 export { ENDPOINTS } from "./endpoints";
+export { getSelectedOrganizationId, setSelectedOrganizationId } from "./organization-storage";
 export {
   getAccessToken,
   getValidAccessToken,

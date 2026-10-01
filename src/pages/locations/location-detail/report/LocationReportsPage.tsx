@@ -1,98 +1,51 @@
 import { Link } from "react-router-dom";
-import { useEffect } from "react";
 import { ArrowLeft } from "lucide-react";
+import { isApiError } from "@/api";
 import { AppShell } from "@/components/layout/shared/app-shell";
 import { PageHeader } from "@/components/layout/shared/data-display";
-import { LocationHeader, LocationNavigation } from "@/components/location/location-workspace";
-import { ReportsContent } from "@/components/location/reports";
 import { EmptyState, ErrorState, PageSkeleton } from "@/components/layout/shared/feedback/states";
+import { LocationHeader, LocationNavigation } from "@/components/location/location-workspace";
+import { ReportsList } from "@/components/report/reports-list";
 import { Button } from "@/components/ui/button";
-import { getReports } from "@/lib/reports/reports";
-import { useWorkspace } from "@/lib/mypageseo/workspace";
 import { useRequiredParams } from "@/hooks/use-required-params";
+import { useLocation } from "@/lib/locations/use-locations";
 
-const description = "Reports generated or scheduled for this location.";
-
-
-
+/** One location's reports. */
 function LocationReportsPage() {
   const { locationId } = useRequiredParams("locationId");
-  const workspace = useWorkspace();
-  const location = workspace.locations.find((item) => item.id === locationId) ?? null;
+  const location = useLocation(locationId);
 
-  useEffect(() => {
-    if (location && workspace.activeLocation?.id !== location.id) {
-      workspace.setActiveClientId(location.clientId ?? null);
-      workspace.setActiveLocationId(location.id);
-    }
-  }, [location, workspace]);
-
-  const all = getReports();
-  const data = {
-    ...all,
-    reports: all.reports.filter((report) => report.locationId === locationId),
-  };
-
-  if (workspace.status === "loading") {
+  if (location.isPending) return <AppShell><PageSkeleton /></AppShell>;
+  if (location.isError) {
     return (
       <AppShell>
-        <PageSkeleton />
+        {isApiError(location.error) && location.error.status === 404 ? (
+          <EmptyState
+            title="Location not found"
+            description="It may have been deleted, or it isn't in this organization."
+            action={<Button asChild variant="outline"><Link to="/locations"><ArrowLeft aria-hidden /> Back to locations</Link></Button>}
+          />
+        ) : (
+          <ErrorState description="We couldn't load this location." onRetry={() => void location.refetch()} />
+        )}
       </AppShell>
     );
   }
 
-  if (workspace.status === "unavailable") {
-    return (
-      <AppShell>
-        <ErrorState
-          description="We couldn't load this location workspace. Try again without leaving this page."
-          onRetry={() => window.location.reload()}
-        />
-      </AppShell>
-    );
-  }
-
-  if (!location) {
-    return (
-      <AppShell>
-        <EmptyState
-          title="Location not found"
-          description="This location isn't available in the current workspace. Choose one from your locations list."
-          action={
-            <Button asChild variant="outline">
-              <Link to="/locations">
-                <ArrowLeft aria-hidden /> Back to locations
-              </Link>
-            </Button>
-          }
-        />
-      </AppShell>
-    );
-  }
-
+  const data = location.data;
   return (
-    <AppShell>
-      <LocationHeader location={location} />
-      <LocationNavigation locationId={location.id} activeSection="reports" />
-      <PageHeader
-        title="Reports"
-        description={description}
-        actions={
-          <div className="flex gap-2">
-            <Button asChild variant="outline" size="sm">
-              <Link to="/reports">All reports</Link>
-            </Button>
-            <Button asChild size="sm">
-              <Link to="/reports/create">Create report</Link>
-            </Button>
-          </div>
-        }
+    <AppShell showLocationContext={false}>
+      <LocationHeader
+        location={{
+          id: data.location_id,
+          ...(data.client ? { clientId: data.client.client_id } : {}),
+          businessName: data.name,
+          area: [data.city, data.state, data.country].filter(Boolean).join(", "),
+        }}
       />
-      <ReportsContent
-        data={data.reports.length === 0 ? { ...data, status: "no_reports" } : data}
-        isAgency={workspace.organization?.accountType === "agency"}
-        onRetry={() => window.location.reload()}
-      />
+      <LocationNavigation locationId={data.location_id} activeSection="reports" />
+      <PageHeader title="Reports" description={`Reports generated for ${data.name}. All reports are also under Reports in the menu.`} />
+      <ReportsList locationId={data.location_id} reportPath={(reportId) => `/locations/${data.location_id}/reports/${reportId}`} />
     </AppShell>
   );
 }

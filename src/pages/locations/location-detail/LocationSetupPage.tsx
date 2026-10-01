@@ -402,7 +402,16 @@ function CompetitorsStep({ locationId, onDone }: { locationId: string; onDone: (
       await updateTracking(locationId, { competitors });
       onDone();
     } catch (err) {
-      setError(errorText(err, "The competitors could not be saved. Try again."));
+      const reason = isApiError(err) ? err.reason : undefined;
+      setError(
+        reason === "too_many_competitors"
+          ? `Up to ${MAX_COMPETITORS} competitors.`
+          : reason === "own_place_id"
+            ? "Your own business can't be a competitor."
+            : reason === "invalid_place_id"
+              ? "One of the selected businesses isn't valid anymore. Search for it again."
+              : errorText(err, "The competitors could not be saved. Try again."),
+      );
     } finally {
       setSaving(false);
     }
@@ -480,7 +489,10 @@ function CompetitorsStep({ locationId, onDone }: { locationId: string; onDone: (
           <div>
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Already saved</p>
             <ul className="divide-y divide-border rounded-md border border-border">
-              {unknownSelected.map((placeId) => renderRow({ place_id: placeId, name: "Saved competitor", address: null }))}
+              {unknownSelected.map((placeId) => {
+                const saved = tracking.data?.competitors?.find((entry) => entry.place_id === placeId);
+                return renderRow({ place_id: placeId, name: saved?.name ?? "Saved competitor", address: saved?.address ?? null });
+              })}
             </ul>
           </div>
         ) : null}

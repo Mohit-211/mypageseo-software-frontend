@@ -1,18 +1,7 @@
-import { AppShell } from "@/components/layout/shared/app-shell";
-import { PageHeader } from "@/components/layout/shared/data-display";
-import { MapRankingContent } from "@/components/ranking/map-rankings";
-import { getMapRankings } from "@/lib/raking/map-rankings";
+import { RankingsRedirect } from "./rankings-redirect";
 
-
-
-function MapRankingsPage() {
-  const data = getMapRankings();
-  return (
-    <AppShell>
-      <PageHeader title="Map Rankings" description="Map pack visibility for the selected location." />
-      <MapRankingContent data={data} onRetry={() => {}} />
-    </AppShell>
-  );
+function RankingsMapRankingsPage() {
+  return <RankingsRedirect view="map" />;
 }
 
-export default MapRankingsPage;
+export default RankingsMapRankingsPage;

@@ -8,6 +8,7 @@
 import { API_BASE_URL, API_TIMEOUT_MS } from "./config";
 import { refreshToken } from "./auth/refresh-token";
 import { clearAccessToken, getValidAccessToken, getValidRefreshToken } from "./token-storage";
+import { getSelectedOrganizationId } from "./organization-storage";
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
@@ -186,6 +187,9 @@ async function send<T>(path: string, options: RequestOptions): Promise<T> {
   if (auth) {
     const token = getValidAccessToken();
     if (token) finalHeaders.Authorization = `Bearer ${token}`;
+    // The organization picked in the header; without it the backend uses the default one.
+    const organizationId = getSelectedOrganizationId();
+    if (organizationId && !finalHeaders["X-Organization-Id"]) finalHeaders["X-Organization-Id"] = organizationId;
   }
 
   let response: Response;

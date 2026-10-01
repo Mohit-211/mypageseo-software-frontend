@@ -40,7 +40,13 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
         {items.map((item) => {
           // Section is active for its path and anything nested under it.
           // matchPath is segment-aware ("/rankings" won't match "/rankings-x").
-          const active = matchPath({ path: item.to, end: item.to === "/" }, pathname) !== null;
+          // A section that owns a part of a location page (e.g. /locations/:id/rankings) wins over Locations.
+          const owner = items.find(
+            (entry) => entry.locationSection && matchPath(`/locations/:locationId/${entry.locationSection}/*`, pathname),
+          );
+          const active = owner
+            ? owner === item
+            : matchPath({ path: item.to, end: item.to === "/" }, pathname) !== null;
           const Icon = item.icon;
           return (
             <li key={item.label}>
@@ -66,18 +72,28 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
               </Link>
               {active && item.children ? (
                 <ul className="mt-0.5 mb-1 ml-6 space-y-0.5 border-l border-sidebar-border pl-3">
-                  {item.children.map((child) => (
-                    <li key={child.to}>
-                      <NavLink
-                        to={child.to}
-                        end
-                        onClick={onNavigate}
-                        className="block rounded-md px-2 py-1.5 text-[13px] text-sidebar-foreground/70 transition-colors hover:text-sidebar-accent-foreground aria-[current=page]:font-medium aria-[current=page]:text-sidebar-accent-foreground"
-                      >
-                        {child.label}
-                      </NavLink>
-                    </li>
-                  ))}
+                  {item.children.map((child) => {
+                    // On a location page the child is current when the page is its location path.
+                    const locationId = owner
+                      ? matchPath(`/locations/:locationId/${item.locationSection}/*`, pathname)?.params.locationId
+                      : undefined;
+                    const childPath =
+                      locationId !== undefined && child.locationPath !== undefined
+                        ? `/locations/${locationId}/${item.locationSection}${child.locationPath ? `/${child.locationPath}` : ""}`
+                        : null;
+                    return (
+                      <li key={child.to}>
+                        <NavLink
+                          to={childPath ?? child.to}
+                          end
+                          onClick={onNavigate}
+                          className="block rounded-md px-2 py-1.5 text-[13px] text-sidebar-foreground/70 transition-colors hover:text-sidebar-accent-foreground aria-[current=page]:font-medium aria-[current=page]:text-sidebar-accent-foreground"
+                        >
+                          {child.label}
+                        </NavLink>
+                      </li>
+                    );
+                  })}
                 </ul>
               ) : null}
             </li>
@@ -93,22 +109,25 @@ function ContextSwitcher() {
   const {
     status,
     organization,
+    organizations,
     activeClient,
     activeLocation,
     clients,
     locations,
-    setAccountType,
+    setOrganizationId,
     setActiveClientId,
     setActiveLocationId,
   } = useWorkspace();
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
 
-  if (status !== "ready" || !organization) {
+  if (status === "loading") {
+    return <span className="h-8 w-48 animate-pulse rounded-md bg-muted" aria-label="Loading workspace" />;
+  }
+  if (!organization) {
     return (
       <div className="flex min-w-0 items-center gap-2 text-sm">
-        <span className="truncate font-medium text-foreground">No workspace connected</span>
-        <span className="hidden truncate text-muted-foreground sm:inline">
-          · Organization, client and location context appear once the account is connected
-        </span>
+        <span className="truncate font-medium text-foreground">No organization</span>
       </div>
     );
   }
@@ -117,34 +136,45 @@ function ContextSwitcher() {
     ? locations.filter((l) => l.clientId === activeClient.id)
     : locations;
 
+  // On a location page, switching location opens the same page for the new one.
+  const locationRoute = matchPath("/locations/:locationId/*", pathname) ?? matchPath("/locations/:locationId", pathname);
+  const routeLocationId = locationRoute?.params.locationId;
+  const onLocationPage = Boolean(routeLocationId && routeLocationId !== "add");
+  const pickLocation = (id: string | null) => {
+    setActiveLocationId(id);
+    if (!onLocationPage || !routeLocationId) return;
+    if (id) navigate(pathname.replace(`/locations/${routeLocationId}`, `/locations/${id}`));
+    else navigate("/locations");
+  };
+  const currentLocation = onLocationPage ? (locations.find((l) => l.id === routeLocationId) ?? activeLocation) : activeLocation;
+
   return (
     <div className="flex min-w-0 items-center gap-2">
       <DropdownMenu>
-        <DropdownMenuTrigger className="flex min-w-0 items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm font-medium hover:bg-secondary">
+        <DropdownMenuTrigger
+          disabled={organizations.length <= 1}
+          className="flex min-w-0 items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm font-medium hover:bg-secondary disabled:cursor-default disabled:hover:bg-surface"
+        >
           <span className="truncate">{organization.name}</span>
-          <ChevronDown className="size-3.5 text-muted-foreground" aria-hidden />
+          {organizations.length > 1 ? <ChevronDown className="size-3.5 text-muted-foreground" aria-hidden /> : null}
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-64">
           <DropdownMenuLabel>Organization</DropdownMenuLabel>
-          {(
-            [
-              { type: "business" as const, name: "Riverside Dental Group", kind: "Business" },
-              { type: "agency" as const, name: "Northbound Digital", kind: "Agency" },
-            ]
-          ).map((entry) => {
-            const current = entry.name === organization.name;
+          {organizations.map((entry) => {
+            const current = entry.id === organization.id;
             return (
               <DropdownMenuItem
-                key={entry.type}
-                onSelect={() => setAccountType(entry.type)}
+                key={entry.id}
+                onSelect={() => {
+                  if (current) return;
+                  setOrganizationId(entry.id);
+                  navigate("/dashboard");
+                }}
                 aria-current={current ? "true" : undefined}
               >
-                <Check
-                  className={cn("size-3.5 shrink-0", current ? "opacity-100" : "opacity-0")}
-                  aria-hidden
-                />
+                <Check className={cn("size-3.5 shrink-0", current ? "opacity-100" : "opacity-0")} aria-hidden />
                 <span className="truncate">{entry.name}</span>
-                <span className="ml-auto text-xs text-muted-foreground">{entry.kind}</span>
+                <span className="ml-auto text-xs capitalize text-muted-foreground">{entry.accountType}</span>
               </DropdownMenuItem>
             );
           })}
@@ -161,9 +191,7 @@ function ContextSwitcher() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-64">
               <DropdownMenuLabel>Client</DropdownMenuLabel>
-              <DropdownMenuItem onSelect={() => setActiveClientId(null)}>
-                All clients
-              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setActiveClientId(null)}>All clients</DropdownMenuItem>
               {clients.map((client) => (
                 <DropdownMenuItem key={client.id} onSelect={() => setActiveClientId(client.id)}>
                   {client.name}
@@ -174,26 +202,28 @@ function ContextSwitcher() {
         </>
       ) : null}
 
-      <span className="hidden text-muted-foreground sm:inline">/</span>
-      <DropdownMenu>
-        <DropdownMenuTrigger className="hidden min-w-0 items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm hover:bg-secondary sm:flex">
-          <span className="truncate">
-            {activeLocation ? activeLocation.businessName : "All locations"}
-          </span>
-          <ChevronDown className="size-3.5 text-muted-foreground" aria-hidden />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-72">
-          <DropdownMenuLabel>Location</DropdownMenuLabel>
-          <DropdownMenuItem onSelect={() => setActiveLocationId(null)}>
-            All locations
-          </DropdownMenuItem>
-          {visibleLocations.map((location) => (
-            <DropdownMenuItem key={location.id} onSelect={() => setActiveLocationId(location.id)}>
-              <span className="truncate">{location.businessName}</span>
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {locations.length > 0 ? (
+        <>
+          <span className="hidden text-muted-foreground sm:inline">/</span>
+          <DropdownMenu>
+            <DropdownMenuTrigger className="hidden min-w-0 items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm hover:bg-secondary sm:flex">
+              <span className="truncate">{currentLocation ? currentLocation.businessName : "All locations"}</span>
+              <ChevronDown className="size-3.5 text-muted-foreground" aria-hidden />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="max-h-96 w-72 overflow-y-auto">
+              <DropdownMenuLabel>Location</DropdownMenuLabel>
+              <DropdownMenuItem onSelect={() => pickLocation(null)}>All locations</DropdownMenuItem>
+              {visibleLocations.map((location) => (
+                <DropdownMenuItem key={location.id} onSelect={() => pickLocation(location.id)}>
+                  <Check className={cn("size-3.5 shrink-0", currentLocation?.id === location.id ? "opacity-100" : "opacity-0")} aria-hidden />
+                  <span className="truncate">{location.businessName}</span>
+                  {location.area ? <span className="ml-auto truncate pl-2 text-xs text-muted-foreground">{location.area}</span> : null}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </>
+      ) : null}
     </div>
   );
 }

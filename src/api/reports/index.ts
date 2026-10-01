@@ -1,12 +1,26 @@
 import { api, unwrapData } from "../client";
 import { ENDPOINTS } from "../endpoints";
-import type { ReportDetail, ReportRecord } from "../types/rankings";
+import type { ReportDetail, ReportRecord, ReportsListResponse } from "../types/rankings";
 
-/** Queues a report (202). One active report per location and type: a repeat returns it with `existing: true`. */
+export type ReportType = "rank_tracker" | "gbp_audit" | "competitor_analysis" | "citation" | "full";
+
+/** `GET reports`, newest first. */
+export async function getReports(
+  params: { location_id?: string; client_id?: string; type?: ReportType; status?: string; page?: number; limit?: number },
+  signal?: AbortSignal,
+): Promise<ReportsListResponse> {
+  return unwrapData(await api.get(ENDPOINTS.reports.list, { query: params, ...(signal ? { signal } : {}) }));
+}
+
+/**
+ * Queues a report (202). One active report per location and type: a repeat returns it
+ * with `existing: true`. `run_id` makes a rank_tracker / full report for an older run.
+ */
 export async function createReport(body: {
   location_id: string;
-  type: "rank_tracker" | "gbp_audit" | "competitor_analysis" | "citation" | "full";
+  type: ReportType;
   range?: string;
+  run_id?: string;
 }): Promise<ReportRecord> {
   return unwrapData(await api.post(ENDPOINTS.reports.create, body));
 }

@@ -163,15 +163,41 @@ export type LocationTracking = {
   keywords: { text: string; normalized: string }[];
   keywords_version: number;
   competitors: string[];
-  grid: { size: number; spacing_km: number };
+  /** `radius_km` = center to edge (Phase 17). */
+  grid: { size: number; spacing_km: number; radius_km: number };
   frequency: string;
   last_run_at: string | null;
   last_error: string | null;
 };
 
+/** A tracked competitor's details (Phase 17); fields are null when no details were found. */
+export type TrackedCompetitor = {
+  place_id: string;
+  name: string | null;
+  address: string | null;
+  lat: number | null;
+  lng: number | null;
+};
+
 export type TrackingResponse = {
   tracking: LocationTracking;
+  /** Same order as `tracking.competitors`. */
+  competitors?: TrackedCompetitor[];
   onboarding_step?: LocationOnboardingStep;
+};
+
+/** `GET locations/:id/tracking/estimate`: what a run would need, before saving. */
+export type TrackingEstimate = {
+  grid: { size: number; spacing_km: number; radius_km: number };
+  keywords: number;
+  points_per_keyword: number;
+  tracker_offset_km: number;
+  expected_duration_ms: number;
+  cap: number;
+  /** True = a run would be refused (422): don't save these settings. */
+  over_cap: boolean;
+  dev_capped: boolean;
+  token_cost: { rankings: number };
 };
 
 export type CompetitorSuggestion = {

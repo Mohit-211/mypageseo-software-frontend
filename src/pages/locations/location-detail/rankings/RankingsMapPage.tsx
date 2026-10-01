@@ -3,6 +3,7 @@ import type { MapRankingResponse, TrackerPointLabel } from "@/api";
 import { Panel, StatusBadge } from "@/components/layout/shared/data-display";
 import { PageSkeleton } from "@/components/layout/shared/feedback/states";
 import { RankingsError, RankingsPageHeader } from "@/components/ranking/rank-ui";
+import { PinsMap, type MapPin } from "@/components/ranking/rank-map";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { targetLabel } from "@/lib/rankings/format";
@@ -18,6 +19,24 @@ const POINT_LABEL: Record<TrackerPointLabel, string> = {
   W: "West",
 };
 const POINTS = Object.keys(POINT_LABEL) as TrackerPointLabel[];
+
+/** Where a tracker point lies: the center, or `offsetKm` north / south / east / west of it. */
+function searchPointFor(point: TrackerPointLabel, center: { lat: number; lng: number }, offsetKm: number) {
+  const dLat = offsetKm / 111.32;
+  const dLng = offsetKm / (111.32 * Math.cos((center.lat * Math.PI) / 180));
+  switch (point) {
+    case "N":
+      return { lat: center.lat + dLat, lng: center.lng };
+    case "S":
+      return { lat: center.lat - dLat, lng: center.lng };
+    case "E":
+      return { lat: center.lat, lng: center.lng + dLng };
+    case "W":
+      return { lat: center.lat, lng: center.lng - dLng };
+    default:
+      return center;
+  }
+}
 
 /** Local Map Ranking: who ranks in the top 20 at one search point, per keyword. */
 function LocationMapRankingsPage() {
@@ -90,6 +109,20 @@ function MapContent({
   const selected = data.keywords.find((entry) => entry.keyword === keyword) ?? data.keywords[0];
   if (!selected) return <Panel><p className="text-sm text-muted-foreground">This run has no keywords.</p></Panel>;
   const selfRank = selected.results.find((result) => result.is_self)?.rank ?? null;
+  // Runs before map pins (Phase 17) have no coordinates: no map for those.
+  const pins: MapPin[] = selected.results.flatMap((result) =>
+    result.lat != null && result.lng != null
+      ? [{
+          key: `${result.rank}-${result.place_id}`,
+          lat: result.lat,
+          lng: result.lng,
+          rank: result.rank,
+          name: result.name ?? "Unnamed business",
+          kind: result.is_self ? ("self" as const) : result.target_key ? ("competitor" as const) : ("other" as const),
+        }]
+      : [],
+  );
+  const searchPoint = searchPointFor(selected.point, data.run.center, data.run.config.tracker_offset_km);
   const available = data.points_available.length > 0 ? data.points_available : (["C"] as TrackerPointLabel[]);
 
   return (
@@ -119,6 +152,12 @@ function MapContent({
         </div>
       </div>
 
+      {pins.length > 0 ? (
+        <Panel title="Map" description="Numbers are the Google Maps rank from this search point. Yours is highlighted; tracked competitors are blue.">
+          <PinsMap pins={pins} searchPoint={searchPoint} />
+        </Panel>
+      ) : null}
+
       <Panel
         title={`${selected.keyword} · ${POINT_LABEL[selected.point] ?? selected.point}`}
         description={selfRank ? `${selfName} is #${selfRank} here.` : `${selfName} isn't in the top 20 here.`}
@@ -130,13 +169,16 @@ function MapContent({
               className={cn("flex items-center gap-3 px-4 py-2.5", result.is_self && "bg-brand-tint font-semibold")}
             >
               <span className="w-7 shrink-0 text-right text-sm tabular text-muted-foreground">{result.rank}</span>
-              <span className="min-w-0 flex-1 truncate text-sm text-foreground">
-                {result.name ?? <span className="text-muted-foreground">Name not stored</span>}
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm text-foreground">
+                  {result.name ?? <span className="text-muted-foreground">Name not stored</span>}
+                </span>
+                {result.address ? <span className="block truncate text-xs font-normal text-muted-foreground">{result.address}</span> : null}
               </span>
               {result.is_self ? (
                 <StatusBadge tone="brand">You</StatusBadge>
               ) : result.target_key ? (
-                <StatusBadge tone="info">{targetLabel(result.target_key)}</StatusBadge>
+                <StatusBadge tone="info">{targetLabel(result.target_key, selfName, data.targets?.find((t) => t.key === result.target_key)?.name)}</StatusBadge>
               ) : null}
             </li>
           ))}

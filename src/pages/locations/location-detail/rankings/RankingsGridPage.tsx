@@ -1,12 +1,14 @@
+import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import type { GridResponse } from "@/api";
 import { Panel } from "@/components/layout/shared/data-display";
 import { PageSkeleton } from "@/components/layout/shared/feedback/states";
 import { AvgRank, BucketLegend, RankCellView, RankingsError, RankingsPageHeader } from "@/components/ranking/rank-ui";
+import { GridMap } from "@/components/ranking/rank-map";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { formatRate, targetLabel } from "@/lib/rankings/format";
-import { useRankingsContext, useRunParam } from "@/lib/rankings/rankings-context";
+import { BUCKET_LABEL, formatRate, targetLabel } from "@/lib/rankings/format";
+import { useGroupParam, useRankingsContext, useRunParam } from "@/lib/rankings/rankings-context";
 import { useGrid } from "@/lib/rankings/use-rankings";
 import { cn } from "@/lib/utils";
 
@@ -14,9 +16,10 @@ import { cn } from "@/lib/utils";
 function RankingsGridPage() {
   const { location } = useRankingsContext();
   const [runId, setRunId] = useRunParam();
+  const [group, setGroup] = useGroupParam();
   const [params, setParams] = useSearchParams();
   // All keywords come in one call, so switching keyword or business needs no request.
-  const grid = useGrid(location.location_id, runId);
+  const grid = useGrid(location.location_id, runId, group);
 
   const setParam = (key: string, value: string | undefined) =>
     setParams(
@@ -37,6 +40,7 @@ function RankingsGridPage() {
         title="Local Search Grid"
         description="Where the business ranks across the area: each square is one search point (north at the top)."
         run={grid.data?.run}
+        groupFilter
       />
       {grid.isPending ? (
         <PageSkeleton />
@@ -47,6 +51,7 @@ function RankingsGridPage() {
           onRetry={() => void grid.refetch()}
           onLatest={() => setRunId(undefined)}
           onClearKeyword={() => setParam("keyword", undefined)}
+          onClearGroup={() => setGroup(undefined)}
         />
       ) : (
         <GridContent
@@ -77,6 +82,7 @@ function GridContent({
   onKeyword: (keyword: string) => void;
   onTarget: (target: string) => void;
 }) {
+  const [view, setView] = useState<"map" | "squares">("map");
   const selected = data.keywords.find((entry) => entry.keyword === keyword) ?? data.keywords[0];
   const targetKey = data.targets.some((entry) => entry.key === target) ? target : "self";
   if (!selected) return <Panel><p className="text-sm text-muted-foreground">This run has no keywords.</p></Panel>;
@@ -85,6 +91,13 @@ function GridContent({
   const center = (size - 1) / 2;
   const byPosition = new Map(selected.points.map((point) => [`${point.row}:${point.col}`, point]));
   const summary = selected.summary[targetKey];
+  const targetName = targetLabel(targetKey, selfName, data.targets.find((entry) => entry.key === targetKey)?.name);
+  const mapPoints = selected.points.flatMap((point) => {
+    const cell = point.byTarget[targetKey];
+    if (!cell) return [];
+    const text = cell.status === "error" ? "—" : cell.status === "not_found" ? "60+" : cell.display;
+    return [{ key: `${point.row}:${point.col}`, lat: point.lat, lng: point.lng, text, bucket: cell.bucket, title: `${text} · ${BUCKET_LABEL[cell.bucket]}` }];
+  });
 
   return (
     <div className="space-y-4">
@@ -104,7 +117,7 @@ function GridContent({
             <Select value={targetKey} onValueChange={onTarget}>
               <SelectTrigger id="grid-target" className="w-full bg-background sm:w-56"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {data.targets.map((entry) => <SelectItem key={entry.key} value={entry.key}>{targetLabel(entry.key, selfName)}</SelectItem>)}
+                {data.targets.map((entry) => <SelectItem key={entry.key} value={entry.key}>{targetLabel(entry.key, selfName, entry.name)}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -112,7 +125,28 @@ function GridContent({
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
-        <Panel title={`${selected.keyword} · ${targetLabel(targetKey, selfName)}`} description={`${size}×${size} points, ${data.grid.spacing_km} km apart. The outlined square is the business center.`}>
+        <Panel
+          title={`${selected.keyword} · ${targetName}`}
+          description={`${size}×${size} points, ${data.grid.spacing_km} km apart. The outlined point is the business center.`}
+          actions={
+            <div className="flex rounded-md border border-border p-0.5" role="group" aria-label="View">
+              {(["map", "squares"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  aria-pressed={view === mode}
+                  onClick={() => setView(mode)}
+                  className={cn("rounded px-2.5 py-1 text-xs font-medium capitalize", view === mode ? "bg-primary text-primary-foreground" : "text-muted-foreground")}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
+          }
+        >
+          {view === "map" ? (
+            <GridMap points={mapPoints} center={data.run.center} />
+          ) : (
           <div
             className="mx-auto grid max-w-md gap-1.5"
             style={{ gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))` }}
@@ -131,6 +165,7 @@ function GridContent({
               );
             })}
           </div>
+          )}
         </Panel>
         <Panel title="Summary">
           <dl className="space-y-2 text-sm">

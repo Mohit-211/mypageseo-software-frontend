@@ -3,7 +3,8 @@ import type { Attribution } from "./locations";
 /** `self` is the location; `competitor_1`… follow `tracking.competitors`. */
 export type TargetKey = string;
 
-export type RankTarget = { key: TargetKey; place_id: string };
+/** `name` (Phase 17) labels competitors; it can be null when no details were found. */
+export type RankTarget = { key: TargetKey; place_id: string; name?: string | null };
 
 export type RankBucket = "pack" | "visible" | "low" | "invisible" | "not_found" | "error";
 
@@ -35,10 +36,33 @@ export type RunMeta = {
   status: "done" | "partial";
   keywords_version: number;
   center: { lat: number; lng: number };
-  config: { grid_size: number; spacing_km: number; tracker_offset_km: number; radius_m: number; store_place_names: boolean };
+  /** `radius_km` (Phase 17) is center to edge; `radius_m` is the search bias around each point. */
+  config: {
+    grid_size: number;
+    spacing_km: number;
+    radius_km?: number;
+    tracker_offset_km: number;
+    radius_m: number;
+    store_place_names: boolean;
+  };
 };
 
-export type OverallRank = { overallAvgRank: number | null; change: number | null };
+/** `change` covers only the keywords both runs measured (`comparable_keywords` of `keywords_total`). */
+export type OverallRank = {
+  overallAvgRank: number | null;
+  change: number | null;
+  comparable_keywords?: number;
+  keywords_total?: number;
+};
+
+/** A keyword group's summary in one run (`GET rank-tracker` → `groups`). */
+export type GroupSummary = {
+  group_id: string;
+  name: string;
+  keywords: string[];
+  keywords_in_run: number;
+  summary: Record<TargetKey, RankSummary & { comparable_keywords?: number }>;
+};
 
 export type TrackerPointLabel = "C" | "N" | "S" | "E" | "W";
 
@@ -54,6 +78,9 @@ export type RankTrackerResponse = {
   overall: Record<TargetKey, OverallRank>;
   /** The overall average of `self` over the last 12 done/partial runs, oldest first. */
   trend: { run_id: string; run_at: string; overallAvgRank: number | null; keywords_version: number }[];
+  /** The `?group=` filter in effect, or null. */
+  group?: { group_id: string; name: string } | null;
+  groups?: GroupSummary[];
 };
 
 export type GridPoint = { row: number; col: number; lat: number; lng: number; byTarget: Record<TargetKey, RankCell> };
@@ -72,11 +99,16 @@ export type MapRankingResult = {
   name: string | null;
   is_self: boolean;
   target_key: TargetKey | null;
+  /** Phase 17 (null on older runs): for pins on the map. */
+  address?: string | null;
+  lat?: number | null;
+  lng?: number | null;
 };
 
 /** `GET locations/:id/map-ranking`. */
 export type MapRankingResponse = {
   run: RunMeta;
+  targets?: RankTarget[];
   names_stored: boolean;
   point: TrackerPointLabel | "all";
   points_available: TrackerPointLabel[];
@@ -91,6 +123,7 @@ export type RankRunSummary = {
   trigger: string;
   keywords_version: number;
   overall: Record<TargetKey, OverallRank>;
+  targets?: RankTarget[];
 };
 
 /** `GET locations/:id/rank-runs`, newest first. */
@@ -120,8 +153,11 @@ export type ReportRecord = {
   type: string;
   status: ReportStatus;
   location: { location_id: string; name: string } | null;
+  client?: { client_id: string; name: string | null } | null;
   range: string | null;
   run_id: string | null;
+  /** The ranking run's date; null for types without rankings. */
+  run_at?: string | null;
   pdf: { bytes: number; pages: number } | null;
   failure_reason: string | null;
   created_at: string;
@@ -151,3 +187,21 @@ export type ReportDetail = {
   snapshot: unknown;
   document: { title: string; period: string | null; generated_at: string; blocks: ReportBlock[] } | null;
 };
+
+/** `GET locations/:id/keyword-history`: one keyword across finished runs, oldest first. */
+export type KeywordHistory = {
+  keyword: string;
+  runs: {
+    run_id: string;
+    run_at: string;
+    status: string;
+    keywords_version: number;
+    targets: RankTarget[];
+    summary: Record<TargetKey, RankSummary>;
+  }[];
+};
+
+export type KeywordGroup = { group_id: string; name: string; keywords: string[] };
+
+/** `GET reports`. */
+export type ReportsListResponse = { reports: ReportRecord[]; page: number; limit: number; total: number };

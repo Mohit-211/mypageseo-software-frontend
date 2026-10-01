@@ -1,7 +1,7 @@
 import { api, unwrapData } from "../client";
 import { ENDPOINTS } from "../endpoints";
 import type { VerifyEmailResult } from "../types/auth";
-import { storeSessionTokens } from "./session";
+import { startSession } from "./session";
 
 /**
  * Confirms the email from the link's token. The first time it signs the user in
@@ -10,7 +10,7 @@ import { storeSessionTokens } from "./session";
  */
 export async function verifyEmail(token: string): Promise<VerifyEmailResult> {
   const result = unwrapData<VerifyEmailResult>(await api.post(ENDPOINTS.auth.verifyEmail, { token }, { auth: false }));
-  if (!result.already_verified) storeSessionTokens(result.tokens, true, result);
+  if (!result.already_verified) startSession(result.tokens, true, result);
   return result;
 }
 

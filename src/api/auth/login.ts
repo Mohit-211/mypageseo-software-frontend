@@ -1,7 +1,7 @@
 import { api, unwrapData } from "../client";
 import { ENDPOINTS } from "../endpoints";
 import type { AuthSession, LoginRequest } from "../types/auth";
-import { storeSessionTokens } from "./session";
+import { startSession } from "./session";
 
 /**
  * Signs in and stores the tokens. 401 wrong email or password; 403
@@ -9,6 +9,6 @@ import { storeSessionTokens } from "./session";
  */
 export async function login({ rememberMe, ...credentials }: LoginRequest): Promise<AuthSession> {
   const session = unwrapData<AuthSession>(await api.post(ENDPOINTS.auth.login, credentials, { auth: false }));
-  storeSessionTokens(session?.tokens, rememberMe ?? false, session);
+  startSession(session?.tokens, rememberMe ?? false, session);
   return session;
 }

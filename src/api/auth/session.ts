@@ -1,5 +1,6 @@
 import { ApiError } from "../client";
 import { setAuthTokens } from "../token-storage";
+import { setSelectedOrganizationId } from "../organization-storage";
 import type { AuthTokens } from "../types/auth";
 
 /**
@@ -13,4 +14,10 @@ export function storeSessionTokens(tokens: AuthTokens | undefined, remember: boo
   const pair = { access: tokens.access.token, refresh: tokens.refresh?.token };
   if (remember === undefined) setAuthTokens(pair);
   else setAuthTokens(pair, remember);
+}
+
+/** A fresh sign-in (login, verification, invitation): stores the tokens and starts in the default organization. */
+export function startSession(tokens: AuthTokens | undefined, remember: boolean, details?: unknown) {
+  storeSessionTokens(tokens, remember, details);
+  setSelectedOrganizationId(null);
 }

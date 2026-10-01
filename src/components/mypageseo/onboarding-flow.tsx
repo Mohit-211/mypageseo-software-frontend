@@ -52,7 +52,6 @@ import {
   updateOnboardingSession,
   useOnboardingSession,
 } from "@/lib/auth/onboarding-state";
-import { useWorkspace } from "@/lib/mypageseo/workspace";
 
 type AccountType = "business" | "agency";
 
@@ -203,7 +202,6 @@ function FlowBody({
   };
 }) {
   const navigate = useNavigate();
-  const workspace = useWorkspace();
   const steps = stepsFor(accountType);
   const index = stepIndex(step, steps);
 
@@ -342,10 +340,7 @@ function FlowBody({
         completedSteps: steps.map((entry) => entry.id),
         finishedAt: new Date().toISOString(),
       }));
-      // Open the product in the context that was just configured.
-      workspace.setAccountType(accountType);
-      if (progress.clientId) workspace.setActiveClientId(progress.clientId);
-      if (progress.selectedProfileId) workspace.setActiveLocationId(progress.selectedProfileId);
+      // The account type, clients and locations come from the organization itself (GET auth/me, GET locations).
       setFinishing(false);
       navigate("/dashboard");
     }, 700);

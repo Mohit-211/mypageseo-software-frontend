@@ -3,13 +3,25 @@ import { Link, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ArrowLeft, LoaderCircle, RefreshCw } from "lucide-react";
-import { apiErrorData, isApiError, refreshLocation, type ChangeLabel, type RankBucket, type RankCell } from "@/api";
+import { apiErrorData, isApiError, refreshLocation, type ChangeLabel, type OverallRank, type RankCell } from "@/api";
 import { PageHeader, TrendIndicator } from "@/components/layout/shared/data-display";
 import { RankingsNavigation } from "@/components/location/location-workspace";
 import { EmptyState, ErrorState } from "@/components/layout/shared/feedback/states";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { BUCKET_LABEL, CHANGE_LABEL_TEXT, formatAvgRank, formatRunDate } from "@/lib/rankings/format";
+import {
+  BUCKET_CLASS,
+  BUCKET_LABEL,
+  CHANGE_LABEL_TEXT,
+  RANKINGS_SOURCE_NOTE,
+  comparableNote,
+  formatAvgRank,
+  formatDistance,
+  formatRunDate,
+} from "@/lib/rankings/format";
+import { GridSettingsButton } from "@/components/ranking/grid-settings-dialog";
+import { GroupFilter } from "@/components/ranking/keyword-controls";
+import type { RankBucket } from "@/api";
 import { locationSetupPath } from "@/lib/locations/location-actions";
 import {
   rankingErrorState,
@@ -21,14 +33,6 @@ import { useRunParam } from "@/lib/rankings/rankings-context";
 import type { RunMeta } from "@/api";
 import { cn } from "@/lib/utils";
 
-const BUCKET_CLASS: Record<RankBucket, string> = {
-  pack: "border-success/30 bg-success-surface text-success",
-  visible: "border-info/30 bg-info-surface text-info",
-  low: "border-warning/35 bg-warning-surface text-warning-foreground",
-  invisible: "border-critical/25 bg-critical-surface text-critical",
-  not_found: "border-border bg-muted text-muted-foreground",
-  error: "border-dashed border-border bg-background text-muted-foreground",
-};
 
 function cellTitle(cell: RankCell) {
   const parts = [BUCKET_LABEL[cell.bucket] ?? cell.bucket];
@@ -91,6 +95,18 @@ export function RankChange({ change, label }: { change: number | null | undefine
   );
 }
 
+/** Overall change, noting when it covers only some keywords (after keyword edits). */
+export function OverallChange({ overall }: { overall: OverallRank | undefined }) {
+  if (!overall || overall.comparable_keywords === 0) return <span className="text-xs text-muted-foreground">—</span>;
+  const note = comparableNote(overall.comparable_keywords, overall.keywords_total);
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      <RankChange change={overall.change} />
+      {note && overall.change != null ? <span className="text-xs text-muted-foreground">({note})</span> : null}
+    </span>
+  );
+}
+
 export function AvgRank({ value }: { value: number | null | undefined }) {
   return <span className="font-semibold tabular text-foreground">{formatAvgRank(value)}</span>;
 }
@@ -105,6 +121,7 @@ export function RankingsError({
   onRetry,
   onLatest,
   onClearKeyword,
+  onClearGroup,
   onPoint,
 }: {
   error: unknown;
@@ -112,6 +129,7 @@ export function RankingsError({
   onRetry: () => void;
   onLatest: () => void;
   onClearKeyword?: () => void;
+  onClearGroup?: () => void;
   onPoint?: (point: string) => void;
 }) {
   const state = rankingErrorState(error);
@@ -140,6 +158,14 @@ export function RankingsError({
           title="This run hasn't finished"
           description={`The selected run is ${state.status ?? "still in progress"}. Its results appear once it's done.`}
           action={<Button variant="outline" onClick={onLatest}>Show the latest results</Button>}
+        />
+      );
+    case "group_not_found":
+      return (
+        <EmptyState
+          title="Keyword group not found"
+          description="It may have been deleted. Showing all keywords instead is one click away."
+          action={onClearGroup ? <Button variant="outline" onClick={onClearGroup}>Show all keywords</Button> : undefined}
         />
       );
     case "keyword_not_in_run":
@@ -300,7 +326,7 @@ export function RefreshRankingsButton({ locationId }: { locationId: string }) {
   );
 }
 
-/** Tabs, title, run picker and refresh button shared by the ranking pages. */
+/** Tabs, title, run picker, filters and actions shared by the ranking pages. */
 export function RankingsPageHeader({
   locationId,
   view,
@@ -308,15 +334,19 @@ export function RankingsPageHeader({
   description,
   run,
   actions,
+  groupFilter = false,
 }: {
   locationId: string;
-  view: "overview" | "keywords" | "map" | "grid" | "competitors";
+  view: "overview" | "keywords" | "groups" | "map" | "grid" | "competitors";
   title: string;
   description: string;
   run?: RunMeta | undefined;
   actions?: ReactNode;
+  /** Show the keyword-group filter (Rank Tracker, Keywords, grid). */
+  groupFilter?: boolean;
 }) {
   const [runId, setRunId] = useRunParam();
+  const radius = run?.config.radius_km;
   return (
     <>
       <RankingsNavigation locationId={locationId} activeView={view} />
@@ -324,18 +354,23 @@ export function RankingsPageHeader({
         title={title}
         description={description}
         meta={
-          run ? (
-            <p className="text-xs text-muted-foreground">
-              Run of {formatRunDate(run.run_at, true)}
-              {run.status === "partial" ? " · partial: some searches failed" : ""} · Google Maps results, {run.config.grid_size}×
-              {run.config.grid_size} grid, {run.config.spacing_km} km apart
-            </p>
-          ) : undefined
+          <div className="space-y-0.5 text-xs text-muted-foreground">
+            {run ? (
+              <p>
+                Run of {formatRunDate(run.run_at, true)}
+                {run.status === "partial" ? " · partial: some searches failed" : ""} · {run.config.grid_size}×{run.config.grid_size} grid
+                {radius ? `, ${formatDistance(radius)} from center to edge` : `, points ${run.config.spacing_km} km apart`}
+              </p>
+            ) : null}
+            <p>{RANKINGS_SOURCE_NOTE}</p>
+          </div>
         }
         actions={
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+            {groupFilter ? <GroupFilter locationId={locationId} /> : null}
             <RunPicker locationId={locationId} runId={runId} onChange={setRunId} />
             <RefreshRankingsButton locationId={locationId} />
+            <GridSettingsButton locationId={locationId} />
             {actions}
           </div>
         }

@@ -43,6 +43,11 @@ export const ENDPOINTS = {
     overview: (locationId: string) => `locations/${encodeURIComponent(locationId)}/overview`,
     center: (locationId: string) => `locations/${encodeURIComponent(locationId)}/center`,
     tracking: (locationId: string) => `locations/${encodeURIComponent(locationId)}/tracking`,
+    trackingEstimate: (locationId: string) => `locations/${encodeURIComponent(locationId)}/tracking/estimate`,
+    keywordGroups: (locationId: string) => `locations/${encodeURIComponent(locationId)}/keyword-groups`,
+    keywordGroup: (locationId: string, groupId: string) =>
+      `locations/${encodeURIComponent(locationId)}/keyword-groups/${encodeURIComponent(groupId)}`,
+    keywordHistory: (locationId: string) => `locations/${encodeURIComponent(locationId)}/keyword-history`,
     competitorSuggestions: (locationId: string) =>
       `locations/${encodeURIComponent(locationId)}/competitor-suggestions`,
     rankRun: (locationId: string, runId: string) =>
@@ -54,6 +59,7 @@ export const ENDPOINTS = {
     refresh: (locationId: string) => `locations/${encodeURIComponent(locationId)}/refresh`,
   },
   reports: {
+    list: "reports",
     create: "reports",
     detail: (reportId: string) => `reports/${encodeURIComponent(reportId)}`,
     pdf: (reportId: string) => `reports/${encodeURIComponent(reportId)}/pdf`,

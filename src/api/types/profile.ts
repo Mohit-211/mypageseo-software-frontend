@@ -19,6 +19,10 @@ export type Profile = {
   profile_image?: string | null;
   email_verified?: boolean;
   is_email_verified?: boolean;
+  /** Every organization the user belongs to. */
+  organizations?: { organization_id: string; name: string; type: "business" | "agency"; role: string }[];
+  /** The organization requests act on (the `X-Organization-Id` header, else the default). */
+  current_organization_id?: string | null;
 };
 
 export type GetProfileResponse = {

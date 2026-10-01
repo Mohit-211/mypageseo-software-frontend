@@ -1,6 +1,7 @@
+import { Link } from "react-router-dom";
 import { Panel } from "@/components/layout/shared/data-display";
 import { PageSkeleton } from "@/components/layout/shared/feedback/states";
-import { AvgRank, RankChange, RankingsError, RankingsPageHeader } from "@/components/ranking/rank-ui";
+import { AvgRank, OverallChange, RankingsError, RankingsPageHeader } from "@/components/ranking/rank-ui";
 import { targetLabel } from "@/lib/rankings/format";
 import { useRankingsContext, useRunParam } from "@/lib/rankings/rankings-context";
 import { useRankTracker } from "@/lib/rankings/use-rankings";
@@ -26,7 +27,10 @@ function RankingsCompetitorsPage() {
         <RankingsError error={tracker.error} locationId={location.location_id} onRetry={() => void tracker.refetch()} onLatest={() => setRunId(undefined)} />
       ) : tracker.data.targets.length <= 1 ? (
         <Panel>
-          <p className="text-sm text-muted-foreground">No competitors are tracked for this location. Add them in the location's setup.</p>
+          <p className="text-sm text-muted-foreground">
+            No competitors are tracked for this location.{" "}
+            <Link className="font-medium text-primary hover:underline" to={`/locations/${location.location_id}/setup`}>Add competitors</Link>
+          </p>
         </Panel>
       ) : (
         <Panel>
@@ -44,11 +48,11 @@ function RankingsCompetitorsPage() {
               <tbody className="divide-y divide-border">
                 {tracker.data.targets.map((target) => (
                   <tr key={target.key} className={target.key === "self" ? "bg-brand-tint/50" : undefined}>
-                    <td className="px-4 py-3 font-medium text-foreground">{targetLabel(target.key, location.name)}</td>
+                    <td className="px-4 py-3 font-medium text-foreground">{targetLabel(target.key, location.name, target.name)}</td>
                     <td className="px-3 py-3 text-right">
                       <span className="inline-flex items-center gap-2">
                         <AvgRank value={tracker.data.overall[target.key]?.overallAvgRank} />
-                        <RankChange change={tracker.data.overall[target.key]?.change} />
+                        <OverallChange overall={tracker.data.overall[target.key]} />
                       </span>
                     </td>
                     {tracker.data.keywords.map((keyword) => (
