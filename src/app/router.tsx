@@ -8,8 +8,10 @@ import DashboardPage from "@/pages/dashboard/DashboardPage";
 import LocationsLayout from "@/pages/locations/LocationsLayout";
 import LocationsIndexPage from "@/pages/locations/LocationsIndexPage";
 import LocationsAddPage from "@/pages/locations/LocationsAddPage";
+import LocationSetupPage from "@/pages/locations/location-detail/LocationSetupPage";
 import LocationDetailIndexPage from "@/pages/locations/location-detail/LocationDetailIndexPage";
 import LocationReportsPage from "@/pages/locations/location-detail/report/LocationReportsPage";
+import LocationReportDetailPage from "@/pages/locations/location-detail/report/LocationReportDetailPage";
 import GbpLayout from "@/pages/locations/location-detail/gbp/GbpLayout";
 import LocationGbpIndexPage from "@/pages/locations/location-detail/gbp/GbpIndexPage";
 import LocationGbpPostsPage from "@/pages/locations/location-detail/gbp/GbpPostsPage";
@@ -77,7 +79,7 @@ import SignupPage from "@/pages/auth/SignupPage";
 import ForgotPasswordPage from "@/pages/auth/ForgotPasswordPage";
 import ResetPasswordPage from "@/pages/auth/ResetPasswordPage";
 import VerifyEmailPage from "@/pages/auth/VerifyEmailPage";
-import VerifyOtpPage from "@/pages/auth/VerifyOtpPage";
+import InvitePage from "@/pages/auth/InvitePage";
 import ForbiddenPage from "@/pages/errors/ForbiddenPage";
 import NotFoundPage from "@/pages/errors/NotFoundPage";
 
@@ -100,7 +102,9 @@ export const router = createBrowserRouter([
               { index: true, Component: LocationsIndexPage },
               { path: "add", Component: LocationsAddPage },
               { path: ":locationId", Component: LocationDetailIndexPage },
+              { path: ":locationId/setup", Component: LocationSetupPage },
               { path: ":locationId/reports", Component: LocationReportsPage },
+              { path: ":locationId/reports/:reportId", Component: LocationReportDetailPage },
               {
                 path: ":locationId/gbp",
                 Component: GbpLayout,
@@ -205,7 +209,7 @@ export const router = createBrowserRouter([
       { path: "forgot-password", Component: ForgotPasswordPage },
       { path: "reset-password", Component: ResetPasswordPage },
       { path: "verify-email", Component: VerifyEmailPage },
-      { path: "verify-otp", Component: VerifyOtpPage },
+      { path: "invite", Component: InvitePage },
       { path: "403", Component: ForbiddenPage },
       { path: "404", Component: NotFoundPage },
       { path: "*", Component: RootNotFound },

@@ -1,170 +1,134 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
-import {
-  AlertTriangle,
-  BadgeCheck,
-  CheckCircle2,
-  LinkIcon,
-  Loader2,
-  TimerOff,
-} from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { AlertTriangle, BadgeCheck, LinkIcon, Loader2, TimerOff } from "lucide-react";
 import { z } from "zod";
 import { AuthFooterNote, AuthLayout, AuthStatePanel } from "@/components/auth/auth";
+import { ResendVerification } from "@/components/auth/resend-verification";
 import { Button } from "@/components/ui/button";
-import { isApiError } from "@/api";
+import { isApiError, verifyEmail } from "@/api";
+import { rateLimitMessage } from "@/lib/auth/auth-recovery";
 import { useTypedSearch } from "@/hooks/use-typed-search";
-import { verifyEmail } from "@/api/auth/verify-email";
 
 const searchSchema = z.object({
   token: z.string().optional(),
 });
 
 type VerifyState =
-  | "verifying"
-  | "verified"
-  | "already_verified"
-  | "expired"
-  | "invalid"
-  | "failed"; // server/network error, retry possible
+  | { kind: "verifying" }
+  | { kind: "already_verified" }
+  | { kind: "expired" }
+  | { kind: "invalid" }
+  | { kind: "rate_limited"; message: string }
+  | { kind: "failed" };
 
-/** Maps an API failure (non-2xx) to a UI state and keeps the backend message. */
-function resolveErrorState(error: unknown): { state: VerifyState; message: string | null } {
-  if (!isApiError(error) || error.status === 0 || error.status >= 500) {
-    return { state: "failed", message: null };
-  }
-
-  const message = error.message;
-  const lower = message.toLowerCase();
-
-  if (error.status === 410 || lower.includes("expired")) {
-    return { state: "expired", message };
-  }
-  if (error.status === 409 || lower.includes("already")) {
-    return { state: "already_verified", message };
-  }
-  return { state: "invalid", message };
+/** Maps a failed `POST auth/verify-email` to a page state by `data.reason`. */
+function stateForError(error: unknown): VerifyState {
+  const limited = rateLimitMessage(error);
+  if (limited) return { kind: "rate_limited", message: limited };
+  if (!isApiError(error) || error.status === 0 || error.status >= 500) return { kind: "failed" };
+  if (error.reason === "link_expired") return { kind: "expired" };
+  // `link_invalid`, or a 400 without a reason (missing or malformed token).
+  return { kind: "invalid" };
 }
 
+/**
+ * `/verify-email?token=…`, opened from the signup email. Verifies once on load:
+ * the first time it signs the user in and continues to onboarding.
+ */
 function VerifyEmailPage() {
+  const navigate = useNavigate();
   const [{ token }] = useTypedSearch(searchSchema);
-  const [state, setState] = useState<VerifyState>(token ? "verifying" : "invalid");
-  const [serverMessage, setServerMessage] = useState<string | null>(null);
+  const [state, setState] = useState<VerifyState>(token ? { kind: "verifying" } : { kind: "invalid" });
   const [attempt, setAttempt] = useState(0);
 
-  // Token is one-time use and React StrictMode runs effects twice in dev,
-  // so remember which token/attempt was already submitted.
+  // The token works once and StrictMode runs effects twice in development,
+  // so remember which token/attempt was already sent.
   const submitted = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!token) {
-      setState("invalid");
-      return;
-    }
-
+    if (!token) return;
     const key = `${token}:${attempt}`;
     if (submitted.current === key) return;
     submitted.current = key;
 
-    setState("verifying");
-    setServerMessage(null);
-
-    verifyEmail({ token })
-      .then((response) => {
-        setServerMessage(response.message ?? null);
-        setState(response.data?.already_verified ? "already_verified" : "verified");
+    verifyEmail(token)
+      .then((result) => {
+        if (result.already_verified) setState({ kind: "already_verified" });
+        // Signed in now: continue to onboarding.
+        else void navigate("/onboarding", { replace: true });
       })
-      .catch((error) => {
-        const result = resolveErrorState(error);
-        setState(result.state);
-        setServerMessage(result.message);
-      });
-  }, [token, attempt]);
+      .catch((error: unknown) => setState(stateForError(error)));
+  }, [token, attempt, navigate]);
 
-  const signInButton = (
+  const signIn = (
     <Button asChild className="w-full">
-      <Link to="/login">Go to sign in</Link>
+      <Link to="/login">Log in</Link>
     </Button>
-  );
-
-  const failureActions = (
-    <>
-      <Button asChild className="w-full">
-        <Link to="/signup">Create account again</Link>
-      </Button>
-      <Button asChild variant="outline" className="w-full">
-        <Link to="/login">Back to sign in</Link>
-      </Button>
-    </>
   );
 
   return (
     <AuthLayout>
-      {state === "verifying" ? (
+      {state.kind === "verifying" ? (
         <AuthStatePanel
           icon={<Loader2 className="size-5 animate-spin" />}
           title="Verifying your email"
-          description="Hold on a moment while we confirm this verification link."
+          description="Hold on a moment while we confirm this link."
         />
-      ) : state === "verified" ? (
-        <AuthStatePanel
-          tone="success"
-          icon={<CheckCircle2 className="size-5" />}
-          title="Email verified"
-          description="Your email address is confirmed. Sign in to continue setting up your locations."
-        >
-          {signInButton}
-        </AuthStatePanel>
-      ) : state === "already_verified" ? (
+      ) : state.kind === "already_verified" ? (
         <AuthStatePanel
           icon={<BadgeCheck className="size-5" />}
-          title="Already verified"
-          description={
-            serverMessage ?? "This email address has already been confirmed. Please log in."
-          }
+          title="Your email is already verified"
+          description="This link was used before. Log in to continue."
         >
-          {signInButton}
+          {signIn}
         </AuthStatePanel>
-      ) : state === "expired" ? (
+      ) : state.kind === "expired" ? (
         <AuthStatePanel
           tone="critical"
           icon={<TimerOff className="size-5" />}
-          title="This verification link has expired"
-          description="Verification links stay valid for a limited time. Please sign up again to receive a new link."
+          title="This link has expired"
+          description="Verification links last 24 hours. Enter your email and we'll send a new one."
         >
-          {failureActions}
+          <ResendVerification />
         </AuthStatePanel>
-      ) : state === "failed" ? (
+      ) : state.kind === "invalid" ? (
+        <AuthStatePanel
+          tone="critical"
+          icon={<LinkIcon className="size-5" />}
+          title="This link isn't valid"
+          description="It may be incomplete, or a newer link was sent (only the newest one works). Enter your email to get a new link."
+        >
+          <ResendVerification />
+        </AuthStatePanel>
+      ) : state.kind === "rate_limited" ? (
+        <AuthStatePanel tone="critical" icon={<AlertTriangle className="size-5" />} title="Too many attempts" description={state.message}>
+          <Button type="button" variant="outline" className="w-full" onClick={() => {
+            setState({ kind: "verifying" });
+            setAttempt((n) => n + 1);
+          }}>
+            Try again
+          </Button>
+        </AuthStatePanel>
+      ) : (
         <AuthStatePanel
           tone="critical"
           icon={<AlertTriangle className="size-5" />}
           title="We couldn't verify your email"
           description="Something went wrong on our side. Please try again in a moment."
         >
-          <Button type="button" className="w-full" onClick={() => setAttempt((n) => n + 1)}>
+          <Button type="button" className="w-full" onClick={() => {
+            setState({ kind: "verifying" });
+            setAttempt((n) => n + 1);
+          }}>
             Try again
           </Button>
-          <Button asChild variant="outline" className="w-full">
-            <Link to="/login">Back to sign in</Link>
-          </Button>
-        </AuthStatePanel>
-      ) : (
-        <AuthStatePanel
-          tone="critical"
-          icon={<LinkIcon className="size-5" />}
-          title="This verification link isn't valid"
-          description={
-            serverMessage ??
-            "The link may be incomplete or already used. Please check the link in your email or sign up again."
-          }
-        >
-          {failureActions}
         </AuthStatePanel>
       )}
 
       <AuthFooterNote>
-        Need a new account?{" "}
-        <Link to="/signup" className="font-medium text-primary underline-offset-4 hover:underline">
-          Create one
+        Already verified?{" "}
+        <Link to="/login" className="font-medium text-primary underline-offset-4 hover:underline">
+          Log in
         </Link>
       </AuthFooterNote>
     </AuthLayout>

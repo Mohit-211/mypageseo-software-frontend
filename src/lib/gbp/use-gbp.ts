@@ -1,30 +1,22 @@
 import { useQuery } from "@tanstack/react-query";
-import { getGbp, type GbpConnection } from "@/api";
+import { getGbpConnections } from "@/api";
 
+export const GBP_CONNECTIONS_QUERY_KEY = ["gbp", "connections"] as const;
+/** Prefix shared by every GBP query; invalidate it after connect, pick, bind or disconnect. */
 export const GBP_QUERY_KEY = ["gbp"] as const;
 
-/** True when the `GET gbp` payload describes a live connection. */
-export function isGbpConnected(connection: GbpConnection | null | undefined): boolean {
-  if (!connection) return false;
-  if (typeof connection.connected === "boolean") return connection.connected;
-  if (typeof connection.is_connected === "boolean") return connection.is_connected;
-  if (typeof connection.status === "string") return /^(connected|active)$/i.test(connection.status);
-  return true;
-}
-
-/** Loads the current Google Business Profile connection from `GET gbp`. */
-export function useGbp() {
+/** Connected Google accounts (`GET gbp/connections`). */
+export function useGbpConnections() {
   const query = useQuery({
-    queryKey: GBP_QUERY_KEY,
-    queryFn: ({ signal }) => getGbp(signal),
+    queryKey: GBP_CONNECTIONS_QUERY_KEY,
+    queryFn: ({ signal }) => getGbpConnections(signal),
   });
-
+  const connections = query.data?.connections ?? [];
   return {
     ...query,
-    connection: query.data ?? null,
-    connected: isGbpConnected(query.data),
-    account: query.data?.email ?? query.data?.account ?? null,
-    /** Backend message explaining why no profile is connected, if one was sent. */
-    notConnectedMessage: isGbpConnected(query.data) ? null : (query.data?.message ?? null),
+    connections,
+    limit: query.data?.limit ?? 3,
+    /** True while at least one Google account is usable. */
+    connected: connections.some((connection) => connection.status === "active"),
   };
 }

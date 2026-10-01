@@ -1,7 +1,10 @@
 import { ApiError, api } from "../client";
 import { ENDPOINTS } from "../endpoints";
 import { clearAccessToken, getValidRefreshToken, setAuthTokens } from "../token-storage";
-import type { AuthTokens, RefreshTokenResponse } from "../types/auth";
+import type { AuthTokens } from "../types/auth";
+
+/** `POST auth/refresh` → `{ tokens: { access, refresh } }` in the usual envelope. */
+type RefreshTokenResponse = { data?: { tokens?: AuthTokens } };
 
 /** Shared in-flight refresh, so parallel 401s trigger a single refresh call. */
 let pending: Promise<AuthTokens> | null = null;
@@ -33,12 +36,11 @@ async function doRefresh(): Promise<AuthTokens> {
       { auth: false },
     );
   } catch (error) {
-    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) clearAccessToken();
+    if (error instanceof ApiError && [401, 403, 404].includes(error.status)) clearAccessToken();
     throw error;
   }
 
-  const data = response?.data;
-  const tokens = data && "tokens" in data ? data.tokens : data;
+  const tokens = response?.data?.tokens;
   if (!tokens?.access?.token) {
     throw new ApiError("Refresh response did not include an access token.", 500, { details: response });
   }

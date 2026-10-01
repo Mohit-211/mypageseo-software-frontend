@@ -39,6 +39,9 @@ function read(): OnboardingSession | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as OnboardingSession;
     if (!parsed || (parsed.accountType !== "business" && parsed.accountType !== "agency")) return null;
+    // The agency "client" step was removed (clients are optional); resume such sessions at the location step.
+    if ((parsed.step as string) === "client") parsed.step = "location";
+    parsed.completedSteps = parsed.completedSteps.filter((step) => (step as string) !== "client");
     return parsed;
   } catch {
     return null;

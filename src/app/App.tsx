@@ -1,10 +1,16 @@
 import { Outlet, isRouteErrorResponse, useRouteError } from 'react-router-dom';
 import { NotFoundScreen } from '@/components/layout/shared/feedback/not-found';
 import { AppErrorState } from '@/components/layout/shared/feedback/failure-states';
+import { GbpConnectDialogHost } from '@/components/gbp-connect/gbp-connect-dialog';
 
-/** Root layout. Providers live in main.tsx. */
+/** Root layout. Providers live in main.tsx. The GBP connect modal opens from any screen. */
 export function AppRoot() {
-	return <Outlet />;
+	return (
+		<>
+			<Outlet />
+			<GbpConnectDialogHost />
+		</>
+	);
 }
 
 /** Unknown URLs (router "*" route). Was __root.tsx notFoundComponent. */

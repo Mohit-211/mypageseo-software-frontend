@@ -144,12 +144,13 @@ export function toUserProfile(profile: Profile): UserProfile {
   };
 }
 
-/** Builds the `PATCH auth/me` body from the validated form values. */
+/**
+ * Builds the `PATCH auth/me` body from the validated form values. The backend
+ * stores only the name and mobile number; job title and time zone aren't sent.
+ */
 export function toUpdateProfileRequest(values: ProfileFormValues): UpdateProfileRequest {
   return {
     name: values.name.trim(),
     mobile: values.phone.trim() || null,
-    job_title: values.jobTitle.trim() || null,
-    time_zone: values.timezone,
   };
 }

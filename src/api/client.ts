@@ -22,6 +22,8 @@ export type RequestOptions = {
   auth?: boolean;
   signal?: AbortSignal;
   timeoutMs?: number;
+  /** `"blob"` returns the raw `Response` (for file downloads) instead of the parsed JSON body. */
+  responseType?: "json" | "blob";
 };
 
 /** Field-level validation errors returned by the backend, keyed by field name. */
@@ -30,18 +32,21 @@ export type ApiFieldErrors = Record<string, string>;
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string | undefined;
+  /** Machine-readable cause from the error body's `data.reason` (e.g. `subscription_required`). Build UI states on this, not on `message`. */
+  readonly reason: string | undefined;
   readonly fieldErrors: ApiFieldErrors | undefined;
   readonly details: unknown;
 
   constructor(
     message: string,
     status: number,
-    options: { code?: string; fieldErrors?: ApiFieldErrors; details?: unknown } = {},
+    options: { code?: string; reason?: string; fieldErrors?: ApiFieldErrors; details?: unknown } = {},
   ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = options.code;
+    this.reason = options.reason;
     this.fieldErrors = options.fieldErrors;
     this.details = options.details;
   }
@@ -49,6 +54,25 @@ export class ApiError extends Error {
 
 export function isApiError(error: unknown): error is ApiError {
   return error instanceof ApiError;
+}
+
+/**
+ * Returns the error body's `data` object (where the backend puts `reason` and its
+ * extra fields, e.g. `quote`, `limit`), or `{}` when there is none.
+ */
+export function apiErrorData(error: unknown): Record<string, unknown> {
+  if (!isApiError(error)) return {};
+  const details = error.details as { data?: unknown } | null | undefined;
+  const data = details && typeof details === "object" ? details.data : undefined;
+  return data && typeof data === "object" ? (data as Record<string, unknown>) : {};
+}
+
+/** Unwraps the backend's `{ success, status, message, data }` envelope; passes other payloads through. */
+export function unwrapData<T>(payload: unknown): T {
+  if (payload && typeof payload === "object" && "data" in payload && "success" in payload) {
+    return (payload as { data: T }).data;
+  }
+  return payload as T;
 }
 
 function buildUrl(path: string, query?: QueryParams): string {
@@ -78,14 +102,20 @@ function toApiError(status: number, payload: unknown): ApiError {
     message?: string;
     error?: string;
     code?: string;
+    reason?: string;
     errors?: ApiFieldErrors;
+    data?: { reason?: unknown } | string | null;
   };
+  const dataReason =
+    body.data && typeof body.data === "object" && typeof body.data.reason === "string" ? body.data.reason : undefined;
+  const reason = dataReason ?? body.reason;
   const message =
     body.message ??
     body.error ??
     (typeof payload === "string" && payload ? payload : `Request failed (${status})`);
   return new ApiError(message, status, {
     ...(body.code ? { code: body.code } : {}),
+    ...(reason ? { reason } : {}),
     ...(body.errors ? { fieldErrors: body.errors } : {}),
     details: payload,
   });
@@ -133,6 +163,7 @@ async function send<T>(path: string, options: RequestOptions): Promise<T> {
     auth = true,
     signal,
     timeoutMs = API_TIMEOUT_MS,
+    responseType = "json",
   } = options;
 
   const controller = new AbortController();
@@ -174,6 +205,8 @@ async function send<T>(path: string, options: RequestOptions): Promise<T> {
     clearTimeout(timer);
     signal?.removeEventListener("abort", forwardAbort);
   }
+
+  if (responseType === "blob" && response.ok) return response as T;
 
   const payload = await parseBody(response);
 

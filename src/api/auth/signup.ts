@@ -1,11 +1,8 @@
-import { api } from "../client";
+import { api, unwrapData } from "../client";
 import { ENDPOINTS } from "../endpoints";
-import { setAccessToken } from "../token-storage";
-import type { SignupRequest, SignupResponse } from "../types/auth";
+import type { SignupRequest, SignupResult } from "../types/auth";
 
-/** Creates a Business or Agency account, storing the token if the backend signs the user in. */
-export async function signup(payload: SignupRequest): Promise<SignupResponse> {
-  const response = await api.post<SignupResponse>(ENDPOINTS.auth.signup, payload, { auth: false });
-  if (response?.accessToken) setAccessToken(response.accessToken);
-  return response;
+/** Creates the account and emails a verification link. 409 `email_taken`; 400 with the password rule. */
+export async function signup(payload: SignupRequest): Promise<SignupResult> {
+  return unwrapData(await api.post(ENDPOINTS.auth.signup, payload, { auth: false }));
 }

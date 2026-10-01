@@ -28,10 +28,8 @@ export type GetProfileResponse = {
   data: Profile;
 };
 
-/** Payload for `PATCH auth/me`, in the backend's field names. */
+/** Payload for `PATCH auth/me`: the backend stores only `name` and `mobile`. */
 export type UpdateProfileRequest = {
   name: string;
   mobile: string | null;
-  job_title: string | null;
-  time_zone: string;
 };

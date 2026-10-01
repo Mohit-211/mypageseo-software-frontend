@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { Link } from "react-router-dom";
+import { ArrowLeft, Loader2, MailCheck } from "lucide-react";
 import {
   AuthField,
   AuthFooterNote,
@@ -8,24 +8,25 @@ import {
   AuthHeading,
   AuthInput,
   AuthLayout,
+  AuthStatePanel,
 } from "@/components/auth/auth";
 import { Button } from "@/components/ui/button";
-import { forgotPassword, isApiError, sendOtp } from "@/api";
-import { authRecoveryCapabilities, resetEmailSchema } from "@/lib/auth/auth-recovery";
+import { forgotPassword } from "@/api";
+import { GENERIC_AUTH_ERROR, emailSchema, rateLimitMessage } from "@/lib/auth/auth-recovery";
 
+/** Requests a reset link. The answer never reveals whether an account exists. */
 function ForgotPasswordPage() {
-  const navigate = useNavigate();
-  const capabilities = authRecoveryCapabilities();
   const [email, setEmail] = useState("");
   const [fieldError, setFieldError] = useState<string | undefined>(undefined);
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [sentTo, setSentTo] = useState<string | null>(null);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (submitting || !capabilities.requestPasswordReset) return;
+    if (submitting) return;
 
-    const parsed = resetEmailSchema.safeParse(email);
+    const parsed = emailSchema.safeParse(email);
     if (!parsed.success) {
       setFieldError(parsed.error.issues[0]?.message ?? "Enter a valid email address.");
       setFormError(null);
@@ -35,44 +36,51 @@ function ForgotPasswordPage() {
     setSubmitting(true);
     setFormError(null);
     try {
-   const target = parsed.data;
-await forgotPassword({
-  email: target,
-});
-      // The backend emails a one-time code; the user confirms it on the OTP page.
-      await navigate(`/verify-otp?email=${encodeURIComponent(target)}&type=FORGOT_PASSWORD`);
+      await forgotPassword(parsed.data);
+      setSentTo(parsed.data);
     } catch (error) {
-      if (isApiError(error) && error.fieldErrors?.email) setFieldError(error.fieldErrors.email);
-      setFormError(
-        isApiError(error) && error.status > 0 && error.status < 500
-          ? error.message
-          : "We couldn't send the reset code right now. Please try again in a moment.",
-      );
+      setFormError(rateLimitMessage(error) ?? GENERIC_AUTH_ERROR);
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (sentTo) {
+    return (
+      <AuthLayout>
+        <AuthStatePanel
+          tone="success"
+          icon={<MailCheck className="size-5" />}
+          title="Check your email"
+          description={
+            <>
+              If an account exists for <span className="font-medium text-foreground">{sentTo}</span>, we emailed a link to
+              set a new password. It works once and expires after 60 minutes.
+            </>
+          }
+        >
+          <Button variant="outline" className="w-full" onClick={() => setSentTo(null)}>
+            Use a different email
+          </Button>
+          <Button asChild variant="ghost" className="w-full">
+            <Link to="/login">Back to sign in</Link>
+          </Button>
+        </AuthStatePanel>
+      </AuthLayout>
+    );
   }
 
   return (
     <AuthLayout>
       <AuthHeading
         title="Reset your password"
-        description="Enter the email address on your account and we'll send a code to set a new password."
+        description="Enter the email address on your account and we'll email you a link to set a new password."
       />
 
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         {formError ? <AuthFormError message={formError} /> : null}
 
-        {capabilities.requestPasswordReset ? null : (
-          <AuthFormError message="Password recovery is unavailable right now. Contact your account administrator if you need access restored." />
-        )}
-
-        <AuthField
-          label="Email address"
-          htmlFor="recovery-email"
-          error={fieldError}
-          hint="We send the code to this address only."
-        >
+        <AuthField label="Email address" htmlFor="recovery-email" error={fieldError}>
           <AuthInput
             id="recovery-email"
             name="email"
@@ -81,7 +89,6 @@ await forgotPassword({
             placeholder="you@company.com"
             value={email}
             invalid={Boolean(fieldError)}
-            disabled={!capabilities.requestPasswordReset}
             onChange={(e) => {
               setEmail(e.target.value);
               setFieldError(undefined);
@@ -89,18 +96,14 @@ await forgotPassword({
           />
         </AuthField>
 
-        <Button
-          type="submit"
-          className="h-10 w-full"
-          disabled={submitting || !capabilities.requestPasswordReset}
-        >
+        <Button type="submit" className="h-10 w-full" disabled={submitting}>
           {submitting ? (
             <>
               <Loader2 className="size-4 animate-spin" aria-hidden />
-              Sending code…
+              Sending link…
             </>
           ) : (
-            "Send reset code"
+            "Send reset link"
           )}
         </Button>
 

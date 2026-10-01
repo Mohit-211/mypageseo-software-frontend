@@ -1,16 +1,20 @@
 /**
- * Signed-in state derived from the stored access token.
+ * Signed-in state derived from the stored tokens.
  *
- * Login survives a refresh because the token lives in web storage. An expired
- * token is cleared, both on load and by a timer while the user is on a page;
- * any 401 from the API also clears it (api/client.ts). Clearing notifies every
- * `useIsAuthenticated` caller, so the route guards redirect straight away.
+ * Access tokens last 1 day and refresh tokens 30 days, so a session is usable
+ * while either is valid. When the access token runs out it is renewed with the
+ * refresh token (POST auth/refresh); only a failed refresh, or no valid refresh
+ * token, signs the user out. Clearing notifies every `useIsAuthenticated`
+ * caller, so the route guards redirect straight away.
  */
 import { useEffect, useSyncExternalStore } from "react";
+import { refreshToken } from "@/api/auth/refresh-token";
 import {
   clearAccessToken,
   getAccessToken,
   getTokenExpiry,
+  getValidRefreshToken,
+  hasUsableSession,
   isTokenExpired,
   subscribeToAccessToken,
 } from "@/api/token-storage";
@@ -19,28 +23,34 @@ import { getOnboardingSession } from "./onboarding-state";
 /** Browsers fire a setTimeout longer than this (~24.8 days) immediately. */
 const MAX_TIMEOUT_MS = 2_147_483_647;
 
-function hasValidToken(): boolean {
-  const token = getAccessToken();
-  return token !== null && !isTokenExpired(token);
+/** Renews the access token, or signs out when that isn't possible. */
+function renewOrSignOut() {
+  if (!getValidRefreshToken()) {
+    clearAccessToken();
+    return;
+  }
+  // refreshToken() clears the session itself when the server rejects the refresh token.
+  refreshToken().catch(() => undefined);
 }
 
-/** Whether the user has a usable access token. Re-renders when it is set, cleared or expires. */
+/** Whether the user has a usable session. Re-renders when tokens are set, cleared or renewed. */
 export function useIsAuthenticated(): boolean {
-  const authenticated = useSyncExternalStore(subscribeToAccessToken, hasValidToken, () => false);
+  const authenticated = useSyncExternalStore(subscribeToAccessToken, hasUsableSession, () => false);
+  // Re-arm the timer whenever the access token changes (a refresh issues a new one).
+  const token = useSyncExternalStore(subscribeToAccessToken, getAccessToken, () => null);
 
   useEffect(() => {
-    const token = getAccessToken();
-    if (!token) return;
-    // Drop a token that is already stale (e.g. the tab reopened after expiry).
-    if (isTokenExpired(token)) {
-      clearAccessToken();
+    if (!authenticated) return;
+    // No access token, or a stale one (e.g. the tab reopened after a day): renew now.
+    if (!token || isTokenExpired(token)) {
+      renewOrSignOut();
       return;
     }
     const expiry = getTokenExpiry(token);
     if (expiry === null) return;
-    const timer = setTimeout(clearAccessToken, Math.min(Math.max(expiry - Date.now(), 0), MAX_TIMEOUT_MS));
+    const timer = setTimeout(renewOrSignOut, Math.min(Math.max(expiry - Date.now(), 0), MAX_TIMEOUT_MS));
     return () => clearTimeout(timer);
-  }, [authenticated]);
+  }, [authenticated, token]);
 
   return authenticated;
 }

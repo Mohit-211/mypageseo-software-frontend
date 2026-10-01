@@ -1,24 +1,21 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "react-router-dom";
-import { BadgeCheck, ImageUp, KeyRound, LogOut, ShieldCheck } from "lucide-react";
+import { BadgeCheck, ImageUp } from "lucide-react";
 import { AppShell } from "@/components/layout/shared/app-shell";
 import { PageHeader, Panel, SectionHeader, StatusBadge } from "@/components/layout/shared/data-display";
 import { SettingsNav } from "@/components/settings/settings-nav";
+import { AccountSecurity } from "@/components/settings/account-security";
 import { ErrorState, TableSkeleton } from "@/components/layout/shared/feedback/states";
 import { Button } from "@/components/ui/button";
 import {
   FormGrid,
   FormSaveBar,
-  FormSelectField,
   FormTextField,
   RequiredFieldsNote,
 } from "@/components/layout/shared/form-fields";
 import { getProfile, updateProfile, type Profile } from "@/api";
 import { classifyError } from "@/lib/mypageseo/errors";
-import { SUPPORTED_TIMEZONES } from "@/lib/mypageseo/organization-settings";
 import {
-  JOB_TITLE_MAX_LENGTH,
   LIVE_PROFILE_CAPABILITIES,
   PROFILE_NAME_MAX_LENGTH,
   profileFormsAreEqual,
@@ -76,7 +73,6 @@ function ProfileSections({
   profile: UserProfile;
   capabilities: ProfileCapabilities;
 }) {
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const mutation = useMutation({ mutationFn: updateProfile });
   const [saved, setSaved] = useState<UserProfile>(profile);
@@ -115,7 +111,7 @@ function ProfileSections({
         // Prefer the server's copy; fall back to what was sent if the PATCH returns no profile.
         const next: UserProfile = updated
           ? toUserProfile(updated)
-          : { ...saved, name: body.name, phone: body.mobile, jobTitle: body.job_title, timezone: body.time_zone };
+          : { ...saved, name: body.name, phone: body.mobile };
         setSaved(next);
         setValues(profileToForm(next));
         queryClient.setQueryData<Profile>(["profile"], (current) =>
@@ -188,7 +184,7 @@ function ProfileSections({
       </section>
 
       <section aria-labelledby="profile-details">
-        <SectionHeader title="Profile details" description="Update your name, contact details and timezone" />
+        <SectionHeader title="Profile details" description="Update your name and phone number" />
         <Panel>
           <form
             className="space-y-4"
@@ -213,18 +209,6 @@ function ProfileSections({
               />
 
               <FormTextField
-                id="profile-job-title"
-                label="Job title"
-                optional
-                value={values.jobTitle}
-                maxLength={JOB_TITLE_MAX_LENGTH + 20}
-                disabled={readOnly || saving}
-                error={errors.jobTitle}
-                hint="Shown next to your name on the Team screen."
-                onChange={(value) => update("jobTitle", value)}
-              />
-
-              <FormTextField
                 id="profile-phone"
                 label="Phone number"
                 optional
@@ -236,17 +220,6 @@ function ProfileSections({
                 onChange={(value) => update("phone", value)}
               />
 
-              <FormSelectField
-                id="profile-timezone"
-                label="Timezone"
-                required
-                value={values.timezone}
-                disabled={readOnly || saving}
-                error={errors.timezone}
-                hint="Dates and schedules are shown in this timezone."
-                options={SUPPORTED_TIMEZONES.map((tz) => ({ value: tz, label: tz.replace(/_/g, " ") }))}
-                onChange={(value) => update("timezone", value)}
-              />
             </FormGrid>
 
             <button type="submit" className="hidden" aria-hidden tabIndex={-1} />
@@ -285,66 +258,7 @@ function ProfileSections({
         </Panel>
       </section>
 
-      <section aria-labelledby="profile-security">
-        <SectionHeader title="Security" description="Password and additional sign-in protection" />
-        <Panel>
-          <div className="space-y-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="flex items-start gap-2 text-sm text-muted-foreground">
-                <KeyRound className="mt-0.5 size-4 shrink-0 text-brand-soft" aria-hidden />
-                <span>
-                  Password change is handled by the authentication service. It isn&rsquo;t connected to this workspace
-                  yet, so passwords can&rsquo;t be changed here.
-                </span>
-              </p>
-              <Button variant="outline" size="sm" disabled={!capabilities.canChangePassword}>
-                Change password
-              </Button>
-            </div>
-            <div className="flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
-              <p className="flex items-start gap-2 text-sm text-muted-foreground">
-                <ShieldCheck className="mt-0.5 size-4 shrink-0 text-brand-soft" aria-hidden />
-                <span>
-                  Two-factor authentication isn&rsquo;t available in the current product integration, so no second
-                  factor is enforced on this account.
-                </span>
-              </p>
-              <Button variant="outline" size="sm" disabled={!capabilities.canManageTwoFactor}>
-                Set up two-factor
-              </Button>
-            </div>
-          </div>
-        </Panel>
-      </section>
-
-      <section aria-labelledby="profile-session">
-        <SectionHeader title="Session" description="End your session on this device" />
-        <Panel>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-muted-foreground">
-              Signing out returns you to the Mypageseo sign-in screen.
-            </p>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!capabilities.canSignOut}
-              onClick={() => navigate("/login")}
-            >
-              <LogOut aria-hidden /> Sign out
-            </Button>
-          </div>
-          {!capabilities.canDeleteAccount ? (
-            <p className="mt-4 text-xs text-muted-foreground">
-              Account deletion isn&rsquo;t supported from Mypageseo. Ask an organization administrator to remove your
-              access from{" "}
-              <Link to="/settings/team" className="font-medium text-foreground underline underline-offset-2">
-                Team
-              </Link>
-              .
-            </p>
-          ) : null}
-        </Panel>
-      </section>
+      <AccountSecurity />
 
       <FormSaveBar
         dirty={dirty}

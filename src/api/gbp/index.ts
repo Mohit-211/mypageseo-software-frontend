@@ -1,10 +1,15 @@
-import { api, isApiError } from "../client";
+import { api, unwrapData } from "../client";
 import { ENDPOINTS } from "../endpoints";
 import type {
-  GbpConnection,
-  GetGbpResponse,
-  GbpConnectionResponse,
+  GbpAccountLocationsResponse,
+  GbpBindResult,
+  GbpConnectCodeResult,
+  GbpConnectionsResponse,
   GbpConnectUrlResponse,
+  GbpDisconnectResult,
+  GbpPopupConfig,
+  GbpSavePicksResponse,
+  GbpUnbindResult,
 } from "../types/gbp";
 
 /** Accepts a bare string, `{ url }`, or a `{ data: ... }` envelope. */
@@ -16,50 +21,62 @@ function unwrapUrl(payload: GbpConnectUrlResponse): string | undefined {
 }
 
 /**
- * Returns the Google sign-in URL that starts the Google Business Profile connection.
- * `redirectUrl` is the frontend page the backend sends the browser to when the
- * connection finishes, so it returns to the same origin (localhost, staging, production).
- * Rejects with an `ApiError` when the backend refuses or returns no URL.
+ * Redirect-flow fallback: the Google consent URL. The backend finishes the
+ * connection and sends the browser to `/gbp/connect/callback`.
  */
-export async function getGbpConnectUrl(redirectUrl: string, signal?: AbortSignal): Promise<string> {
-  const payload = await api.get<GbpConnectUrlResponse>(ENDPOINTS.gbp.connectUrl, {
-    query: { redirect_url: redirectUrl },
-    ...(signal ? { signal } : {}),
-  });
+export async function getGbpConnectUrl(signal?: AbortSignal): Promise<string> {
+  const payload = await api.get<GbpConnectUrlResponse>(ENDPOINTS.gbp.connectUrl, signal ? { signal } : {});
   const url = unwrapUrl(payload);
   if (!url) throw new Error("Google connection URL was not returned.");
   return url;
 }
 
-/** Backend messages such as "Please connect with Google Business Profile". */
-const NOT_CONNECTED_MESSAGE = /connect/i;
-
-/**
- * Returns the current Google Business Profile connection, or `null` when none exists
- * (empty payload or 404). When the backend explains that no profile is connected
- * (e.g. "Please connect with Google Business Profile"), returns `{ connected: false, message }`.
- */
-export async function getGbp(signal?: AbortSignal): Promise<GbpConnection | null> {
-  try {
-    const payload = await api.get<GetGbpResponse>(ENDPOINTS.gbp.get, signal ? { signal } : {});
-    if (!payload || typeof payload !== "object") return null;
-    if ("data" in payload) {
-      const data = (payload.data as GbpConnection | null | undefined) ?? null;
-      const message = typeof payload.message === "string" ? payload.message : undefined;
-      if (!data && message && NOT_CONNECTED_MESSAGE.test(message)) return { connected: false, message };
-      return data;
-    }
-    return payload as GbpConnection;
-  } catch (err) {
-    if (isApiError(err) && err.status >= 400 && err.status < 500 && NOT_CONNECTED_MESSAGE.test(err.message)) {
-      return { connected: false, message: err.message };
-    }
-    if (isApiError(err) && err.status === 404) return null;
-    throw err;
-  }
+/** Config for the Google Identity Services code client. The `state` works once, for 10 minutes. */
+export async function getGbpPopupConfig(signal?: AbortSignal): Promise<GbpPopupConfig> {
+  return unwrapData(await api.get(ENDPOINTS.gbp.connectPopup, signal ? { signal } : {}));
 }
 
-/** Revokes the Google Business Profile connection for the current account. */
-export function disconnectGbp(): Promise<GbpConnectionResponse> {
-  return api.post<GbpConnectionResponse>(ENDPOINTS.gbp.disconnect);
+/** Exchanges the popup's code. 409 `google_account_limit` when 3 accounts are already connected. */
+export async function exchangeGbpCode(code: string, state: string): Promise<GbpConnectCodeResult> {
+  return unwrapData(await api.post(ENDPOINTS.gbp.connectCode, { code, state }));
+}
+
+/** The user's connected Google accounts (up to `limit`). */
+export async function getGbpConnections(signal?: AbortSignal): Promise<GbpConnectionsResponse> {
+  return unwrapData(await api.get(ENDPOINTS.gbp.connections, signal ? { signal } : {}));
+}
+
+/** One Google account's Business Profile locations, for the connect modal's checklist. */
+export async function getGbpAccountLocations(
+  googleSub: string,
+  signal?: AbortSignal,
+): Promise<GbpAccountLocationsResponse> {
+  return unwrapData(await api.get(ENDPOINTS.gbp.connectionLocations(googleSub), signal ? { signal } : {}));
+}
+
+/** Saves the full selection for one account: unticked unbound picks are removed. */
+export async function saveGbpPicks(googleSub: string, gbpLocationIds: string[]): Promise<GbpSavePicksResponse> {
+  return unwrapData(
+    await api.put(ENDPOINTS.gbp.connectionPicks(googleSub), { gbp_location_ids: gbpLocationIds }),
+  );
+}
+
+/** The Bind button: creates or links the location. Subscription-gated (402 / 403). */
+export async function bindGbpPick(pickId: string, clientId?: string): Promise<GbpBindResult> {
+  return unwrapData(await api.post(ENDPOINTS.gbp.bindPick(pickId), clientId ? { client_id: clientId } : {}));
+}
+
+/** Removes an unbound pick from the locations page. */
+export async function removeGbpPick(pickId: string): Promise<{ removed: boolean; pick_id: string }> {
+  return unwrapData(await api.delete(ENDPOINTS.gbp.pick(pickId)));
+}
+
+/** Unbinds one location. The location stays; the Google account stays connected. */
+export async function unbindGbpLocation(locationId: string): Promise<GbpUnbindResult> {
+  return unwrapData(await api.post(ENDPOINTS.gbp.unbind, { location_id: locationId }));
+}
+
+/** Disconnects one Google account: its locations stay without GBP, its picks are removed. */
+export async function disconnectGbp(googleSub: string): Promise<GbpDisconnectResult> {
+  return unwrapData(await api.post(ENDPOINTS.gbp.disconnect, { google_sub: googleSub }));
 }

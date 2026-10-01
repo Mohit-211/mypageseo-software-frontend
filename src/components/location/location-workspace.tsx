@@ -28,10 +28,10 @@ const gbpViews: { label: string; key: "overview" | "audit" | "reviews" | "posts"
   { label: "Posts", key: "posts", to: "/locations/:locationId/gbp/posts" },
 ];
 
-const rankingViews: { label: string; key: "overview" | "keywords" | "groups" | "map" | "grid" | "competitors"; to: string }[] = [
-  { label: "Rank Overview", key: "overview", to: "/locations/:locationId/rankings" },
+// Keyword groups are not supported by the backend (FRONTEND_BACKEND_MAP.md), so there is no tab for them.
+const rankingViews: { label: string; key: "overview" | "keywords" | "map" | "grid" | "competitors"; to: string }[] = [
+  { label: "Rank Tracker", key: "overview", to: "/locations/:locationId/rankings" },
   { label: "Keywords", key: "keywords", to: "/locations/:locationId/rankings/keywords" },
-  { label: "Keyword Groups", key: "groups", to: "/locations/:locationId/rankings/groups" },
   { label: "Map Rankings", key: "map", to: "/locations/:locationId/rankings/map" },
   { label: "Local Search Grid", key: "grid", to: "/locations/:locationId/rankings/grid" },
   { label: "Competitors", key: "competitors", to: "/locations/:locationId/rankings/competitors" },
@@ -171,7 +171,7 @@ export function RankingsNavigation({
   activeView,
 }: {
   locationId: string;
-  activeView: "overview" | "keywords" | "groups" | "map" | "grid" | "competitors";
+  activeView: "overview" | "keywords" | "map" | "grid" | "competitors";
 }) {
   return (
     <nav aria-label="Rankings views" className="overflow-x-auto">

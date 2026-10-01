@@ -1,4 +1,4 @@
-export { api, request, ApiError, isApiError } from "./client";
+export { api, request, ApiError, isApiError, apiErrorData, unwrapData } from "./client";
 export type { ApiFieldErrors, HttpMethod, QueryParams, RequestOptions } from "./client";
 export { API_BASE_URL } from "./config";
 export { ENDPOINTS } from "./endpoints";
@@ -18,8 +18,16 @@ export {
 export * from "./auth";
 export * from "./gbp";
 export * from "./location";
+export * from "./locations";
+export * from "./billing";
+export * from "./clients";
+export * from "./onboarding";
+export * from "./rankings";
+export * from "./reports";
 export * from "./profile";
 export type * from "./types/auth";
 export type * from "./types/gbp";
 export type * from "./types/location";
+export type * from "./types/locations";
+export type * from "./types/rankings";
 export type * from "./types/profile";

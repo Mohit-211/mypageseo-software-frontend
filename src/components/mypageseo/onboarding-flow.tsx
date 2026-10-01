@@ -42,7 +42,6 @@ import {
   stepIndex,
   stepsFor,
   validateBranding,
-  validateClient,
   validateOrganization,
   type OnboardingProgress,
   type OnboardingStepId,
@@ -66,10 +65,6 @@ const STEP_COPY: Record<OnboardingStepId, { title: string; description: string }
     title: "Connect Google",
     description:
       "Mypageseo reads the Google Business Profile you choose — profile details, reviews and posts — to track local performance.",
-  },
-  client: {
-    title: "First client",
-    description: "Create the first client, or pick one you already manage.",
   },
   location: {
     title: "Select location",
@@ -166,7 +161,7 @@ function CompletionPanel({ accountType }: { accountType: AccountType }) {
         title="Setup complete"
         description={
           accountType === "agency"
-            ? "Your agency workspace is ready. Your first client and its location are now tracked."
+            ? "Your agency workspace is ready. Your first location is now tracked."
             : "Your workspace is ready. Your location, keywords and competitors are now tracked."
         }
       />
@@ -213,7 +208,6 @@ function FlowBody({
   const index = stepIndex(step, steps);
 
   const [orgErrors, setOrgErrors] = useState<OrganizationErrors>({});
-  const [clientError, setClientError] = useState<string | null>(null);
   const [brandingError, setBrandingError] = useState<string | null>(null);
   const [connection, setConnection] = useState<GoogleConnectionState>(
     progress.googleAccountEmail ? "connected" : "disconnected",
@@ -260,11 +254,6 @@ function FlowBody({
       case "google": {
         if (!progress.googleAccountEmail) return false;
         return true;
-      }
-      case "client": {
-        const errors = validateClient(progress);
-        setClientError(errors.clientName ?? null);
-        return !errors.clientName;
       }
       case "location":
         return Boolean(progress.selectedProfileId);
@@ -379,7 +368,7 @@ function FlowBody({
         title={accountType === "agency" ? "Set up your agency workspace" : "Set up your workspace"}
         description={
           accountType === "agency"
-            ? "Connect Google, add your first client and its location, then Mypageseo starts tracking local performance."
+            ? "Connect Google and add your first location, then Mypageseo starts tracking local performance."
             : "A few short steps connect your Google Business Profile and start local ranking, review and citation tracking."
         }
       />
@@ -504,60 +493,6 @@ function FlowBody({
               />
             )}
           </div>
-        ) : null}
-
-        {step === "client" ? (
-          <section className="rounded-lg border border-border bg-surface p-4 shadow-card sm:p-5">
-            {clients.length > 0 ? (
-              <div className="mb-4">
-                <Label htmlFor="existing-client">Existing client</Label>
-                <Select
-                  value={progress.clientId ?? "new"}
-                  onValueChange={(value) => {
-                    setClientError(null);
-                    patch({
-                      clientId: value === "new" ? null : value,
-                      selectedProfileId: null,
-                      keywords: [],
-                      competitors: [],
-                    });
-                  }}
-                >
-                  <SelectTrigger id="existing-client" className="mt-1.5">
-                    <SelectValue placeholder="Select a client" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="new">Create a new client</SelectItem>
-                    {clients.map((client) => (
-                      <SelectItem key={client.id} value={client.id}>
-                        {client.name} · {client.locationCount} location
-                        {client.locationCount === 1 ? "" : "s"}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            ) : null}
-
-            {progress.clientId ? (
-              <p className="text-sm text-muted-foreground">
-                Locations you assign next will belong to this client.
-              </p>
-            ) : (
-              <AuthField label="Client name" htmlFor="client-name" error={clientError ?? undefined}>
-                <AuthInput
-                  id="client-name"
-                  value={progress.clientName}
-                  invalid={Boolean(clientError)}
-                  placeholder="Riverside Dental Group"
-                  onChange={(event) => {
-                    setClientError(null);
-                    patch({ clientName: event.target.value });
-                  }}
-                />
-              </AuthField>
-            )}
-          </section>
         ) : null}
 
         {step === "location" ? (

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Loader2 } from "lucide-react";
+import { Loader2, MailWarning } from "lucide-react";
 import { z } from "zod";
 import {
   AuthField,
@@ -10,43 +10,38 @@ import {
   AuthInput,
   LoginAuthLayout,
   AuthPasswordInput,
+  AuthStatePanel,
 } from "@/components/auth/auth";
+import { ResendVerification } from "@/components/auth/resend-verification";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { isApiError, login, sendOtp } from "@/api";
+import { isApiError, login } from "@/api";
+import { GENERIC_AUTH_ERROR, emailSchema, rateLimitMessage } from "@/lib/auth/auth-recovery";
 import { getPostLoginPath } from "@/lib/auth/auth-session";
 
 const description = "Sign in to continue managing your local search performance.";
 
 
 
-/** The backend refuses sign-in for accounts that haven't confirmed their OTP yet. */
-function isUnverifiedError(error: unknown): boolean {
-  if (!isApiError(error)) return false;
-  return /not verified|verify your otp/i.test(error.message) || error.code === "USER_NOT_VERIFIED";
-}
-
-/** How long the unverified message stays on screen before redirecting. */
-const UNVERIFIED_REDIRECT_MS = 1500;
-
 const loginSchema = z.object({
-  email: z
-    .string()
-    .trim()
-    .min(1, { message: "Enter your email address." })
-    .email({ message: "Enter a valid email address." })
-    .max(255),
+  email: emailSchema,
   password: z.string().min(1, { message: "Enter your password." }).max(128),
 });
 
 function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [values, setValues] = useState({ email: "", password: "" });
+  // Reset-password and invitation pages pass the email along so it's filled in.
+  const [values, setValues] = useState(() => ({
+    email: (location.state as { email?: unknown } | null)?.email?.toString() ?? "",
+    password: "",
+  }));
   const [rememberMe, setRememberMe] = useState(false);
   const [errors, setErrors] = useState<{ email?: string | undefined; password?: string | undefined }>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  /** Set when the password was right but the email isn't verified yet. */
+  const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -71,32 +66,38 @@ function LoginPage() {
       // Unfinished setup first, then the page that sent the user here, then the dashboard.
       await navigate(getPostLoginPath(location.state), { replace: true });
     } catch (error) {
-      if (isUnverifiedError(error)) {
-        const email = result.data.email;
-        setFormError(
-          isApiError(error) ? error.message : "User is not verified yet. Please verify your OTP first.",
-        );
-        // Send a fresh code so the user has one waiting on the verify page.
-        sendOtp({ email, type: "EMAIL_VERIFICATION" }).catch(() => undefined);
-        setTimeout(() => {
-          void navigate(`/verify-otp?email=${encodeURIComponent(email)}&type=EMAIL_VERIFICATION`, {
-            state: { unverified: true },
-          });
-        }, UNVERIFIED_REDIRECT_MS);
+      if (isApiError(error) && error.reason === "email_not_verified") {
+        setUnverifiedEmail(result.data.email);
         return;
       }
-      if (isApiError(error) && error.fieldErrors) {
-        const { email, password } = error.fieldErrors;
-        setErrors({ email, password });
-      }
       setFormError(
-        isApiError(error) && error.status > 0 && error.status < 500
-          ? error.message
-          : "We couldn't sign you in right now. Please try again, or contact support if it keeps happening.",
+        isApiError(error) && error.status === 401
+          ? "Wrong email or password."
+          : isApiError(error) && error.reason === "account_disabled"
+            ? "This account has been disabled. Contact support if you think this is a mistake."
+            : (rateLimitMessage(error) ??
+              (isApiError(error) && error.status === 400 && error.message ? error.message : GENERIC_AUTH_ERROR)),
       );
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (unverifiedEmail) {
+    return (
+      <LoginAuthLayout>
+        <AuthStatePanel
+          icon={<MailWarning className="size-5" />}
+          title="Verify your email first"
+          description={<>Open the link we emailed to <span className="font-medium text-foreground">{unverifiedEmail}</span>, then sign in. Links expire after 24 hours.</>}
+        >
+          <ResendVerification email={unverifiedEmail} />
+          <Button variant="ghost" className="w-full" onClick={() => setUnverifiedEmail(null)}>
+            Back to sign in
+          </Button>
+        </AuthStatePanel>
+      </LoginAuthLayout>
+    );
   }
 
   return (

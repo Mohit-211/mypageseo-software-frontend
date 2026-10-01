@@ -1,0 +1,54 @@
+import { api, unwrapData } from "../client";
+import { ENDPOINTS } from "../endpoints";
+import type {
+  GridResponse,
+  MapRankingResponse,
+  RankRunsResponse,
+  RankTrackerResponse,
+  RefreshResult,
+  RefreshState,
+} from "../types/rankings";
+
+type Query = Record<string, string | number | undefined>;
+const opts = (query: Query, signal?: AbortSignal) => ({ query, ...(signal ? { signal } : {}) });
+
+/** The latest done/partial run, or `runId`. 404 `no_completed_run` before the first run finishes. */
+export async function getRankTracker(locationId: string, runId?: string, signal?: AbortSignal): Promise<RankTrackerResponse> {
+  return unwrapData(await api.get(ENDPOINTS.locations.rankTracker(locationId), opts({ runId }, signal)));
+}
+
+/** Every keyword's heatmap, or one `keyword` (404 `keyword_not_in_run`). */
+export async function getGrid(
+  locationId: string,
+  params: { keyword?: string; runId?: string },
+  signal?: AbortSignal,
+): Promise<GridResponse> {
+  return unwrapData(await api.get(ENDPOINTS.locations.grid(locationId), opts(params, signal)));
+}
+
+/** Top 20 at one point (`C` default). 404 `point_not_in_run` with `available`. */
+export async function getMapRanking(
+  locationId: string,
+  params: { keyword?: string; runId?: string; point?: string },
+  signal?: AbortSignal,
+): Promise<MapRankingResponse> {
+  return unwrapData(await api.get(ENDPOINTS.locations.mapRanking(locationId), opts(params, signal)));
+}
+
+/** Run history, newest first (limit ≤ 100). */
+export async function getRankRuns(
+  locationId: string,
+  params: { page?: number; limit?: number } = {},
+  signal?: AbortSignal,
+): Promise<RankRunsResponse> {
+  return unwrapData(await api.get(ENDPOINTS.locations.rankRuns(locationId), opts(params, signal)));
+}
+
+export async function getRefreshState(locationId: string, signal?: AbortSignal): Promise<RefreshState> {
+  return unwrapData(await api.get(ENDPOINTS.locations.refresh(locationId), signal ? { signal } : {}));
+}
+
+/** Manual refresh: 202; 402 `insufficient_tokens`; 429 inside the 24 h window (body has `next_allowed_at`). */
+export async function refreshLocation(locationId: string, types: ("rankings" | "gbp")[]): Promise<RefreshResult> {
+  return unwrapData(await api.post(ENDPOINTS.locations.refresh(locationId), { types }));
+}

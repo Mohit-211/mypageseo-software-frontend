@@ -10,6 +10,7 @@ import {
   StatusBadge,
 } from "@/components/layout/shared/data-display";
 import { SettingsNav } from "@/components/settings/settings-nav";
+import { PaypalReturnNotice } from "@/components/settings/paypal-return-notice";
 import { EmptyState, ErrorState, MetricSkeletonGrid } from "@/components/layout/shared/feedback/states";
 import { Button } from "@/components/ui/button";
 import {
@@ -56,6 +57,7 @@ function BillingSettingsPage() {
         description="Manage the Mypageseo subscription and view billing information for this organization."
       />
       <SettingsNav active="billing" isAgency={accountType === "agency"} />
+      <PaypalReturnNotice />
 
       {result.status === "loading" ? (
         <MetricSkeletonGrid count={4} />

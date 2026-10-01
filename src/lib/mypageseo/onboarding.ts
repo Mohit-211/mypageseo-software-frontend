@@ -25,7 +25,6 @@ import type { GoogleBusinessProfile } from "@/components/location/location-setup
 export type OnboardingStepId =
   | "organization"
   | "google"
-  | "client"
   | "location"
   | "keywords"
   | "competitors"
@@ -43,11 +42,10 @@ export const ONBOARDING_STEPS: OnboardingStep[] = [
   { id: "confirm", label: "Confirm", optional: false },
 ];
 
-/** Agency setup adds the first client and optional report branding. */
+/** Agency setup adds optional report branding. Clients are an optional grouping, never a step. */
 export const AGENCY_ONBOARDING_STEPS: OnboardingStep[] = [
   { id: "organization", label: "Agency details", optional: false },
   { id: "google", label: "Connect Google", optional: false },
-  { id: "client", label: "First client", optional: false },
   { id: "location", label: "Assign location", optional: false },
   { id: "keywords", label: "Keywords", optional: true },
   { id: "competitors", label: "Competitors", optional: true },
@@ -163,17 +161,6 @@ export function stepsFor(accountType: "business" | "agency"): OnboardingStep[] {
 
 export function stepIndex(step: OnboardingStepId, steps: OnboardingStep[] = ONBOARDING_STEPS): number {
   return steps.findIndex((entry) => entry.id === step);
-}
-
-export type ClientErrors = { clientName?: string };
-
-/** The first client needs the name the client-management backend requires. */
-export function validateClient(progress: OnboardingProgress): ClientErrors {
-  if (progress.clientId) return {};
-  const name = progress.clientName.trim();
-  if (name.length < 2) return { clientName: "Enter the client name, or select an existing client." };
-  if (name.length > 120) return { clientName: "Use fewer than 120 characters." };
-  return {};
 }
 
 /** Branding is optional; a logo URL must still be a valid absolute URL. */

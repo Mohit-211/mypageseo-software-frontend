@@ -1,8 +1,15 @@
-import { api } from "../client";
+import { api, unwrapData } from "../client";
 import { ENDPOINTS } from "../endpoints";
-import type { MessageResponse, ResetPasswordRequest } from "../types/auth";
+import { clearAccessToken } from "../token-storage";
+import type { ResetPasswordRequest } from "../types/auth";
 
-/** Sets a new password using the token from the reset link. */
-export function resetPassword(payload: ResetPasswordRequest): Promise<MessageResponse> {
-  return api.post<MessageResponse>(ENDPOINTS.auth.resetPassword, payload, { auth: false });
+/**
+ * Sets a new password from the reset link's token. Every session ends, including
+ * one open in this browser. 400 `link_expired` / `link_invalid` /
+ * `passwords_do_not_match`, or the broken password rule.
+ */
+export async function resetPassword(payload: ResetPasswordRequest): Promise<{ reset: boolean }> {
+  const result = unwrapData<{ reset: boolean }>(await api.post(ENDPOINTS.auth.resetPassword, payload, { auth: false }));
+  clearAccessToken();
+  return result;
 }

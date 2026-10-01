@@ -18,7 +18,8 @@ import {
   type LocationConnection,
 } from "@/lib/mypageseo/integrations";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
-import { useGbpConnect, useGbpDisconnect } from "@/lib/gbp/use-gbp-connect";
+import { useGbpConnect } from "@/lib/gbp/use-gbp-connect";
+import { GoogleAccountsPanel } from "@/components/gbp-connect/google-accounts-panel";
 
 const SettingsIntegrationsPage = () => (
     <RequireAccess permission="integrations.manage">
@@ -62,12 +63,8 @@ function GoogleIntegrationSection({
   const [pending, setPending] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [disconnectTarget, setDisconnectTarget] = useState<LocationConnection | null>(null);
-  const [confirmOrgDisconnect, setConfirmOrgDisconnect] = useState(false);
-  const [organizationState, setOrganizationState] = useState(integration.organizationState);
-  const [notice, setNotice] = useState<string | null>(null);
-  const { connect, connecting, error: connectError } = useGbpConnect();
-  const { disconnect, disconnecting, error: disconnectError } = useGbpDisconnect();
-  const { locations, capabilities } = integration;
+  const { connect, connecting } = useGbpConnect();
+  const { locations } = integration;
 
   const counts = useMemo(
     () => ({
@@ -93,19 +90,9 @@ function GoogleIntegrationSection({
   };
 
   const unsupportedNote =
-    "Disconnecting a single location isn't available yet. Use Disconnect above to revoke Google access for the workspace.";
+    "Unbinding a single location isn't available from this page yet. Disconnect its Google account under Google accounts to stop syncing it.";
 
-  const handleOrgDisconnect = async () => {
-    setNotice(null);
-    if (await disconnect()) {
-      setConfirmOrgDisconnect(false);
-      setOrganizationState("disconnected");
-      setNotice("Google Business Profile disconnected. Reconnect any time to resume syncing.");
-    }
-  };
-
-  const orgConnected = organizationState === "connected";
-  const statusMessage = connectError ?? disconnectError ?? actionError;
+  const statusMessage = actionError;
 
   return (
     <div className="space-y-6">
@@ -121,46 +108,8 @@ function GoogleIntegrationSection({
                 <h3 id="google-integration" className="text-sm font-semibold text-foreground">
                   {integration.name}
                 </h3>
-                <StatusBadge tone={CONNECTION_TONE[organizationState]}>
-                  {CONNECTION_LABEL[organizationState]}
-                </StatusBadge>
               </div>
               <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">{integration.purpose}</p>
-              {orgConnected && integration.organizationAccount ? (
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Organization account:{" "}
-                  <span className="font-medium text-foreground">
-                    {maskAccount(integration.organizationAccount)}
-                  </span>
-                </p>
-              ) : null}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {orgConnected ? (
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={!capabilities.canReconnect || connecting}
-                    onClick={() => void connect()}
-                  >
-                    <RefreshCw aria-hidden className={connecting ? "animate-spin" : undefined} />
-                    {connecting ? "Redirecting…" : "Reconnect"}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={!capabilities.canDisconnect || disconnecting}
-                    onClick={() => setConfirmOrgDisconnect(true)}
-                  >
-                    <Link2Off aria-hidden /> Disconnect
-                  </Button>
-                </>
-              ) : (
-                <Button size="sm" disabled={!capabilities.canConnect || connecting} onClick={() => void connect()}>
-                  <Link2 aria-hidden /> {connecting ? "Redirecting to Google…" : "Connect Google"}
-                </Button>
-              )}
             </div>
           </div>
 
@@ -179,15 +128,9 @@ function GoogleIntegrationSection({
           </div>
 
           <p className="text-sm text-muted-foreground">
-            Google access is granted per location. A linked organization account does not connect every
-            location on its own — each location must be matched to its Google Business Profile below.
+            Connect up to 3 Google accounts below, then choose which of their Business Profiles to add. Each picked
+            profile is bound to a location from the Locations page.
           </p>
-
-          {notice ? (
-            <p role="status" className="text-sm text-success">
-              {notice}
-            </p>
-          ) : null}
 
           {statusMessage ? (
             <p role="alert" className="text-sm text-warning-foreground">
@@ -195,6 +138,7 @@ function GoogleIntegrationSection({
             </p>
           ) : null}
         </Panel>
+        <GoogleAccountsPanel className="mt-4" />
       </section>
 
       {needsAttention.length > 0 ? (
@@ -330,22 +274,6 @@ function GoogleIntegrationSection({
       </section>
 
       <ConfirmDialog
-        open={confirmOrgDisconnect}
-        onOpenChange={(open) => {
-          if (!disconnecting) setConfirmOrgDisconnect(open);
-        }}
-        title="Disconnect Google Business Profile?"
-        description={
-          disconnectError ??
-          "Mypageseo will stop reading profile details, reviews and posts for every location linked to this Google account. Existing history stays, but nothing new will sync until you reconnect."
-        }
-        cancelLabel="Keep connected"
-        confirmLabel={disconnecting ? "Disconnecting…" : "Disconnect"}
-        pending={disconnecting}
-        onConfirm={() => void handleOrgDisconnect()}
-      />
-
-      <ConfirmDialog
         open={disconnectTarget !== null}
         onOpenChange={(open) => {
           if (!open) setDisconnectTarget(null);
@@ -414,7 +342,7 @@ function ConnectionActions({
         disabled={!capabilities.canConnect || busy || connecting}
         onClick={onConnect}
       >
-        <Link2 aria-hidden /> {connecting ? "Redirecting…" : "Connect"}
+        <Link2 aria-hidden /> Connect
       </Button>
     );
   }
@@ -425,7 +353,7 @@ function ConnectionActions({
       disabled={!capabilities.canReconnect || busy || connecting}
       onClick={onConnect}
     >
-      <RefreshCw aria-hidden /> {connecting ? "Redirecting…" : "Reconnect"}
+      <RefreshCw aria-hidden /> Reconnect
     </Button>
   );
 }

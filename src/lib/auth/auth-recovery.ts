@@ -1,29 +1,11 @@
 /**
- * Authentication recovery contracts.
- *
- * These mirror what the Mypageseo authentication service exposes for password
- * recovery and email verification: an enumeration-safe reset request, a
- * token-scoped password reset, and a token-scoped verification result.
- *
- * While the authentication service is not connected to this frontend, the
- * resolvers below fall back to the shared demo layer (see demo/demo-mode.ts)
- * so the flows can be reviewed end to end. Removing the fallback does not
- * change any component.
+ * Shared validation and error copy for the email-link auth flows
+ * (signup, verify email, login, forgot / reset password, invitations).
  */
 import { z } from "zod";
-import { withDemoFallback } from "../mypageseo/demo/demo-mode";
+import { apiErrorData, isApiError } from "@/api";
 
-/** State of a password-reset token supplied through the reset link. */
-export type ResetTokenState = "valid" | "invalid" | "expired";
-
-/** State of an email-verification token supplied through the verify link. */
-export type VerificationState =
-  | "verified"
-  | "already_verified"
-  | "invalid"
-  | "expired";
-
-/** Password rules enforced by the authentication service (same as signup). */
+/** The backend's password rule: 8–128 characters with a letter and a digit. */
 export const passwordSchema = z
   .string()
   .min(8, { message: "Use at least 8 characters." })
@@ -31,58 +13,21 @@ export const passwordSchema = z
   .regex(/[A-Za-z]/, { message: "Include at least one letter and one number." })
   .regex(/[0-9]/, { message: "Include at least one letter and one number." });
 
-export const resetEmailSchema = z
+export const emailSchema = z
   .string()
   .trim()
   .min(1, { message: "Enter your email address." })
   .email({ message: "Enter a valid email address." })
-  .max(255, { message: "Email must be under 255 characters." });
+  .max(200, { message: "Email must be under 200 characters." });
 
-export type AuthRecoveryCapabilities = {
-  /** Request a password-reset email. */
-  requestPasswordReset: boolean;
-  /** Submit a new password against a reset token. */
-  resetPassword: boolean;
-  /** Resend a verification email for an unverified address. */
-  resendVerification: boolean;
-};
-
-export function authRecoveryCapabilities(
-  real?: AuthRecoveryCapabilities | null,
-): AuthRecoveryCapabilities {
-  return withDemoFallback(real, () => ({
-    requestPasswordReset: true,
-    resetPassword: true,
-    resendVerification: true,
-  }));
+/** "Try again in 12 minutes." for a 429 `rate_limited`, or null for other errors. */
+export function rateLimitMessage(error: unknown): string | null {
+  if (!isApiError(error) || (error.reason !== "rate_limited" && error.status !== 429)) return null;
+  const seconds = Number(apiErrorData(error).retry_after_seconds);
+  if (!Number.isFinite(seconds) || seconds <= 0) return "Too many attempts. Try again in a few minutes.";
+  const minutes = Math.ceil(seconds / 60);
+  return `Too many attempts. Try again in ${minutes} minute${minutes === 1 ? "" : "s"}.`;
 }
 
-/**
- * Resolves a token state. The real service validates the token server-side;
- * the demo fallback is deterministic on the token string so every state can be
- * reviewed (`...-expired`, `...-invalid`, empty/missing token → invalid).
- */
-export function resolveResetTokenState(
-  token: string | undefined,
-  real?: ResetTokenState | null,
-): ResetTokenState {
-  return withDemoFallback(real, () => {
-    if (!token || token.trim().length < 8) return "invalid";
-    if (token.includes("expired")) return "expired";
-    if (token.includes("invalid")) return "invalid";
-    return "valid";
-  });
-}
-
-export function resolveVerificationState(
-  token: string | undefined,
-  real?: VerificationState | null,
-): VerificationState {
-  return withDemoFallback(real, () => {
-    if (!token || token.trim().length < 8) return "invalid";
-    if (token.includes("expired")) return "expired";
-    if (token.includes("invalid")) return "invalid";
-    if (token.includes("already")) return "already_verified";
-    return "verified";
-  });
-}
+/** Copy for unexpected failures (network, 5xx). */
+export const GENERIC_AUTH_ERROR = "Something went wrong on our side. Please try again in a moment.";

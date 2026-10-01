@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, NavLink, matchPath, useLocation, useNavigate } from "react-router-dom";
 import { Bell, Check, ChevronDown, CircleHelp, LogOut, Menu, Settings, Star, User, X } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { logout } from "@/api";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -224,11 +225,14 @@ function LocationContextBar() {
 
 function AccountMenu() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const handleLogout = async () => {
     try {
       await logout();
     } finally {
+      // Drop the previous user's cached data so the next sign-in starts clean.
+      queryClient.clear();
       navigate("/login", { replace: true });
     }
   };

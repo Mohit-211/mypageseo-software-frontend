@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { Loader2 } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Loader2, MailCheck } from "lucide-react";
 import { z } from "zod";
 import {
   AuthField,
@@ -11,12 +11,20 @@ import {
   AuthLayout,
   AuthOptionGroup,
   AuthPasswordInput,
+  AuthStatePanel,
 } from "@/components/auth/auth";
+import { ResendVerification } from "@/components/auth/resend-verification";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { isApiError, signup } from "@/api";
-import type { SignupRequest } from "@/api";
-import { countries } from "@/lib/mock-data/countries";
+import type { SignupRequest, SignupResult } from "@/api";
+import { GENERIC_AUTH_ERROR, emailSchema, passwordSchema, rateLimitMessage } from "@/lib/auth/auth-recovery";
+
+/** Signup is open to US and Canadian organizations only. */
+const SIGNUP_COUNTRIES = [
+  { code: "US", name: "United States" },
+  { code: "CA", name: "Canada" },
+] as const;
 import type { AccountType } from "@/lib/mypageseo/navigation";
 
 const signupSchema = z.object({
@@ -25,25 +33,15 @@ const signupSchema = z.object({
     .string()
     .trim()
     .min(2, { message: "Enter your full name." })
-    .max(100, { message: "Name must be under 100 characters." }),
-  email: z
-    .string()
-    .trim()
-    .min(1, { message: "Enter your work email address." })
-    .email({ message: "Enter a valid email address." })
-    .max(255, { message: "Email must be under 255 characters." }),
-  password: z
-    .string()
-    .min(8, { message: "Use at least 8 characters." })
-    .max(128, { message: "Password must be under 128 characters." })
-    .regex(/[A-Za-z]/, { message: "Include at least one letter and one number." })
-    .regex(/[0-9]/, { message: "Include at least one letter and one number." }),
+    .max(150, { message: "Name must be under 150 characters." }),
+  email: emailSchema,
+  password: passwordSchema,
   organization_name: z
     .string()
     .trim()
     .min(2, { message: "Enter the organization name." })
-    .max(120, { message: "Organization name must be under 120 characters." }),
-  country: z.string().length(2, { message: "Select a country." }),
+    .max(150, { message: "Organization name must be under 150 characters." }),
+  country: z.enum(["US", "CA"], { errorMap: () => ({ message: "Select a country." }) }),
   accept_terms: z.literal(true, {
     errorMap: () => ({ message: "Accept the terms to continue." }),
   }),
@@ -62,7 +60,7 @@ type FormValues = {
 type FieldErrors = Partial<Record<keyof FormValues, string | undefined>>;
 
 function SignupPage() {
-  const navigate = useNavigate();
+  const [created, setCreated] = useState<{ email: string; result: SignupResult } | null>(null);
   const [values, setValues] = useState<FormValues>({
     account_type: "business",
     name: "",
@@ -107,29 +105,47 @@ function SignupPage() {
     setSubmitting(true);
     setFormError(null);
     try {
-      // await signup(payload);
-     
-      // await navigate(`/verify-otp?email=${encodeURIComponent(payload.email)}&type=EMAIL_VERIFICATION`);
-    await signup(payload);
-await navigate(`/verify-email?email=${encodeURIComponent(payload.email)}`);
-
-      
+      setCreated({ email: payload.email, result: await signup(payload) });
     } catch (error) {
-      if (isApiError(error) && error.fieldErrors) {
-        const next: FieldErrors = {};
-        for (const [key, message] of Object.entries(error.fieldErrors)) {
-          if (key in values) next[key as keyof FormValues] = message;
-        }
-        setErrors(next);
+      if (isApiError(error) && error.reason === "email_taken") {
+        setErrors({ email: "An account with this email already exists. Sign in instead." });
+      } else if (isApiError(error) && error.status === 400 && /password/i.test(error.message)) {
+        // A broken password rule comes back as a 400 whose message states the rule.
+        setErrors({ password: error.message });
+      } else {
+        setFormError(
+          rateLimitMessage(error) ??
+            (isApiError(error) && error.status === 400 && error.message ? error.message : GENERIC_AUTH_ERROR),
+        );
       }
-      setFormError(
-        isApiError(error) && error.status > 0 && error.status < 500
-          ? error.message
-          : "We couldn't create your account right now. Please try again, or contact support if it keeps happening.",
-      );
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (created) {
+    const deadline = new Date(created.result.verify_before);
+    return (
+      <AuthLayout>
+        <AuthStatePanel
+          tone="success"
+          icon={<MailCheck className="size-5" />}
+          title="Check your email"
+          description={
+            <>
+              We sent a verification link to <span className="font-medium text-foreground">{created.email}</span>. Open it to
+              finish creating your account
+              {Number.isNaN(deadline.getTime()) ? "" : ` before ${deadline.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`}.
+            </>
+          }
+        >
+          <ResendVerification email={created.email} />
+          <Button asChild variant="ghost" className="w-full">
+            <Link to="/login">Back to sign in</Link>
+          </Button>
+        </AuthStatePanel>
+      </AuthLayout>
+    );
   }
 
   return (
@@ -235,7 +251,7 @@ await navigate(`/verify-email?email=${encodeURIComponent(payload.email)}`);
               } ${values.country ? "" : "text-muted-foreground"}`}
             >
               <option value="">Select a country</option>
-              {countries.map((country) => (
+              {SIGNUP_COUNTRIES.map((country) => (
                 <option key={country.code} value={country.code}>
                   {country.name}
                 </option>
@@ -277,7 +293,7 @@ await navigate(`/verify-email?email=${encodeURIComponent(payload.email)}`);
         </Button>
 
         <p className="text-center text-xs text-muted-foreground">
-          Next: verify your email with the one-time code we send you.
+          Next: open the verification link we email you.
         </p>
       </form>
 

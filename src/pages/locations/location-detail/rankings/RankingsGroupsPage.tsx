@@ -1,32 +1,8 @@
-import { useNavigate } from "react-router-dom";
-import { z } from "zod";
-import { KeywordGroupSearch, KeywordGroupsTable } from "@/components/ranking/keyword-groups";
-import { RankingsNavigation } from "@/components/location/location-workspace";
-import { PageHeader } from "@/components/layout/shared/data-display";
-import { getKeywordGroups } from "@/lib/raking/keyword-groups";
-import { useTypedSearch } from "@/hooks/use-typed-search";
-import { useRequiredParams } from "@/hooks/use-required-params";
+import { Navigate } from "react-router-dom";
 
-const searchSchema = z.object({ q: z.string().optional() });
-
-
-
-function LocationKeywordGroupsPage() {
-  const { locationId } = useRequiredParams("locationId");
-  const [{ q }, setSearch] = useTypedSearch(searchSchema);
-  const navigate = useNavigate();
-  const data = getKeywordGroups(locationId);
-  const query = (q ?? "").slice(0, 100);
-  const clearSearch = () => setSearch({});
-
-  return (
-    <>
-      <RankingsNavigation locationId={locationId} activeView="groups" />
-      <PageHeader title="Keyword Groups" description="Organize tracked keywords and analyze ranking performance by topic or search theme." />
-      <KeywordGroupSearch value={query} disabled={data.status !== "ready"} onChange={(value) => setSearch({ q: value || undefined })} onReset={clearSearch} />
-      <KeywordGroupsTable data={data} query={query} onClearSearch={clearSearch} onRetry={() => setSearch((previous) => ({ ...previous }))} />
-    </>
-  );
+/** Keyword groups aren't supported by the backend; old links land on the Rank Tracker. */
+function RankingsGroupsPage() {
+  return <Navigate to=".." relative="path" replace />;
 }
 
-export default LocationKeywordGroupsPage;
+export default RankingsGroupsPage;

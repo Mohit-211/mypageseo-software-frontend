@@ -1,20 +1,45 @@
-import { useMemo } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { z } from "zod";
-import { MapPinPlus, Search, SlidersHorizontal, X } from "lucide-react";
+import { LoaderCircle, MapPinPlus, Search, X } from "lucide-react";
+import {
+  deleteLocation,
+  isApiError,
+  unbindGbpLocation,
+  updateLocation,
+  type ClientRecord,
+  type LocationRow,
+  type LocationSortField,
+  type LocationStatus,
+} from "@/api";
 import { AppShell } from "@/components/layout/shared/app-shell";
 import { PageHeader } from "@/components/layout/shared/data-display";
-import { EmptyState, ErrorState, TableSkeleton } from "@/components/layout/shared/feedback/states";
-import { LocationsTable, type LocationSort, type SortOrder } from "@/components/location/locations-table";
+import { ConfirmDialog } from "@/components/layout/shared/form-fields";
+import { ErrorState, TableSkeleton } from "@/components/layout/shared/feedback/states";
+import { NoLocationsEmpty, NoResultsEmpty } from "@/components/layout/shared/feedback/empty-states";
+import { GoogleAccountsPanel } from "@/components/gbp-connect/google-accounts-panel";
+import { PendingGbpSection } from "@/components/gbp-connect/pending-gbp-section";
+import { ClientSelect } from "@/components/location/client-select";
+import { LocationRowsTable } from "@/components/location/location-rows-table";
+import { LOCATION_STATUS_LABEL, locationSetupPath } from "@/lib/locations/location-actions";
+import type { SortOrder } from "@/components/layout/shared/data-table";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { buildManagedLocations, type LocationStatus, type ManagedLocation } from "@/lib/mock-data/locations-data";
-import { useWorkspace } from "@/lib/mypageseo/workspace";
-import { NoLocationsEmpty, NoResultsEmpty } from "@/components/layout/shared/feedback/empty-states";
-import { PlanLimitNotice, usePlanLimit } from "@/components/mypageseo/plan";
-import { planLimitMessage } from "@/lib/mypageseo/plan";
 import { useTypedSearch } from "@/hooks/use-typed-search";
+import { invalidateGbpQueries, useGbpConnect } from "@/lib/gbp/use-gbp-connect";
+import { useClients, useLocationsList } from "@/lib/locations/use-locations";
+import { useWorkspace } from "@/lib/mypageseo/workspace";
 
 const searchSchema = z.object({
   q: z.string().optional(),
@@ -25,144 +50,257 @@ const searchSchema = z.object({
   page: z.coerce.number().optional(),
 });
 
-type LocationSearch = z.infer<typeof searchSchema>;
+const PAGE_SIZE = 25;
+const STATUSES: LocationStatus[] = ["active", "setup_required", "gbp_not_connected", "reconnect_required"];
+const SORTS: LocationSortField[] = ["name", "city", "rank", "gbp_score", "rating", "last_refreshed"];
+const DESCRIPTION = "Manage the Google Business Profiles connected to your Mypageseo account.";
 
-
+/** Delays a fast-changing value (the search box) so each keystroke doesn't send a request. */
+function useDebounced<T>(value: T, ms = 300): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), ms);
+    return () => window.clearTimeout(timer);
+  }, [value, ms]);
+  return debounced;
+}
 
 function LocationsPage() {
   const workspace = useWorkspace();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { connect } = useGbpConnect();
   const [search, setSearch] = useTypedSearch(searchSchema);
   const agency = workspace.organization?.accountType === "agency";
+  const { clients } = useClients(agency);
+
   const q = (search.q ?? "").slice(0, 120);
-  const client = search.client ?? "all";
-  const validStatuses: LocationStatus[] = ["active", "setup_required", "disconnected"];
-  const status = validStatuses.includes(search.status as LocationStatus) ? search.status as LocationStatus : "all";
-  const validSorts: LocationSort[] = ["location", "visibility", "gbp", "reviews", "rank", "status"];
-  const sort = validSorts.includes(search.sort as LocationSort) ? search.sort as LocationSort : "location";
+  const debouncedQ = useDebounced(q.trim());
+  const clientId = search.client ?? null;
+  const status = STATUSES.includes(search.status as LocationStatus) ? (search.status as LocationStatus) : null;
+  const sort = SORTS.includes(search.sort as LocationSortField) ? (search.sort as LocationSortField) : "name";
   const order: SortOrder = search.order === "desc" ? "desc" : "asc";
   const page = Math.max(1, Math.floor(search.page ?? 1));
-  const pageSize = 5;
+  const hasFilters = Boolean(q || clientId || status);
 
-  const locationLimit = usePlanLimit("locations");
+  const list = useLocationsList({
+    ...(debouncedQ ? { search: debouncedQ } : {}),
+    ...(clientId ? { client_id: clientId } : {}),
+    ...(status ? { status } : {}),
+    sort,
+    order,
+    page,
+    limit: PAGE_SIZE,
+  });
 
-  const allLocations = useMemo(
-    () => buildManagedLocations(workspace.locations, workspace.clients),
-    [workspace.locations, workspace.clients],
-  );
+  const [unbindTarget, setUnbindTarget] = useState<LocationRow | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<LocationRow | null>(null);
+  const [clientTarget, setClientTarget] = useState<LocationRow | null>(null);
 
-  const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    return allLocations
-      .filter((location) => !needle || `${location.businessName} ${location.area} ${location.clientName ?? ""}`.toLowerCase().includes(needle))
-      .filter((location) => client === "all" || location.clientId === client)
-      .filter((location) => status === "all" || location.status === status)
-      .sort((a, b) => compareLocations(a, b, sort, order));
-  }, [allLocations, client, order, q, sort, status]);
-
-  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const safePage = Math.min(page, pageCount);
-  const visibleLocations = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
-  const hasFilters = Boolean(q || client !== "all" || status !== "all");
-
-  const updateSearch = (patch: Record<string, string | number | boolean | undefined>) => {
+  const updateSearch = (patch: Record<string, string | number | undefined>) => {
     setSearch((previous) => ({ ...previous, ...patch }));
   };
+  // Unbind and delete also change the Google accounts' bound counts.
+  const refresh = () => invalidateGbpQueries(queryClient);
 
-  if (workspace.status === "loading") {
-    return <AppShell><PageHeader title="Locations" description="Manage the Google Business Profiles connected to your Mypageseo account." /><TableSkeleton rows={6} columns={agency ? 8 : 7} /></AppShell>;
+  const runRowAction = async (label: string, action: () => Promise<unknown>, success: string) => {
+    try {
+      await action();
+      await refresh();
+      toast.success(success);
+    } catch (err) {
+      toast.error(isApiError(err) && err.message ? err.message : `${label} failed. Try again.`);
+    }
+  };
+
+  const header = (
+    <PageHeader
+      title="Locations"
+      description={DESCRIPTION}
+      actions={
+        <Button onClick={() => navigate("/locations/add")}>
+          <MapPinPlus aria-hidden /> Add location
+        </Button>
+      }
+    />
+  );
+
+  if (list.isPending) {
+    return (
+      <AppShell>
+        {header}
+        <TableSkeleton rows={6} columns={agency ? 9 : 8} />
+      </AppShell>
+    );
   }
 
-  if (workspace.status === "unavailable") {
-    return <AppShell><PageHeader title="Locations" description="Manage the Google Business Profiles connected to your Mypageseo account." /><ErrorState description="We couldn't load your locations. Try again without leaving this page." onRetry={() => window.location.reload()} /></AppShell>;
+  if (list.isError) {
+    return (
+      <AppShell>
+        {header}
+        <ErrorState
+          description="We couldn't load your locations. Try again without leaving this page."
+          onRetry={() => void list.refetch()}
+        />
+      </AppShell>
+    );
   }
+
+  const { locations, total, pending_gbp: pending = [], attribution } = list.data;
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <AppShell>
-      <PageHeader
-        title="Locations"
-        description="Manage the Google Business Profiles connected to your Mypageseo account."
-        actions={
-          <Button
-            onClick={() => navigate("/locations/add")}
-            disabled={Boolean(locationLimit?.reached)}
-            title={locationLimit?.reached ? planLimitMessage(locationLimit) : undefined}
-          >
-            <MapPinPlus aria-hidden /> Add location
-          </Button>
-        }
-      />
+      {header}
 
-      {locationLimit ? <PlanLimitNotice state={locationLimit} className="mb-4" /> : null}
+      <PendingGbpSection picks={pending} clients={clients} />
 
-
-      {allLocations.length === 0 ? (
-        <NoLocationsEmpty />
+      {total === 0 && !hasFilters ? (
+        pending.length === 0 ? <NoLocationsEmpty /> : null
       ) : (
         <div className="space-y-4">
           <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-3 shadow-card lg:flex-row lg:items-center">
             <div className="relative min-w-0 flex-1 lg:max-w-md">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-              <Input aria-label="Search locations" value={q} onChange={(event) => updateSearch({ q: event.target.value || undefined, page: 1 })} placeholder="Search name, city or client" className="h-9 pl-9" />
+              <Input
+                aria-label="Search locations"
+                value={q}
+                onChange={(event) => updateSearch({ q: event.target.value || undefined, page: 1 })}
+                placeholder="Search name or city"
+                className="h-9 pl-9"
+              />
             </div>
             <div className="flex min-w-0 flex-col gap-2 sm:flex-row">
-              {agency ? (
-                <Select value={client} onValueChange={(value) => updateSearch({ client: value === "all" ? undefined : value, page: 1 })}>
+              {agency && clients.length > 0 ? (
+                <Select value={clientId ?? "all"} onValueChange={(value) => updateSearch({ client: value === "all" ? undefined : value, page: 1 })}>
                   <SelectTrigger className="w-full bg-background sm:w-48" aria-label="Filter by client"><SelectValue placeholder="All clients" /></SelectTrigger>
-                  <SelectContent><SelectItem value="all">All clients</SelectItem>{workspace.clients.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectContent>
+                  <SelectContent>
+                    <SelectItem value="all">All clients</SelectItem>
+                    {clients.map((client) => <SelectItem key={client.client_id} value={client.client_id}>{client.name}</SelectItem>)}
+                  </SelectContent>
                 </Select>
               ) : null}
-              <Select value={status} onValueChange={(value) => updateSearch({ status: value === "all" ? undefined : value, page: 1 })}>
-                <SelectTrigger className="w-full bg-background sm:w-44" aria-label="Filter by status"><SelectValue placeholder="All statuses" /></SelectTrigger>
-                <SelectContent><SelectItem value="all">All statuses</SelectItem><SelectItem value="active">Active</SelectItem><SelectItem value="setup_required">Setup required</SelectItem><SelectItem value="disconnected">Disconnected</SelectItem></SelectContent>
+              <Select value={status ?? "all"} onValueChange={(value) => updateSearch({ status: value === "all" ? undefined : value, page: 1 })}>
+                <SelectTrigger className="w-full bg-background sm:w-48" aria-label="Filter by status"><SelectValue placeholder="All statuses" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All statuses</SelectItem>
+                  {STATUSES.map((value) => <SelectItem key={value} value={value}>{LOCATION_STATUS_LABEL[value]}</SelectItem>)}
+                </SelectContent>
               </Select>
               {hasFilters ? <Button variant="ghost" size="sm" onClick={() => setSearch({ sort, order, page: 1 })}><X aria-hidden /> Clear</Button> : null}
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-sm text-muted-foreground">{filtered.length} {filtered.length === 1 ? "location" : "locations"}</p>
-            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"><SlidersHorizontal className="size-3.5" aria-hidden /> Sorted by {sortLabel(sort)}</span>
-          </div>
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            {total} {total === 1 ? "location" : "locations"}
+            {list.isFetching ? <LoaderCircle aria-label="Updating" className="size-3.5 animate-spin" /> : null}
+          </p>
 
-          {filtered.length === 0 ? (
+          {locations.length === 0 ? (
             <NoResultsEmpty label="locations" onClear={() => setSearch({ sort, order, page: 1 })} />
           ) : (
-            <LocationsTable
-              locations={visibleLocations}
+            <LocationRowsTable
+              locations={locations}
               agency={agency}
               sort={sort}
               order={order}
-              page={safePage}
+              page={Math.min(page, pageCount)}
               pageCount={pageCount}
+              total={total}
+              pageSize={PAGE_SIZE}
+              attribution={attribution?.text ?? null}
               onSort={(nextSort) => updateSearch({ sort: nextSort, order: sort === nextSort && order === "asc" ? "desc" : "asc", page: 1 })}
               onPageChange={(nextPage) => updateSearch({ page: nextPage })}
-              onOpen={(location) => {
-                workspace.setActiveClientId(location.clientId ?? null);
-                workspace.setActiveLocationId(location.id);
-                navigate(`/locations/${location.id}`);
+              actions={{
+                onOpen: (location) => navigate(`/locations/${location.location_id}`),
+                onContinueSetup: (location) => navigate(locationSetupPath(location.location_id)),
+                onReconnect: () => connect(),
+                onUnbind: setUnbindTarget,
+                onDelete: setDeleteTarget,
+                onSetClient: agency && clients.length > 0 ? setClientTarget : undefined,
               }}
             />
           )}
         </div>
       )}
+
+      <GoogleAccountsPanel className="mt-6" />
+
+      <ConfirmDialog
+        open={unbindTarget !== null}
+        onOpenChange={(open) => (open ? undefined : setUnbindTarget(null))}
+        title={`Unbind ${unbindTarget?.name ?? "this location"} from Google?`}
+        description="The location stays and its rankings keep working, but Google Business Profile data stops syncing. The Google account stays connected; pick the profile again to rebind it."
+        cancelLabel="Keep bound"
+        confirmLabel="Unbind"
+        onConfirm={() => {
+          const target = unbindTarget;
+          setUnbindTarget(null);
+          if (target) void runRowAction("Unbinding", () => unbindGbpLocation(target.location_id), `${target.name} unbound from Google`);
+        }}
+      />
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => (open ? undefined : setDeleteTarget(null))}
+        title={`Delete ${deleteTarget?.name ?? "this location"}?`}
+        description="Tracking stops and scheduled runs are cancelled. History is kept, and the place can be added again later. A paid location slot stays paid until the period ends."
+        cancelLabel="Keep location"
+        confirmLabel="Delete"
+        onConfirm={() => {
+          const target = deleteTarget;
+          setDeleteTarget(null);
+          if (target) void runRowAction("Deleting", () => deleteLocation(target.location_id), `${target.name} deleted`);
+        }}
+      />
+
+      {clientTarget ? (
+        <SetClientDialog
+          location={clientTarget}
+          clients={clients}
+          onClose={() => setClientTarget(null)}
+          onSave={(nextClientId) => {
+            const target = clientTarget;
+            setClientTarget(null);
+            void runRowAction(
+              "Updating the client",
+              () => updateLocation(target.location_id, { client_id: nextClientId }),
+              nextClientId ? `${target.name} moved to ${clients.find((c) => c.client_id === nextClientId)?.name ?? "the client"}` : `${target.name} has no client now`,
+            );
+          }}
+        />
+      ) : null}
     </AppShell>
   );
 }
 
-function compareLocations(a: ManagedLocation, b: ManagedLocation, sort: LocationSort, order: SortOrder) {
-  const multiplier = order === "asc" ? 1 : -1;
-  const values: Record<LocationSort, [string | number | null, string | number | null]> = {
-    location: [a.businessName, b.businessName], visibility: [a.visibility, b.visibility], gbp: [a.gbpHealth, b.gbpHealth], reviews: [a.reviewCount ?? null, b.reviewCount ?? null], rank: [a.averageRank, b.averageRank], status: [a.status, b.status],
-  };
-  const [left, right] = values[sort];
-  if (left === null) return right === null ? 0 : 1;
-  if (right === null) return -1;
-  return multiplier * (typeof left === "string" ? left.localeCompare(String(right)) : left - Number(right));
-}
-
-function sortLabel(sort: LocationSort) {
-  return ({ location: "location", visibility: "visibility", gbp: "GBP health", reviews: "reviews", rank: "average rank", status: "status" } as const)[sort];
+function SetClientDialog({
+  location,
+  clients,
+  onClose,
+  onSave,
+}: {
+  location: LocationRow;
+  clients: ClientRecord[];
+  onClose: () => void;
+  onSave: (clientId: string | null) => void;
+}) {
+  const [clientId, setClientId] = useState<string | null>(location.client?.client_id ?? null);
+  return (
+    <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Client for {location.name}</DialogTitle>
+          <DialogDescription>Clients are an optional grouping. Choose "No client" to unassign.</DialogDescription>
+        </DialogHeader>
+        <ClientSelect id="location-client" clients={clients} value={clientId} onChange={setClientId} label="Client" />
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button disabled={clientId === (location.client?.client_id ?? null)} onClick={() => onSave(clientId)}>Save</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 export default LocationsPage;
