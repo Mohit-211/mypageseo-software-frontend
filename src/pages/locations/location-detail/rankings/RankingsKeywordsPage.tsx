@@ -8,6 +8,8 @@ import { EditKeywordsButton } from "@/components/ranking/keyword-controls";
 import { AvgRank, BucketLegend, RankCellView, RankChange, RankingsError, RankingsPageHeader } from "@/components/ranking/rank-ui";
 import { Button } from "@/components/ui/button";
 import { formatRate, targetLabel } from "@/lib/rankings/format";
+import { TermWithTip } from "@/components/layout/shared/info-tip";
+import { GLOSSARY, pointExplanation } from "@/lib/rankings/glossary";
 import { useGroupParam, useRankingsContext, useRunParam } from "@/lib/rankings/rankings-context";
 import { useKeywordHistory, useRankTracker } from "@/lib/rankings/use-rankings";
 
@@ -85,11 +87,11 @@ function KeywordPanel({
           <thead className="border-b border-border bg-surface-strong text-left text-xs text-muted-foreground">
             <tr>
               <th className="px-4 py-2.5 font-medium">Business</th>
-              <th className="px-3 py-2.5 text-right font-medium">Avg. rank</th>
-              <th className="px-3 py-2.5 font-medium">Change</th>
-              <th className="px-3 py-2.5 text-right font-medium">Found</th>
-              <th className="px-3 py-2.5 text-right font-medium">Top 3</th>
-              {POINTS.map((point) => <th key={point} className="px-2 py-2.5 text-center font-medium">{point}</th>)}
+              <th className="px-3 py-2.5 text-right font-medium"><TermWithTip term="Avg. rank">{GLOSSARY.avgRank}</TermWithTip></th>
+              <th className="px-3 py-2.5 font-medium"><TermWithTip term="Change">{GLOSSARY.change}</TermWithTip></th>
+              <th className="px-3 py-2.5 text-right font-medium"><TermWithTip term="Found">{GLOSSARY.found}</TermWithTip></th>
+              <th className="px-3 py-2.5 text-right font-medium"><TermWithTip term="Top 3">{GLOSSARY.top3}</TermWithTip></th>
+              {POINTS.map((point) => <th key={point} className="px-2 py-2.5 text-center font-medium"><TermWithTip term={point}>{pointExplanation(point, data.run.config.tracker_offset_km)}</TermWithTip></th>)}
             </tr>
           </thead>
           <tbody className="divide-y divide-border">

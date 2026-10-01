@@ -11,6 +11,7 @@ import {
   searchPlaces,
   setLocationCenter,
   updateTracking,
+  type LocationCenterResult,
   type LocationHeader,
   type LocationOnboardingStep,
   type PlaceSearchResult,
@@ -24,6 +25,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PinsMap } from "@/components/ranking/rank-map";
+import { PlaceAutocomplete } from "@/components/location/place-autocomplete";
 import { useRequiredParams } from "@/hooks/use-required-params";
 import { LOCATIONS_QUERY_KEY, useLocation } from "@/lib/locations/use-locations";
 import { cn } from "@/lib/utils";
@@ -178,23 +181,19 @@ function CenterStep({ locationId, onDone }: { locationId: string; onDone: () => 
   const [query, setQuery] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** What the city / ZIP resolved to, shown for confirmation before continuing. */
+  const [resolved, setResolved] = useState<LocationCenterResult | null>(null);
 
-  const save = async () => {
-    const trimmed = query.trim();
-    if (trimmed.length < 2 || trimmed.length > 100) {
-      setError("Enter a city or ZIP / postal code (2–100 characters).");
-      return;
-    }
+  const saveCenter = async (input: { query: string } | { place_id: string; session: string }) => {
     setSaving(true);
     setError(null);
     try {
-      await setLocationCenter(locationId, trimmed);
-      onDone();
+      setResolved(await setLocationCenter(locationId, input));
     } catch (err) {
       const status = isApiError(err) ? err.status : 0;
       setError(
         status === 404
-          ? "Nothing was found for that city or ZIP. Try another one."
+          ? "Nothing was found for that city or ZIP. Pick one from the list, or try another."
           : status === 429
             ? "The daily search limit is reached. Try again tomorrow."
             : errorText(err, "The center could not be saved. Try again."),
@@ -204,33 +203,65 @@ function CenterStep({ locationId, onDone }: { locationId: string; onDone: () => 
     }
   };
 
+  // Free text is the fallback when no suggestion was picked.
+  const saveTyped = () => {
+    const trimmed = query.trim();
+    if (trimmed.length < 2 || trimmed.length > 100) {
+      setError("Pick a city or ZIP from the list, or type it in full (2–100 characters).");
+      return;
+    }
+    void saveCenter({ query: trimmed });
+  };
+
+  if (resolved) {
+    return (
+      <Panel title="Is this the right place?" description="Rankings will be measured from points around this center.">
+        <div className="space-y-3">
+          <p className="text-sm text-foreground">
+            Centered on <span className="font-semibold">{resolved.center_label}</span>
+          </p>
+          <PinsMap
+            className="h-64 w-full rounded-md"
+            pins={[{ key: "center", lat: resolved.lat, lng: resolved.lng, rank: 1, name: resolved.center_label, kind: "self" }]}
+          />
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={() => setResolved(null)}>Use a different place</Button>
+            <Button onClick={onDone}>Looks right, continue</Button>
+          </div>
+        </div>
+      </Panel>
+    );
+  }
+
   return (
-    <Panel title="Where does this business serve customers?" description="It's a service-area business without a public address, so rankings are measured around the city or ZIP you enter.">
+    <Panel title="Where does this business serve customers?" description="It's a service-area business without a public address, so rankings are measured around the city or ZIP you choose.">
       <form
         className="space-y-3"
         onSubmit={(event) => {
           event.preventDefault();
-          void save();
+          saveTyped();
         }}
       >
-        <div className="max-w-sm space-y-1.5">
+        <div className="max-w-md space-y-1.5">
           <Label htmlFor="setup-center">City or ZIP / postal code</Label>
-          <Input
+          <PlaceAutocomplete
             id="setup-center"
+            locationId={locationId}
             value={query}
-            maxLength={100}
-            placeholder="Fredericton, NB"
-            aria-invalid={Boolean(error)}
-            onChange={(event) => {
-              setQuery(event.target.value);
+            disabled={saving}
+            invalid={Boolean(error)}
+            onChange={(value) => {
+              setQuery(value);
               setError(null);
             }}
+            onPick={(suggestion, session) => void saveCenter({ place_id: suggestion.place_id, session })}
           />
+          <p className="text-xs text-muted-foreground">Pick from the list so we know exactly which place you mean.</p>
         </div>
         {error ? <p role="alert" className="text-sm text-critical">{error}</p> : null}
         <div className="flex justify-end">
-          <Button type="submit" disabled={saving}>
-            {saving ? <LoaderCircle aria-hidden className="animate-spin" /> : null} Save and continue
+          <Button type="submit" variant="outline" disabled={saving}>
+            {saving ? <LoaderCircle aria-hidden className="animate-spin" /> : null} Use what I typed
           </Button>
         </div>
       </form>

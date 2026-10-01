@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { ArrowLeft, LoaderCircle, RefreshCw } from "lucide-react";
 import { apiErrorData, isApiError, refreshLocation, type ChangeLabel, type OverallRank, type RankCell } from "@/api";
 import { PageHeader, TrendIndicator } from "@/components/layout/shared/data-display";
-import { RankingsNavigation } from "@/components/location/location-workspace";
+import { RankingsNavigation, type RankingView } from "@/components/location/location-workspace";
 import { EmptyState, ErrorState } from "@/components/layout/shared/feedback/states";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -14,6 +14,7 @@ import {
   BUCKET_LABEL,
   CHANGE_LABEL_TEXT,
   RANKINGS_SOURCE_NOTE,
+  centerDescription,
   comparableNote,
   formatAvgRank,
   formatDistance,
@@ -21,6 +22,8 @@ import {
 } from "@/lib/rankings/format";
 import { GridSettingsButton } from "@/components/ranking/grid-settings-dialog";
 import { GroupFilter } from "@/components/ranking/keyword-controls";
+import { InfoTip } from "@/components/layout/shared/info-tip";
+import { GLOSSARY } from "@/lib/rankings/glossary";
 import type { RankBucket } from "@/api";
 import { locationSetupPath } from "@/lib/locations/location-actions";
 import {
@@ -29,7 +32,7 @@ import {
   useRankRuns,
   useRefreshState,
 } from "@/lib/rankings/use-rankings";
-import { useRunParam } from "@/lib/rankings/rankings-context";
+import { useRankingsContext, useRunParam } from "@/lib/rankings/rankings-context";
 import type { RunMeta } from "@/api";
 import { cn } from "@/lib/utils";
 
@@ -309,6 +312,7 @@ export function RefreshRankingsButton({ locationId }: { locationId: string }) {
       }
     } finally {
       void queryClient.invalidateQueries({ queryKey: rankingsKey(locationId) });
+      void queryClient.invalidateQueries({ queryKey: ["billing", "tokens"] });
     }
   };
 
@@ -337,7 +341,7 @@ export function RankingsPageHeader({
   groupFilter = false,
 }: {
   locationId: string;
-  view: "overview" | "keywords" | "groups" | "map" | "grid" | "competitors";
+  view: RankingView;
   title: string;
   description: string;
   run?: RunMeta | undefined;
@@ -347,6 +351,9 @@ export function RankingsPageHeader({
 }) {
   const [runId, setRunId] = useRunParam();
   const radius = run?.config.radius_km;
+  const { location } = useRankingsContext();
+  // The run's own center (frozen with it); older runs fall back to the location's current one.
+  const measuredAround = centerDescription(run?.center?.source ? run.center : location.center);
   return (
     <>
       <RankingsNavigation locationId={locationId} activeView={view} />
@@ -362,7 +369,11 @@ export function RankingsPageHeader({
                 {radius ? `, ${formatDistance(radius)} from center to edge` : `, points ${run.config.spacing_km} km apart`}
               </p>
             ) : null}
-            <p>{RANKINGS_SOURCE_NOTE}</p>
+            {measuredAround ? <p className="font-medium text-foreground">{measuredAround}</p> : null}
+            <p className="flex items-center gap-1">
+              {RANKINGS_SOURCE_NOTE}
+              <InfoTip label="Where are rankings measured from?">{GLOSSARY.businessCenter}</InfoTip>
+            </p>
           </div>
         }
         actions={

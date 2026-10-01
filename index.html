@@ -2,13 +2,50 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Mypageseo</title>
-    <meta name="description" content="Local SEO management for businesses and agencies." />
-    <meta property="og:type" content="website" />
-    <meta name="twitter:card" content="summary_large_image" />
-    <link rel="icon" type="image/png" href="/favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
 
+    <title>Mypageseo — Local SEO for businesses and agencies</title>
+    <meta
+      name="description"
+      content="Mypageseo tracks Google Maps rankings, Google Business Profile performance, reviews and citations for local businesses and agencies."
+    />
+    <meta name="application-name" content="Mypageseo" />
+    <meta name="author" content="Mypageseo" />
+    <!-- The app lives behind sign-in; search engines should index the marketing site (mypageseo.com) instead. -->
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="canonical" href="https://app.mypageseo.com/" />
+
+    <!-- Icons (Vite fingerprints assets referenced from src/) -->
+    <link rel="icon" type="image/png" href="/src/assets/favicon.png" />
+    <link rel="apple-touch-icon" href="/src/assets/favicon.png" />
+
+    <!-- Browser chrome -->
+    <meta name="theme-color" content="#24404a" />
+    <meta name="color-scheme" content="light" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="apple-mobile-web-app-title" content="Mypageseo" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
+    <!-- Link previews (Slack, email, social) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Mypageseo" />
+    <meta property="og:title" content="Mypageseo — Local SEO for businesses and agencies" />
+    <meta
+      property="og:description"
+      content="Track Google Maps rankings, Google Business Profile performance, reviews and citations in one place."
+    />
+    <meta property="og:url" content="https://app.mypageseo.com/" />
+    <meta property="og:locale" content="en_US" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Mypageseo — Local SEO for businesses and agencies" />
+    <meta
+      name="twitter:description"
+      content="Track Google Maps rankings, Google Business Profile performance, reviews and citations in one place."
+    />
+
+    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -17,6 +54,12 @@
     />
   </head>
   <body>
+    <noscript>
+      <div style="font-family: system-ui, sans-serif; padding: 2rem; text-align: center">
+        Mypageseo needs JavaScript to run. Please enable it in your browser, or visit
+        <a href="https://mypageseo.com">mypageseo.com</a>.
+      </div>
+    </noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

@@ -94,3 +94,13 @@ export const BUCKET_MARKER_CLASS: Record<RankBucket, string> = {
   not_found: "bg-muted-foreground text-white border-white",
   error: "bg-background text-muted-foreground border-dashed border-muted-foreground",
 };
+
+/**
+ * "Measured around: …" from a center's source (run or location header).
+ * Null when the source isn't known (runs before 2026-10-01).
+ */
+export function centerDescription(center: { source?: "place" | "manual" | null; label?: string | null } | null | undefined): string | null {
+  if (!center?.source) return null;
+  if (center.source === "place") return `Measured around: your Google Maps pin${center.label ? `, ${center.label}` : ""}`;
+  return `Measured around: ${center.label ?? "the city or ZIP"} (set during setup)`;
+}

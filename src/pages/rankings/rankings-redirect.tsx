@@ -10,7 +10,22 @@ import { useWorkspace } from "@/lib/mypageseo/workspace";
  * The sidebar's Rankings entries open the selected location's ranking pages
  * (the header's location, else the first one), so there is one set of ranking screens.
  */
-export function RankingsRedirect({ view }: { view: "" | "keywords" | "groups" | "map" | "grid" }) {
+export function RankingsRedirect({ view }: { view: "" | "tracker" | "keywords" | "groups" | "map" | "grid" }) {
+  return <LocationSectionRedirect section="rankings" view={view} title="Rankings" description="Google Maps rankings for each of your locations." />;
+}
+
+/** Opens the selected location's page for a section (the header's location, else the first one). */
+export function LocationSectionRedirect({
+  section,
+  view,
+  title,
+  description,
+}: {
+  section: string;
+  view: string;
+  title: string;
+  description: string;
+}) {
   const workspace = useWorkspace();
   if (workspace.status === "loading") {
     return <AppShell><PageSkeleton /></AppShell>;
@@ -22,15 +37,15 @@ export function RankingsRedirect({ view }: { view: "" | "keywords" | "groups" | 
   if (!location) {
     return (
       <AppShell>
-        <PageHeader title="Rankings" description="Google Maps rankings for each of your locations." />
+        <PageHeader title={title} description={description} />
         <EmptyState
           icon={MapPin}
           title="No locations yet"
-          description="Add a location and its keywords to start tracking rankings."
+          description="Add a location first."
           action={<Button asChild size="sm"><Link to="/locations/add">Add location</Link></Button>}
         />
       </AppShell>
     );
   }
-  return <Navigate to={`/locations/${location.id}/rankings${view ? `/${view}` : ""}`} replace />;
+  return <Navigate to={`/locations/${location.id}/${section}${view ? `/${view}` : ""}`} replace />;
 }

@@ -8,6 +8,7 @@ export type LocationSection =
   | "overview"
   | "rankings"
   | "gbp"
+  | "reputation"
   | "citations"
   | "competitors"
   | "reports";
@@ -16,20 +17,27 @@ const locationSections: { label: string; key: LocationSection; to: string }[] = 
   { label: "Overview", key: "overview", to: "/locations/:locationId" },
   { label: "Rankings", key: "rankings", to: "/locations/:locationId/rankings" },
   { label: "GBP", key: "gbp", to: "/locations/:locationId/gbp" },
+  { label: "Reputation", key: "reputation", to: "/locations/:locationId/reputation" },
   { label: "Citations", key: "citations", to: "/locations/:locationId/citations" },
   { label: "Competitors", key: "competitors", to: "/locations/:locationId/competitors" },
   { label: "Reports", key: "reports", to: "/locations/:locationId/reports" },
 ];
 
-const gbpViews: { label: string; key: "overview" | "audit" | "reviews" | "posts"; to: string }[] = [
+export type GbpView = "overview" | "audit" | "competitors" | "posts";
+
+// Reviews live under Reputation; GBP keeps a review summary in the audit.
+const gbpViews: { label: string; key: GbpView; to: string }[] = [
   { label: "Overview", key: "overview", to: "/locations/:locationId/gbp" },
   { label: "Audit", key: "audit", to: "/locations/:locationId/gbp/audit" },
-  { label: "Reviews", key: "reviews", to: "/locations/:locationId/gbp/reviews" },
+  { label: "Competitors", key: "competitors", to: "/locations/:locationId/gbp/audit/competitors" },
   { label: "Posts", key: "posts", to: "/locations/:locationId/gbp/posts" },
 ];
 
-const rankingViews: { label: string; key: "overview" | "keywords" | "groups" | "map" | "grid" | "competitors"; to: string }[] = [
-  { label: "Rank Tracker", key: "overview", to: "/locations/:locationId/rankings" },
+export type RankingView = "overview" | "tracker" | "keywords" | "groups" | "map" | "grid" | "competitors";
+
+const rankingViews: { label: string; key: RankingView; to: string }[] = [
+  { label: "Overview", key: "overview", to: "/locations/:locationId/rankings" },
+  { label: "Rank Tracker", key: "tracker", to: "/locations/:locationId/rankings/tracker" },
   { label: "Keywords", key: "keywords", to: "/locations/:locationId/rankings/keywords" },
   { label: "Keyword Groups", key: "groups", to: "/locations/:locationId/rankings/groups" },
   { label: "Map Rankings", key: "map", to: "/locations/:locationId/rankings/map" },
@@ -137,7 +145,7 @@ export function GbpNavigation({
   activeView,
 }: {
   locationId: string;
-  activeView: "overview" | "audit" | "reviews" | "posts";
+  activeView: GbpView;
 }) {
   return (
     <nav aria-label="GBP views" className="overflow-x-auto">
@@ -171,7 +179,7 @@ export function RankingsNavigation({
   activeView,
 }: {
   locationId: string;
-  activeView: "overview" | "keywords" | "groups" | "map" | "grid" | "competitors";
+  activeView: RankingView;
 }) {
   return (
     <nav aria-label="Rankings views" className="overflow-x-auto">

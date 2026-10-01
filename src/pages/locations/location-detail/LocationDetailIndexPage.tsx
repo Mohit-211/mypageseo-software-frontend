@@ -12,13 +12,14 @@ import { Button } from "@/components/ui/button";
 import { useGbpConnect } from "@/lib/gbp/use-gbp-connect";
 import { useLocationOverview } from "@/lib/locations/use-locations";
 import { useRequiredParams } from "@/hooks/use-required-params";
+import { centerDescription } from "@/lib/rankings/format";
 
 const description =
   "Everything tracked for this location: rankings, Google Business Profile health, citations, competitors and reports.";
 
 const modules: { label: string; to: string; icon: typeof TrendingUp; summary: string }[] = [
   { label: "Rankings", to: "/locations/:locationId/rankings", icon: TrendingUp, summary: "Keyword positions, keyword groups, map rankings and the local search grid." },
-  { label: "GBP", to: "/locations/:locationId/gbp", icon: Building2, summary: "Profile completeness, audit findings, reviews and posts." },
+  { label: "GBP", to: "/locations/:locationId/gbp", icon: Building2, summary: "Profile performance, search terms, the GBP Score and competitor comparison." },
   { label: "Citations", to: "/locations/:locationId/citations", icon: ListChecks, summary: "Directory listings, NAP consistency, duplicates and missing listings." },
   { label: "Competitors", to: "/locations/:locationId/competitors", icon: Users, summary: "Local competitors tracked against this location." },
   { label: "Reports", to: "/locations/:locationId/reports", icon: FileBarChart, summary: "Reports generated or scheduled for this location." },
@@ -87,7 +88,11 @@ function LocationOverviewPage() {
         }}
       />
       <LocationNavigation locationId={data.location_id} activeSection="overview" />
-      <PageHeader title="Location Overview" description={description} />
+      <PageHeader
+        title="Location Overview"
+        description={description}
+        meta={centerDescription(data.center) ? <p className="text-xs text-muted-foreground">{centerDescription(data.center)} — rankings are measured from here.</p> : undefined}
+      />
 
       <StatusBanner location={data} />
 
@@ -136,6 +141,23 @@ function StatusBanner({ location }: { location: LocationOverview }) {
           <p>Add keywords and competitors to start tracking this location.</p>
           <Button asChild size="sm" className="mt-3">
             <Link to={locationSetupPath(location.location_id)}>Continue setup</Link>
+          </Button>
+        </AlertDescription>
+      </Alert>
+    );
+  }
+  if (location.status === "gbp_disconnected") {
+    return (
+      <Alert className="mb-6 border-warning/40 bg-warning-surface/40">
+        <AlertTriangle aria-hidden />
+        <AlertTitle>Google Business Profile disconnected</AlertTitle>
+        <AlertDescription>
+          <p>
+            This location's profile was unbound{location.gbp_disconnected_at ? ` on ${new Date(location.gbp_disconnected_at).toLocaleDateString()}` : ""}.
+            Rankings keep working, but profile data, reviews and posts no longer update.
+          </p>
+          <Button size="sm" className="mt-3" onClick={() => connect()}>
+            <RefreshCw aria-hidden /> Connect GBP again
           </Button>
         </AlertDescription>
       </Alert>

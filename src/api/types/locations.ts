@@ -17,7 +17,11 @@ export type PendingGbpPick = {
   existing_location_id: string | null;
 };
 
-export type LocationStatus = "active" | "setup_required" | "gbp_not_connected" | "reconnect_required";
+/** `gbp_disconnected`: its GBP was unbound (it had one); `gbp_not_connected`: it never had GBP. */
+export type LocationStatus = "active" | "setup_required" | "gbp_not_connected" | "gbp_disconnected" | "reconnect_required";
+
+/** Where rankings are measured from: the business's own pin (`place`) or a city / ZIP set at setup (`manual`). */
+export type LocationCenter = { source: "place" | "manual" | null; label: string | null; lat: number; lng: number };
 
 export type LocationClientRef = { client_id: string; name: string };
 
@@ -31,6 +35,7 @@ export type LocationRow = {
   source: "gbp" | "places_search";
   gbp_connected: boolean;
   status: LocationStatus;
+  gbp_disconnected_at?: string | null;
   /** `change` is previous − current: positive means improved. */
   rank: { overall_avg_rank: number | null; change: number | null } | null;
   gbp: { score: number | null; grade: string | null; partial: boolean } | null;
@@ -87,10 +92,13 @@ export type LocationHeader = {
   place_id: string | null;
   source: "gbp" | "places_search";
   gbp_connected: boolean;
+  gbp_disconnected_at?: string | null;
   status: LocationStatus;
   client: LocationClientRef | null;
   lat: number | null;
   lng: number | null;
+  /** Null before a center exists. */
+  center?: LocationCenter | null;
   timezone: string | null;
   onboarding: { step: LocationOnboardingStep; started_at: string | null; completed_at: string | null } | null;
   created_at: string;
@@ -304,3 +312,50 @@ export type ClientRecord = {
 
 /** `GET clients`. */
 export type ClientsListResponse = { clients: ClientRecord[]; page: number; limit: number; total: number };
+
+/** `GET billing` (only the fields the app reads so far). */
+export type BillingSummary = {
+  state: "trialing" | "active" | "past_due" | "inactive" | "suspended_by_admin";
+  read_only: boolean;
+  currency: string;
+  tokens: {
+    balance: number;
+    cost_per_refresh: { rankings: number; gbp: number };
+    /** Tokens added each paid period (0 = no grant). */
+    monthly_grant?: number;
+    last_grant_at?: string | null;
+    next_grant_at?: string | null;
+  };
+  online_payments: boolean;
+};
+
+export type TokenLedgerEntry = {
+  id: string;
+  type: "purchase" | "spend" | "refund" | "grant" | "monthly_grant" | "adjustment" | "expiry";
+  amount: number;
+  balance_after: number;
+  note: string | null;
+  at: string;
+};
+
+/** `GET billing/tokens/ledger`, newest first. */
+export type TokenLedger = { balance: number; entries: TokenLedgerEntry[]; page: number; limit: number; total: number };
+
+export type TokenPack = {
+  id: string;
+  name: string;
+  tokens: number;
+  currency: string;
+  list_price: number;
+  price: number;
+  expires_after_days: number | null;
+};
+
+/** `GET places/autocomplete`: city / region / ZIP suggestions for the setup-center picker. */
+export type PlaceSuggestion = {
+  place_id: string;
+  description: string;
+  main_text: string;
+  secondary_text: string | null;
+  types: string[];
+};

@@ -106,18 +106,53 @@ export function GoogleAccountsPanel({ className }: { className?: string }) {
         }}
         title={`Disconnect ${target?.google_email ?? "this Google account"}?`}
         description={
-          "Its locations stay in Mypageseo but stop syncing Google Business Profile data, and its picked locations are removed. Your other Google accounts keep working."
+          target ? (
+            <span className="block space-y-2 text-left">
+              <span className="block font-medium text-critical">
+                All the data and locations related to this Google account will be removed if disconnected.
+              </span>
+              {target.locations && target.locations.length > 0 ? (
+                <span className="block">
+                  {target.locations.length === 1 ? "This location will be removed:" : `These ${target.locations.length} locations will be removed:`}
+                  <span className="mt-1 block max-h-40 overflow-y-auto rounded-md border border-border bg-surface-strong px-3 py-2">
+                    {target.locations.map((location) => (
+                      <span key={location.location_id} className="block text-foreground">{location.name}</span>
+                    ))}
+                  </span>
+                </span>
+              ) : (
+                <span className="block">No locations are connected through this Google account.</span>
+              )}
+              {target.picked > 0 ? (
+                <span className="block">
+                  {target.picked} picked profile{target.picked === 1 ? "" : "s"} waiting to be bound will be removed too.
+                </span>
+              ) : null}
+              <span className="block">Your other Google accounts and their locations keep working.</span>
+            </span>
+          ) : (
+            ""
+          )
         }
         cancelLabel="Keep connected"
-        confirmLabel={disconnecting ? "Disconnecting…" : "Disconnect"}
+        confirmLabel={disconnecting ? "Disconnecting…" : target?.locations?.length ? "Disconnect and remove" : "Disconnect"}
         pending={disconnecting}
         onConfirm={() => {
           if (!target) return;
           const { google_sub: googleSub, google_email: email } = target;
           setTarget(null);
-          void disconnect(googleSub).then((ok) => {
-            if (ok) toast.success(`${email} disconnected`);
-            else toast.error(`${email} could not be disconnected. Try again.`);
+          void disconnect(googleSub).then((result) => {
+            if (!result) {
+              toast.error(`${email} could not be disconnected. Try again.`);
+              return;
+            }
+            const removed = result.locations_removed ?? [];
+            toast.success(`${email} disconnected`, {
+              description:
+                removed.length > 0
+                  ? `Removed ${removed.length === 1 ? removed[0]!.name : `${removed.length} locations`}.`
+                  : undefined,
+            });
           });
         }}
       />

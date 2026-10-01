@@ -51,7 +51,7 @@ const searchSchema = z.object({
 });
 
 const PAGE_SIZE = 25;
-const STATUSES: LocationStatus[] = ["active", "setup_required", "gbp_not_connected", "reconnect_required"];
+const STATUSES: LocationStatus[] = ["active", "setup_required", "gbp_disconnected", "gbp_not_connected", "reconnect_required"];
 const SORTS: LocationSortField[] = ["name", "city", "rank", "gbp_score", "rating", "last_refreshed"];
 const DESCRIPTION = "Manage the Google Business Profiles connected to your Mypageseo account.";
 
@@ -230,7 +230,7 @@ function LocationsPage() {
         open={unbindTarget !== null}
         onOpenChange={(open) => (open ? undefined : setUnbindTarget(null))}
         title={`Unbind ${unbindTarget?.name ?? "this location"} from Google?`}
-        description="The location stays and its rankings keep working, but Google Business Profile data stops syncing. The Google account stays connected; pick the profile again to rebind it."
+        description="The location stays and its rankings keep working, but Google Business Profile data stops syncing and it's marked “GBP disconnected”. The Google account stays connected; pick the profile again and press Bind to reconnect it."
         cancelLabel="Keep bound"
         confirmLabel="Unbind"
         onConfirm={() => {

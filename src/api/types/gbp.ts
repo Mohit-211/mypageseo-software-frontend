@@ -36,6 +36,8 @@ export type GbpConnection = {
   picked: number;
   /** Picks bound to a location. */
   bound: number;
+  /** The locations bound through this account: disconnecting deletes them. */
+  locations?: { location_id: string; name: string }[];
 };
 
 export type GbpConnectionsResponse = {
@@ -102,6 +104,8 @@ export type GbpDisconnectResult = {
   bindings_removed: number;
   picks_removed: number;
   google_email: string;
+  /** The locations that were deleted with the account. */
+  locations_removed?: { location_id: string; name: string }[];
 };
 
 /** `POST gbp/unbind`. */

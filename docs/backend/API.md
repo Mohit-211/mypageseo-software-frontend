@@ -53,7 +53,7 @@ The demo data comes from an offline client, so it needs no API key.
 - **404** `{ "reason": "run_not_found" }` for an unknown `runId`; **409** `{ "reason": "run_not_finished", "status": "queued" | "running" | "failed" }` for a run that is not done or partial.
 - **404** `{ "reason": "keyword_not_in_run" }` for a `keyword` the run doesn't have; map-ranking: **404** `{ "reason": "point_not_in_run", "available": ["C", …] }`.
 
-**`RunMeta`** (the `run` field on page responses): `{ run_id, run_at, status, keywords_version, center: { lat, lng }, config: { grid_size, spacing_km, radius_km (17), tracker_offset_km, radius_m, store_place_names } }`. `radius_m` is the search bias around each point (5 km), not the grid radius.
+**`RunMeta`** (the `run` field on page responses): `{ run_id, run_at, status, keywords_version, center: { lat, lng, source, label }, config: { grid_size, spacing_km, radius_km (17), tracker_offset_km, radius_m, store_place_names } }`. `radius_m` is the search bias around each point (5 km), not the grid radius. `center.source` (2026-10-01, frozen with the run; `null` on older runs): `place` = the business's own Google Maps position, `label` its address; `manual` = a city / ZIP chosen at setup, `label` what was picked. Show e.g. "Measured around: your Google Maps pin, 100 Queen St E" or "Measured around: Tampa, FL (set during setup)".
 
 **Estimate** (`CallEstimate`, returned by several endpoints):
 - `idsOnly`: free Text Search IDs-only calls, as `{ min, max, maxWithRetries }`
@@ -591,7 +591,9 @@ For each keyword: a summary per target (average rank, found rate, top-3 rate, ch
       "keywords_version": 1,
       "center": {
         "lat": 43.6629,
-        "lng": -79.3347
+        "lng": -79.3347,
+        "source": "place",
+        "label": "100 Queen St E, Toronto, ON M5C 1S6, Canada"
       },
       "config": {
         "grid_size": 5,
@@ -1274,7 +1276,14 @@ Per user. Flow: connect a Google account (popup) → in the same modal list that
 {
   "limit": 3,
   "connections": [
-    { "google_sub": "100000000000000000001", "google_email": "owner@example.test", "status": "active", "picked": 2, "bound": 1 }
+    {
+      "google_sub": "100000000000000000001",
+      "google_email": "owner@example.test",
+      "status": "active",
+      "picked": 2,
+      "bound": 1,
+      "locations": [{ "location_id": "6abe7a513e25d4bbc0bcaeac", "name": "Example Plumbing Co" }]
+    }
   ]
 }
 ```
@@ -1282,6 +1291,7 @@ Per user. Flow: connect a Google account (popup) → in the same modal list that
 - Up to **3 Google accounts per user**. Connecting a 4th answers **409** `{ "reason": "google_account_limit", "limit": 3, "connected": ["…"] }` on `POST /gbp/connect/code` (the new grant is revoked at Google). Connecting an already connected account again just refreshes it.
 - `status: "revoked"`: Google refused the stored access; connect the same account again.
 - `picked` = picks not bound yet; `bound` = picks bound to a location.
+- `locations` (2026-10-01): the locations bound through this account. **Disconnecting deletes them**, so the disconnect dialog names them under the warning "All the data and locations related to this Google account will be removed if disconnected."
 
 #### `GET /api/v1/gbp/connections/:googleSub/locations`
 
@@ -1393,7 +1403,7 @@ Body: `{ "location_id" }`.
 { "unbound": true, "jobs_cancelled": { "gbp_sync": 0, "scheduled_posts": 1 } }
 ```
 
-- The location stays (rankings keep working, `gbp_connected: false`); its pick is removed. Pick the profile again in the connect modal and Bind to reconnect it (it links to the same location, no new slot).
+- The location stays (rankings keep working, `gbp_connected: false`) with **status `gbp_disconnected`** and `gbp_disconnected_at` (2026-10-01; a location that never had GBP is `gbp_not_connected`); its pick is removed. Pick the profile again in the connect modal and Bind to reconnect it (it links to the same location, no new slot).
 - The Google account stays connected (2026-10-01: disconnecting is explicit, `POST /gbp/disconnect`).
 - Cancelled scheduled posts are marked `REJECTED` with `last_error: "GBP location unbound"`.
 
@@ -1402,10 +1412,18 @@ Body: `{ "location_id" }`.
 Body: `{ "google_sub"?: "…" }`. It is required when several Google accounts are connected.
 
 ```json
-{ "revoked": true, "bindings_removed": 1, "picks_removed": 3, "google_email": "a@client.test" }
+{
+  "revoked": true,
+  "bindings_removed": 1,
+  "picks_removed": 3,
+  "google_email": "a@client.test",
+  "locations_removed": [{ "location_id": "6abe7a513e25d4bbc0bcaeac", "name": "Example Plumbing Co" }]
+}
 ```
 
-- Revokes that account at Google (best effort), unbinds **only that account's** locations (they stay, without GBP; their scheduled jobs are cancelled), removes its picks and deletes its tokens. Other connected accounts keep working.
+- **Deletes the locations bound through that account** (Mohit, 2026-10-01): each is soft-deleted exactly like `DELETE /locations/:id` (hidden, jobs cancelled, its location slot freed; history kept in the database). Show the warning first: "All the data and locations related to this Google account will be removed if disconnected.", naming `GET /gbp/connections` → `locations`.
+- Revokes that account at Google (best effort), removes its picks and deletes its tokens. Other connected accounts and their locations keep working.
+- Unbinding one location (`POST /gbp/unbind`) keeps that location instead (status `gbp_disconnected`).
 - `revoked: false` means Google could not be reached; the local cleanup still happened.
 - `is_gbp_connected` on the user stays true while another usable connection remains.
 
@@ -1466,11 +1484,30 @@ Body: `{ "code", "state" }` from the popup callback.
 
 ### `PUT /api/v1/locations/:locationId/center` (service-area businesses)
 
-Body: `{ "query": "Fredericton, NB" }`: a city or ZIP / postal code, 2–100 characters.
+Body, one of:
+- `{ "place_id": "ChIJ…", "session": "<the picker's session token>" }` (2026-10-01, **recommended**): a suggestion picked from `GET /places/autocomplete`. **1 Place Details call** (Essentials: `location`, `formattedAddress`) that also ends the autocomplete session; `center_label` is Google's address (e.g. "Tampa, FL, USA"). Counts **1** toward the daily Places limit.
+- `{ "query": "Fredericton, NB" }`: a city or ZIP / postal code typed freely, 2–100 characters (the original path, below).
 
 - It is resolved once with **1 Places Text Search (IDs-only, free SKU)** in the location's country (no location bias) and **1 Place Details call for `location` only**.
 - The result is saved as the location's lat/lng with `center_source: "manual"`. Rank runs and competitor suggestions use it. Old cached suggestions are dropped.
 - The 2 calls count against the daily Places limit.
+
+### `GET /api/v1/places/autocomplete?q=&session=&country=|locationId=` (2026-10-01)
+
+City / region / ZIP suggestions for the setup-center picker, from **Google Places Autocomplete (New)** limited to regions and postal codes (`(regions)`) in the country (the location's with `locationId`, else `country`, else the organization's).
+
+```json
+{
+  "suggestions": [
+    { "place_id": "ChIJ4dG5s4K3wogRY7SWr4kTX6c", "description": "Tampa, FL, USA", "main_text": "Tampa", "secondary_text": "FL, USA", "types": ["locality", "political", "geocode"] }
+  ],
+  "attribution": { "provider": "Google", "text": "Google Maps" }
+}
+```
+
+- **Session token:** create one per picker (e.g. `crypto.randomUUID()`), send it with every keystroke as `session`, and send the same token with the pick: `PUT /locations/:id/center { place_id, session }`. Google then bills the keystrokes and the pick as one session. Start a new token after a pick.
+- **Cost** (Google list prices, 2026-10-01): a session that ends with the pick costs the Place Details Essentials call (**$5 per 1,000**, i.e. $0.005) plus at most its first 12 autocomplete requests at **$2.83 per 1,000** (later ones in the session are free). A typical pick after 3–5 keystrokes is about **$0.013–0.019**; Google's monthly free allowance (10,000 per SKU) usually covers it. An abandoned session bills each keystroke at $2.83 per 1,000. Debounce typing (~250 ms) and start after 2–3 characters.
+- **Limits:** keystrokes don't count toward the daily Places limit (the pick counts 1); they are rate-limited to 120 per user per hour (**429** `rate_limited`). `q` 1–100 characters; `session` 8–36 URL-safe characters (**400** otherwise).
 
 ```json
 { "lat": 45.9635895, "lng": -66.6431151, "center_source": "manual", "center_label": "Fredericton, NB", "api_calls": 2, "onboarding_step": "center_set" }
@@ -1565,7 +1602,7 @@ Body: `{ "types"?: ["rankings", "gbp"] }`. By default: rankings, plus gbp when t
 {
   "rankings": { "run_id": "66f6…", "status": "queued", "existing": false, "estimate": { "idsOnly": { "min": 26, "max": 78, "maxWithRetries": 156 }, "…": "…" },
                 "dev_capped": true, "next_allowed_at": "2026-09-27T13:00:00.000Z" },
-  "gbp": { "sync_id": "66f6…", "status": "queued", "existing": false, "estimated_calls": 8, "next_allowed_at": "2026-09-27T13:00:00.000Z" }
+  "gbp": { "sync_id": "66f6…", "status": "queued", "existing": false, "estimated_calls": 13, "next_allowed_at": "2026-09-27T13:00:00.000Z" }
 }
 ```
 
@@ -1573,7 +1610,7 @@ Body: `{ "types"?: ["rankings", "gbp"] }`. By default: rankings, plus gbp when t
 - **Inside the 24 h window a type is skipped:** `{ "skipped": "rate_limited", "next_allowed_at": "…" }`.
 - An unconnected location gets `"gbp": { "skipped": "gbp_not_connected", "next_allowed_at": null }` (only when gbp was requested explicitly).
 - **429** when every requested type is rate-limited (the same body shape). **202** otherwise.
-- `estimated_calls` counts GBP API calls (free, quota-limited): performance 1, keywords 1 per month (6 on the first sync, 2 later), profile + attributes + Google edits + verification 4, one possible token refresh; with v4 also reviews, media, customer media, posts. Extra pages add more.
+- `estimated_calls` counts GBP API calls (free, quota-limited): performance 1, keywords 1 per month (6 on the first sync, 2 later), profile + attributes + attribute names (2026-10-02) + Google edits + verification 5, one possible token refresh; with v4 also reviews, media, customer media, posts. Extra pages add more.
 
 `POST /locations/:id/rank-runs` ("run now") is the same as a rankings refresh: it shares the limit and returns **429** `{ next_allowed_at }` inside the window.
 
@@ -1647,26 +1684,49 @@ Examples below come from `npm run seed:demo-orgs` (offline demo data), trimmed.
   "v4_enabled": true,
   "range": "28d",
   "gbp_score": {
-    "available": true, "score": 50, "grade": "D", "partial": false, "excluded_pillars": [],
+    "available": true, "version": 2, "score": 55, "grade": "C", "partial": false, "excluded_pillars": [],
+    "counts": { "pass": 12, "partial": 6, "fail": 3, "not_available": 1 },
     "pillars": [
-      { "id": "completeness", "weight": 25, "available": true, "earned": 18, "available_max": 25, "score": 18 },
-      { "id": "activity",     "weight": 20, "available": true, "earned": 3,  "available_max": 20, "score": 3 },
-      { "id": "reviews",      "weight": 25, "available": true, "earned": 16, "available_max": 25, "score": 16 },
-      { "id": "visibility",   "weight": 20, "available": true, "earned": 6,  "available_max": 20, "score": 6 },
-      { "id": "engagement",   "weight": 10, "available": true, "earned": 7,  "available_max": 10, "score": 7 }
+      { "id": "completeness", "weight": 25, "available": true, "earned": 18, "available_max": 25, "score": 18, "state": "partial", "counts": { "pass": 7, "partial": 2, "fail": 1, "not_available": 0 } },
+      { "id": "activity",     "weight": 20, "available": true, "earned": 3,  "available_max": 20, "score": 3,  "state": "partial", "counts": { "…": "…" } },
+      { "id": "reviews",      "weight": 25, "available": true, "earned": 16, "available_max": 25, "score": 16, "state": "partial", "counts": { "…": "…" } },
+      { "id": "performance",  "weight": 30, "available": true, "earned": 10, "available_max": 16, "score": 18.8, "state": "partial", "counts": { "…": "…" } }
     ],
     "checks": [
-      { "id": "verified", "pillar": "completeness", "label": "Profile verified", "status": "scored", "value": true, "points": 5, "max": 5,
-        "detail": "Verified: you can manage the profile.", "fix_hint": null },
-      { "id": "description", "pillar": "completeness", "label": "Description", "status": "scored", "value": 201, "points": 1, "max": 3,
-        "detail": "201 characters.", "fix_hint": "Write a description of at least 250 characters (services, area, what makes you different)." },
-      "… 24 more checks"
+      { "id": "verified", "pillar": "completeness", "label": "Profile verified", "status": "scored", "state": "pass", "value": true, "points": 5, "max": 5,
+        "detail": "Verified: you can manage the profile.", "fix_hint": null,
+        "why_it_matters": "Only a verified owner can edit the profile, reply to reviews and post. Unverified profiles also tend to show less on Maps." },
+      { "id": "description", "pillar": "completeness", "label": "Description", "status": "scored", "state": "partial", "value": 201, "points": 1, "max": 3,
+        "detail": "201 characters.", "fix_hint": "Write a description of at least 250 characters (services, area, what makes you different).",
+        "why_it_matters": "The description tells customers (and Google) what you do and where. …" },
+      "… 20 more checks"
     ],
     "top_fixes": [
-      { "id": "map_rank", "pillar": "visibility", "label": "Average map rank", "status": "scored", "value": 21.3, "points": 1, "max": 8,
-        "detail": "Average rank 21.3 across your keywords.", "fix_hint": "Improve relevance and prominence for your keywords (categories, reviews, posts)." },
+      { "id": "impressions_trend", "pillar": "performance", "label": "Impressions trend", "status": "scored", "state": "fail", "value": -0.12, "points": 0, "max": 6,
+        "detail": "-12 % vs the previous 28 days.", "fix_hint": "Grow visibility with regular posts, photos and reviews.", "why_it_matters": "…" },
       "… up to 5"
     ]
+  },
+  "profile": {
+    "available": true, "taken_at": "2026-09-26T17:21:36.539Z",
+    "title": "Maple Leaf Plumbing & Heating", "description": "Family-run plumbers in east Toronto …",
+    "primary_category": "Plumber", "additional_categories": ["Drainage service", "Water heater installation service"],
+    "regular_hours": [ { "open_day": "MONDAY", "open_time": "08:00", "close_day": "MONDAY", "close_time": "18:00" }, "…" ],
+    "special_hour_dates": ["2026-12-24", "2026-12-25"],
+    "primary_phone": "(416) 555-0142", "additional_phones": [], "website": "https://mapleleafplumbing.example",
+    "service_area": { "business_type": "CUSTOMER_AND_BUSINESS_LOCATION", "place_count": 3, "region_code": "CA" },
+    "labels": [], "open_status": "OPEN",
+    "attributes": [
+      { "name": "has_wheelchair_accessible_entrance", "value_type": "BOOL", "values": [true],
+        "display_name": "Wheelchair accessible entrance", "group": "Accessibility", "value_labels": ["Has wheelchair accessible entrance"] },
+      { "name": "pay_credit_card_types_accepted", "value_type": "REPEATED_ENUM", "values": ["visa", "mastercard"],
+        "display_name": "Credit cards", "group": "Payments", "value_labels": ["Visa", "Mastercard"] },
+      "…"
+    ],
+    "service_items": [ { "name": "Boiler repair", "description": "Same-day service", "kind": "structured", "price": { "currency": "CAD", "amount": 120 } },
+                       { "name": "Leak detection", "description": null, "kind": "free_form", "price": null } ],
+    "maps_uri": "https://maps.google.com/?cid=123", "new_review_uri": "https://search.google.com/local/writereview?placeid=ChIJ…",
+    "latlng": { "latitude": 43.6629, "longitude": -79.3347 }
   },
   "performance": {
     "available": true, "latest_date": "2026-09-23", "range": "28d", "days": 28, "start": "2026-08-27", "end": "2026-09-23",
@@ -1709,7 +1769,6 @@ Examples below come from `npm run seed:demo-orgs` (offline demo data), trimmed.
         "rating": 4.6, "user_rating_count": 64, "primary_type": "plumber", "primary_type_label": "Plumber",
         "has_hours": true, "has_website": true, "has_phone": true, "has_editorial_summary": null, "business_status": "OPERATIONAL",
         "fetched_at": "2026-09-26T17:25:36.832Z", "stale": false, "error": null,
-        "center_rank": { "avg": 9.3, "top3_rate": 0.33, "keywords_found": 2, "keywords": 3 },
         "public_score": { "score": 71, "flag": null, "parts": [ { "id": "rating", "points": 21, "max": 25, "available": true }, "…",
                           { "id": "editorial_summary", "points": 0, "max": 5, "available": false } ] } },
       { "place_id": "ChIJdemoDanforthDrainPros03", "is_self": false, "source": "tracking", "name": "Danforth Drain Pros",
@@ -1718,12 +1777,15 @@ Examples below come from `npm run seed:demo-orgs` (offline demo data), trimmed.
     ],
     "insights": [
       { "id": "review_gap", "impact": 0.71, "place_id": "ChIJXbrc…", "message": "Toronto Plumbing sJ_O has 167 reviews; you have 64 (2.6× more). Ask every happy customer for a review." },
-      { "id": "rank_gap", "impact": 0.55, "place_id": "ChIJdemoDanforthDrainPros03", "message": "Danforth Drain Pros ranks higher than you at your location (average 7.3 vs 9.3). Compare their categories, reviews and posts with yours." }
+      { "id": "missing_hours", "impact": 0.67, "place_id": null, "message": "67 % of your competitors show opening hours on Google; you don't. Add it to your profile." }
     ]
   },
   "sync": { "last_synced_at": "2026-09-26T17:21:36.539Z", "last_status": "done",
             "types": { "performance": { "status": "ok", "message": null }, "…": "…" } },
-  "score_history": [ { "generated_at": "2026-09-26T17:25:36.832Z", "gbp_score": 50, "grade": "D", "public_score": 71 } ],
+  "score_history": [
+    { "generated_at": "2026-09-01T03:02:00.000Z", "gbp_score": 50, "grade": "D", "public_score": 71, "version": 1 },
+    { "generated_at": "2026-10-02T03:02:00.000Z", "gbp_score": 55, "grade": "C", "public_score": 76, "version": 2 }
+  ],
   "api_calls": { "places_details": 5 },
   "inputs": { "rank_run_id": "6ab8…", "sync_id": "6ab8…", "snapshot_id": "6ab8…" },
   "generation": { "pending": false, "scheduled_for": null, "last_generated_at": "2026-09-26T17:25:36.832Z" }
@@ -1734,14 +1796,30 @@ Examples below come from `npm run seed:demo-orgs` (offline demo data), trimmed.
 
 | reason | When |
 |---|---|
-| `gbp_not_connected` | The location has no GBP binding (added via Places search). Every private section: `gbp_score`, `performance`, `keywords`, `reviews`, `media`, `posts`, `pending_google_edits`, `verification`, `sync`. The competitor comparison still works. |
+| `gbp_not_connected` | The location has no GBP binding (added via Places search). Every private section: `gbp_score`, `profile`, `performance`, `keywords`, `reviews`, `media`, `posts`, `pending_google_edits`, `verification`, `sync`. The competitor comparison still works. |
 | `v4_access_pending` | `reviews`, `media`, `posts` until Google approves v4 access (`GBP_V4_ENABLED=false`). The GBP Score then excludes the Activity and Reviews pillars: `partial: true`, `excluded_pillars: ["activity", "reviews"]`, rescaled to 100. |
 | `not_synced_yet` | Bound, but the first sync hasn't stored that data yet. |
 | `no_place_id` | `competitors` for a location without a place ID. |
 
-**GBP Score:** 5 pillars (completeness 25, activity 20, reviews 25, visibility 20, engagement 10); weights and thresholds in `src/gbp/scoring.config.ts`. A check is `scored` or `not_available`; a pillar with no available check is excluded and the rest rescaled. Grades: A ≥ 85, B ≥ 70, C ≥ 55, D ≥ 40, F.
+**No ranking data in the GBP report (version 2, Mohit, 2026-10-02).** Ranks are in the ranking pages and the Rank Tracker report only. The GBP Score, the Public Score, the competitor rows and the insights use no rank-run data (the latest map list only picks which nearby businesses to compare).
 
-**Public Score:** the same formula for the client and every competitor, from public data only (Place Details + center ranks from the latest rank run's map list). Rating 25, review count 20, center rank 20, center top-3 rate 10, public profile 25 (category, hours, website, phone, editorial summary: the last is `available: false` unless `COMPETITOR_DETAILS_ATMOSPHERE=true`). Closed businesses score 0 with a `flag`.
+**GBP Score (version 2):** 4 pillars, completeness 25, activity 20 (v4), reviews 25 (v4), **performance 30** (Google's own numbers: impressions trend 6, actions per 1,000 impressions 5, actions trend 5 points). Version 1 had visibility 20 (average map rank 8, top-3 rate 6, impressions trend 6) and engagement 10. Weights and thresholds in `src/gbp/scoring.config.ts`. A check without data is `not_available`; a pillar with no available check is excluded and the rest rescaled (`partial: true`). Grades: A ≥ 85, B ≥ 70, C ≥ 55, D ≥ 40, F.
+- **`state`** per check: `pass` (full points), `partial` (some), `fail` (0), `not_available` (no data, not scored). Per pillar: `pass` / `fail` when every scored check is, `partial` when mixed, `not_available` when excluded; plus `counts`. `gbp_score.counts` sums all checks. Build "healthy" / "needs work" on these, not on `points`.
+- **`why_it_matters`** per check: one or two sentences for the detail drawer.
+- **v4 off** (`v4_enabled: false`): Activity and Reviews are excluded, so the score is **Completeness + Performance** (55 of the 100 weights, rescaled to 100), `partial: true`.
+
+**`score_history`:** each entry has `version` (1 = with ranking data, before 2026-10-02; 2 = now). Draw a marker where it changes; don't compare scores across it (CHANGELOG `gbp_score_v2`). Production starts on a fresh database, so real customers only have version 2.
+
+**`profile`** (2026-10-02): the Business Profile as last synced (`taken_at`): title, description, categories, regular hours, special-hour dates, phones, website, service area, labels, open status, attributes, service items, `maps_uri`, `new_review_uri` (the "write a review" link), `latlng`. `{ available: false, reason }` as the other private sections. A report generated before this change has `not_synced_yet` until the next generation.
+- **Attribute names (2026-10-02):** each attribute has Google's English `display_name`, `group` (e.g. "Accessibility", "Payments") and `value_labels` (Google's label per value; a yes/no attribute gets Google's sentence, e.g. "Has wheelchair accessible entrance"; a URL attribute its links). They come from Google's attribute list during each GBP sync (one extra free call). `null` when that list couldn't be read, or until the next sync: fall back to a readable form of `name`.
+
+**Public Score (version 2):** the same formula for the client and every competitor, from public Place Details only: rating 25, review count 20, public profile 25 (category, hours, website, phone, editorial summary), rescaled to 100. Closed businesses score 0 with a `flag`. Version 1 also had center rank 20 and center top-3 10.
+
+**Insights:** `review_gap`, `rating_gap`, `missing_hours`, `missing_website`, `missing_phone`, `category_mismatch`, `photos_gap`, `review_freshness` (`rank_gap` was removed on 2026-10-02).
+
+**Freshness:** after a manual GBP refresh (`POST /refresh { types: ["gbp"] }`) the sync runs, then the report regenerates about 2 minutes later (`REPORT_DEBOUNCE_SECONDS`, 120). Show `generation.pending` / `generation.scheduled_for` and the sync state (`GET /locations/:id/gbp/sync`) until `generated_at` changes.
+
+**Not supported** (don't build): duplicate listings, website signals beyond "website set", competitor citations / links / authority, Google Q&A.
 
 **Competitors:** the client, `tracking.competitors`, then the top 3 other businesses of the first keyword's map list (max 5 competitors). Place Details are fetched at most once per monthly cycle per business, or on a manual refresh (older than 24 h). A failed fetch keeps the previous facts with `stale: true` and `error`; without a Places key the section has `warning: "places_not_configured"`.
 
@@ -1753,7 +1831,7 @@ For an unbound location (trimmed):
 { "gbp_connected": false, "gbp_score": { "available": false, "reason": "gbp_not_connected" },
   "performance": { "available": false, "reason": "gbp_not_connected" }, "…": "…",
   "competitors": { "available": true, "rows": [ "… client and competitors with public_score …" ], "insights": [ "…" ] },
-  "score_history": [ { "generated_at": "…", "gbp_score": null, "grade": null, "public_score": 71 } ] }
+  "score_history": [ { "generated_at": "…", "gbp_score": null, "grade": null, "public_score": 71, "version": 2 } ] }
 ```
 
 ## Auth, organizations, locations and clients (Phase 8)
@@ -1905,7 +1983,8 @@ Store **both** new tokens: the refresh token just used stops working (each refre
   "page": 1, "limit": 25, "total": 3 }
 ```
 
-- **`status`**, first match wins: `setup_required` (onboarding not completed, or no keywords), `reconnect_required` (GBP bound but its Google connection is revoked or gone), `gbp_not_connected`, `active`.
+- **`status`**, first match wins: `setup_required` (onboarding not completed, or no keywords), `reconnect_required` (GBP bound but its Google connection is revoked or gone), `gbp_disconnected` (2026-10-01: its GBP was unbound; `gbp_disconnected_at`), `gbp_not_connected` (never had GBP), `active`.
+- **`center`** (location header, 2026-10-01): `{ source: "place" | "manual", label, lat, lng }` or `null` before a center exists: where rankings are measured from (see RunMeta).
 - `rank`, `gbp` and `reviews` come from the latest rank run and GBP report (`null` before there is one). Without GBP, `reviews` shows the public Place Details rating.
 
 `POST /locations` `{ "place_id": "ChIJ…", "client_id"?: "…" }`: add a location from a `GET /places/search` result (no manual entry). One Place Details call (id, name, address with components, location, phone, website, category). US/CA only.
@@ -1921,7 +2000,7 @@ Store **both** new tokens: the refresh token just used stops working (each refre
 
 `GET /places/search?q=` without `locationId` is the add-location search (the organization's country, or `&country=US|CA`); each result carries `already_added` (a location id or `null`).
 
-`GET /locations/:locationId` → the header: `{ location_id, name, address, city, state, country, zip_code, phone, website, business_category, place_id, source, gbp_connected, status, client, lat, lng, timezone, onboarding, created_at }`.
+`GET /locations/:locationId` → the header: `{ location_id, name, address, city, state, country, zip_code, phone, website, business_category, place_id, source, gbp_connected, gbp_disconnected_at, status, client, lat, lng, center, timezone, onboarding, created_at }` (`center`, `gbp_disconnected_at`: 2026-10-01).
 
 `GET /locations/:locationId/overview` → the header plus the latest stored summaries:
 
@@ -2107,8 +2186,8 @@ A report freezes stored data (the rank run, the GBP report, the profile snapshot
 | Type | Sections |
 |---|---|
 | `rank_tracker` | `summary`, `keywords`, `history` (last 12 runs), `grid` (heatmap per keyword), `movers`, `map_ranking` (12.5), `keyword_groups` (17: only when the location has groups) |
-| `gbp_audit` | `score`, `checks` (with top fixes), `performance` (`range` 28d/90d/12m), `keywords`, `profile` (with name/phone/website consistency), `verification`, `pending_edits`, `reviews_media_posts` (needs v4) |
-| `competitor_analysis` | `public_scores`, `table`, `ranks`, `insights` |
+| `gbp_audit` | `score`, `checks` (with top fixes), `performance` (`range` 28d/90d/12m), `keywords`, `profile` (with name/phone/website consistency), `verification`, `pending_edits`, `reviews_media_posts` (needs v4). **2026-10-02:** no ranking data; `score` has `version`, `counts` and a `state` + `counts` per pillar; `checks` have `state` and `why_it_matters`; `performance` has every metric (Maps / Search, mobile / desktop, calls, website clicks, directions, conversations and bookings when not 0) with its previous-period and last-year change, `by_surface`, `by_device`, and calls / website clicks / directions per day (the PDF draws a chart for each). |
+| `competitor_analysis` | `public_scores`, `table`, `insights`, `reviews` (12.5). The `ranks` section was removed on 2026-10-02 (no ranking data outside the Rank Tracker report). |
 | `citation` (Phase 16) | `score` (Citation Health, coverage, counts), `table` (every listing: directory, type, status, NAP issues, last checked), `nap_issues` (listed as vs should be), `changes` (the report's `range`) |
 | `full` | the report types it combines: `rank_tracker`, `gbp_audit`, `competitor_analysis`, `citation` (Phase 16) |
 
@@ -2593,7 +2672,7 @@ One billing page. Money is in the organization's currency (US → USD, CA → CA
   "next_renewal": { "date": "2026-10-28T…", "quantity": 3, "amount": 87, "fixed": false },
   "locations": { "active": 3, "allowed": 3, "max": 20 },
   "users": { "used": 4, "limit": 9 },
-  "tokens": { "balance": 12, "cost_per_refresh": { "rankings": 1, "gbp": 1 } },
+  "tokens": { "balance": 12, "cost_per_refresh": { "rankings": 1, "gbp": 1 }, "monthly_grant": 10, "last_grant_at": "2026-09-01T03:00:00.000Z", "next_grant_at": "2026-10-01T03:00:00.000Z" },
   "billing_details": { "name": "Maple Leaf Inc.", "email": null, "address_line1": null, "address_line2": null, "city": "Toronto", "region": "ON", "postal_code": null, "country": "Canada" },
   "online_payments": true
 }
@@ -2640,6 +2719,8 @@ Removing a location refunds nothing; the slot stays paid and reusable until the 
 ### Tokens
 
 Manual refreshes cost tokens (`tokens.cost_per_refresh`); the monthly automatic refresh is free.
+
+**Monthly token grant (2026-10-01):** `tokens.monthly_grant` is the plan's grant per paid period (0 on the standard plan; custom plans can set one). It is added at each period start (`last_grant_at`); `next_grant_at` is the current period end while the subscription is active (else `null`). The token bar can show e.g. "9 of 10 this month" from the balance and `monthly_grant`.
 - `GET /api/v1/billing/token-packs` → `{ currency, packs: [{ id, name, tokens, currency, list_price, price, expires_after_days }] }` (`price` includes a custom plan's pack price or discount).
 - `POST /api/v1/billing/coupon/validate { pack_id, coupon_code }` → `{ pack_id, currency, price, discount, total }`.
 - `POST /api/v1/billing/tokens/checkout { pack_id, coupon_code? }` → **201** `{ order_id, provider_order_id, approve_url, amount, currency, fulfilled: false }`. A 100% coupon fulfils at once (**200**, `fulfilled: true`).
@@ -2767,3 +2848,130 @@ Team replies appear as `{ "kind": "team", "name": "MyPageSEO team" }`; internal 
 - `PATCH …/:ticketId { status?, priority?: low|normal|high, assigned_to?: <admin id> | null }`.
 
 **Emails:** a new ticket and customer replies go to `SUPPORT_EMAIL`; team replies go to the customer with a link to `FRONTEND_URL/support/<id>`. Sent or logged per `EMAIL_TRANSPORT` (OPERATIONS.md "Email").
+
+---
+
+## Reviews and AI (Phase 18)
+
+All paths are under `/api/v1/locations/:locationId/reviews`. **Deterministic first, AI only when the user asks**: lists, stats, flags, refresh and sending never use AI; drafts, analysis, appeal drafts and insights call OpenAI (model `gpt-5-nano` by default) and spend MyPageSEO tokens. Nothing runs in the background. Reviews need a GBP binding and v4 access; the monthly GBP sync also keeps them current.
+
+**Flow on the Reviews page:** `GET summary` + `GET reviews` → `POST refresh` (button) → tick reviews → `POST drafts` (4-5 stars) or `POST analyze` → edit with `PUT :reviewId/draft` → `POST send`. Low ratings: the user writes the reply (`PUT :reviewId/draft`); a flagged or 1-3 star review can get an AI removal-report draft (`POST :reviewId/appeal-draft`) to paste into Google's tool.
+
+### The review object
+
+```json
+{
+  "review_id": "6abf0c…", "rating": 2, "comment": "They overcharged me for a simple drain clean.",
+  "reviewer": { "display_name": "Sam Lee", "is_anonymous": false },
+  "create_time": "2026-09-28T10:00:00.000Z", "update_time": "2026-09-28T10:00:00.000Z",
+  "reply": null, "reply_state": "draft", "sent_at": null, "send_error": null,
+  "draft": { "text": "Hi Sam, sorry the price felt high…", "source": "user", "edited": false, "generated_at": "…", "stale": false },
+  "flags": [ { "code": "ai_serious", "source": "ai", "label": "AI analysis: serious complaint", "detail": "Price complaint" } ],
+  "flag_level": "attention",
+  "analysis": { "sentiment": "negative", "severity": "high", "suspicious_indicators": [], "summary": "Price complaint", "recommended_action": "Reply publicly and offer to talk.", "analyzed_at": "…", "stale": false },
+  "appeal": null, "report_status": "not_reported",
+  "ai_reply_eligible": false, "ai_reply_skip_reason": "rating_not_eligible", "appeal_eligible": true,
+  "first_seen_at": "…"
+}
+```
+
+- `reply_state`: `none` (no reply), `draft` (a draft waits), `sent` (a reply is on Google, from us or from elsewhere), `failed` (the last send failed: `send_error`).
+- `flag_level`: `none`, `attention` (a human should look) or `suspicious` (possible Google policy issue). Show "Suspicious indicators", never "fake". System flag codes: `link`, `contact_info`, `promotional`, `duplicate_text`, `profanity`, `low_rating_burst` (suspicious); `repeat_reviewer`, `empty_low_rating`, `rating_text_mismatch` (attention). AI flags after an analysis: `ai_suspicious`, `ai_serious`. Each flag has a `label` to show.
+- `stale: true` on a draft, analysis or appeal: the review changed since it was made.
+- `ai_reply_eligible`: AI drafts only for 4-5 stars, without a reply, not suspicious; otherwise `ai_reply_skip_reason`.
+
+### `GET /reviews/summary` (no AI)
+
+```json
+{
+  "stats": { "total": 64, "average_rating": 4.6, "new_this_month": 3, "positive": 55, "negative": 9, "unreplied": 12,
+             "awaiting_attention": 4, "flagged": 3, "suspicious": 1, "drafts_pending": 2, "replies_sent_this_month": 5,
+             "last_review_at": "2026-09-30T10:00:00.000Z", "updated_at": "…" },
+  "last_synced_at": "…", "last_refreshed_at": "2026-10-02T12:00:00.000Z", "next_refresh_allowed_at": "2026-10-02T12:15:00.000Z",
+  "v4_enabled": true, "gbp_connected": true,
+  "ai": { "configured": true, "paused_today": false, "token_costs": { "reply_drafts_per_10": 1, "analysis_per_10": 1, "appeal": 1, "insights": 2 }, "token_balance": 12 }
+}
+```
+
+`awaiting_attention` = unreplied 1-3 star or flagged reviews. Show "Last synced" and the **Refresh Reviews** button from `last_refreshed_at` / `next_refresh_allowed_at`. Hide AI buttons when `ai.configured` is false; show the token cost on each AI button.
+
+### `GET /reviews` (no AI)
+
+Query: `rating=5` or `rating=4,5`, `replied=true|false`, `reply_state`, `flagged=any|suspicious|attention|none`, `has_draft=true|false`, `search`, `sort=newest|oldest|rating_asc|rating_desc`, `page`, `limit` (≤ 100). → `{ reviews: [review], page, limit, total, attribution }`.
+
+### `POST /reviews/refresh` (Google, no AI)
+
+Fetches new and updated reviews newest first and stops at the first one already stored, so it is usually one free Google call. Once per 15 minutes per location (`REVIEWS_REFRESH_MIN_MINUTES`).
+
+```json
+{ "refreshed_at": "…", "google_calls": 1, "new_reviews": 2, "updated_reviews": 0, "stats": { "total": 66, "…": "…" } }
+```
+
+**429** `{ reason: "rate_limited", next_allowed_at }`; **400** `gbp_not_connected`, `v4_access_pending`.
+
+### `POST /reviews/drafts` (AI)
+
+`{ "review_ids": ["…"], "regenerate": false }` (1-20 ids). Only eligible 4-5 star reviews go to the AI, in batches of 10 (one request each). Drafts that exist for the same review text are returned free; a draft the user wrote or edited is never replaced unless `regenerate: true`.
+
+```json
+{ "drafts": [ { "review_id": "…", "reply_state": "draft", "draft": { "text": "Thanks Ann, glad the boiler's working again…", "source": "ai", "stale": false }, "…": "…" } ],
+  "generated": 2, "reused": 0, "skipped": [ { "review_id": "…", "reason": "rating_not_eligible" } ], "tokens_spent": 1 }
+```
+
+What the AI sees: the business name, category and city, up to 8 tracked keywords (used only if they fit), each review's rating and text, and the reviewer's **first name** only.
+
+### `PUT /reviews/:reviewId/draft`, `DELETE /reviews/:reviewId/draft`
+
+`{ "text": "…" }` (1-4000 characters): save a reply written or edited by the user, for any rating. → the review.
+
+### `POST /reviews/send`
+
+`{ "review_ids": ["…"] }` (≤ 50). Publishes each review's draft on Google (replaces an existing reply). No AI.
+
+```json
+{ "results": [ { "review_id": "…", "status": "sent", "reason": null }, { "review_id": "…", "status": "skipped", "reason": "no_draft" } ], "sent": 1, "failed": 0 }
+```
+
+A failed send sets `reply_state: "failed"` and `send_error`; fix and send again. `DELETE /reviews/:reviewId/reply` removes a published reply (**400** `no_reply`).
+
+### `POST /reviews/analyze` (AI)
+
+`{ "review_ids": ["…"], "regenerate": false }`: sentiment, severity, suspicious indicators, a one-line summary and a recommended action per review; cached until the review changes. Adds `ai_suspicious` (indicators found) and `ai_serious` (high severity) flags. Reviews without text are skipped (`no_text`). Never reports anything to Google. → `{ reviews, analyzed, reused, skipped, tokens_spent }`.
+
+### `POST /reviews/:reviewId/appeal-draft` (AI)
+
+**Google has no API to report or appeal a review** (v4 offers list / get / reply only). This drafts the text; the user submits it in Google's Reviews Management Tool (`report_url`) and records the outcome.
+
+```json
+{ "review": { "…": "…" },
+  "appeal": { "text": "This review promotes another business's website (www.…) and does not describe an experience with ours…", "policy_reason": "spam", "generated_at": "…", "stale": false },
+  "report_url": "https://support.google.com/business/workflow/16726127", "tokens_spent": 1 }
+```
+
+`policy_reason`: `spam`, `off_topic`, `conflict_of_interest`, `offensive`, `harassment`, `hate_speech`, `personal_information`, `restricted_content` or `none_applies` (the text then says the review probably doesn't break a policy and a public reply is better). Only for flagged or 1-3 star reviews (**400** `not_eligible`). Cached until the review changes.
+
+`PATCH /reviews/:reviewId/report-status { "status": "reported" | "appeal_submitted" | "removed" | "kept" | "not_reported" }` records it.
+
+### `POST /reviews/insights` (AI), `GET /reviews/insights`
+
+Sends monthly counts per rating and at most 60 recent review texts cut to 300 characters; the result is stored and served by `GET` until regenerated (**404** `no_insights` before the first).
+
+```json
+{ "generated_at": "…", "ai_model": "gpt-5-nano",
+  "basis": { "reviews_total": 64, "reviews_sent": 60, "from": "…", "to": "…" },
+  "insight": { "themes": [ { "theme": "price", "mentions": 6, "sentiment": "mixed" } ], "praise": ["Tidy work"], "complaints": ["Prices feel high for small jobs"], "observations": ["Ratings dipped in August"] },
+  "tokens_spent": 2 }
+```
+
+### AI errors (every AI route)
+
+| Status | `reason` | Meaning |
+|---|---|---|
+| 402 | `insufficient_tokens` (+ `balance`, `cost`) | Not enough MyPageSEO tokens; link to buying tokens |
+| 503 | `ai_not_configured` | No OpenAI key on the server |
+| 503 | `ai_budget_reached` | The server-wide daily AI budget is used up; try tomorrow |
+| 502 | `ai_failed` | OpenAI didn't answer; the tokens were refunded |
+
+**Token costs** are set per plan by MyPageSEO admins (`PATCH /admin/billing/plans/:planId { ai_token_costs }`) and shown in `GET /billing` → `tokens.ai_costs` and in the reviews summary. Defaults: reply drafts 1 per started batch of 10 reviews, analysis 1 per started 10, appeal draft 1, insights 2. Reused results cost nothing.
+
+**Dashboard (Phase 18):** `GET /dashboard` → `reviews` adds `new_this_month`, `positive`, `negative`, `awaiting_attention`, `flagged`, `suspicious`, `drafts_pending`, `replies_sent_this_month`, `last_review_at` and `needs_attention: [{ location_id, name, awaiting_attention, suspicious }]` once reviews are stored; agency table rows get `reviews: { rating, total, awaiting_attention, suspicious }`; recommended actions `reviews:attention` and `reviews:suspicious`.

@@ -11,6 +11,7 @@ import type {
   GbpSavePicksResponse,
   GbpUnbindResult,
 } from "../types/gbp";
+import type { GbpRange, GbpReport } from "../types/gbp-report";
 
 /** Accepts a bare string, `{ url }`, or a `{ data: ... }` envelope. */
 function unwrapUrl(payload: GbpConnectUrlResponse): string | undefined {
@@ -79,4 +80,12 @@ export async function unbindGbpLocation(locationId: string): Promise<GbpUnbindRe
 /** Disconnects one Google account: its locations stay without GBP, its picks are removed. */
 export async function disconnectGbp(googleSub: string): Promise<GbpDisconnectResult> {
   return unwrapData(await api.post(ENDPOINTS.gbp.disconnect, { google_sub: googleSub }));
+}
+
+/**
+ * The stored GBP report (generated in a job, never on a page view). 404 before the first
+ * one (it's made after the first rank run or GBP sync); `range` picks the performance window.
+ */
+export async function getGbpReport(locationId: string, range: GbpRange = "28d", signal?: AbortSignal): Promise<GbpReport> {
+  return unwrapData(await api.get(ENDPOINTS.locations.gbpReport(locationId), { query: { range }, ...(signal ? { signal } : {}) }));
 }

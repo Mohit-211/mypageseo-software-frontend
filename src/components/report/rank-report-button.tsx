@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, FileText, LoaderCircle } from "lucide-react";
-import { createReport, getReport, isApiError } from "@/api";
+import { createReport, getReport, isApiError, type ReportType } from "@/api";
 import { ReportActions } from "@/components/report/report-actions";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,25 +13,65 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { formatRunDate } from "@/lib/rankings/format";
-import { REPORT_ACTIVE_STATUSES, REPORT_CREATE_ERRORS } from "@/lib/reports/report-meta";
+import { REPORT_ACTIVE_STATUSES, REPORT_CREATE_ERRORS, REPORT_TYPE_LABEL } from "@/lib/reports/report-meta";
 
 /**
  * "Report" on the Rank Tracker: generates the Rank Tracker PDF for the run being
  * shown, then offers download, share and email in place.
  */
 export function RankReportButton({ locationId, runId, runAt }: { locationId: string; runId: string; runAt: string }) {
+  return <ReportButton locationId={locationId} type="rank_tracker" runId={runId} subtitle={`For the ranking run of ${formatRunDate(runAt, true)}.`} />;
+}
+
+/** "Report" on a page: makes that report type's PDF for the location, then download / share / email in place. */
+export function ReportButton({
+  locationId,
+  type,
+  runId,
+  range,
+  subtitle,
+}: {
+  locationId: string;
+  type: ReportType;
+  runId?: string;
+  range?: string;
+  subtitle: string;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <>
       <Button size="sm" onClick={() => setOpen(true)}>
         <FileText aria-hidden /> Report
       </Button>
-      {open ? <RankReportDialog locationId={locationId} runId={runId} runAt={runAt} onClose={() => setOpen(false)} /> : null}
+      {open ? (
+        <ReportDialog
+          locationId={locationId}
+          type={type}
+          {...(runId ? { runId } : {})}
+          {...(range ? { range } : {})}
+          subtitle={subtitle}
+          onClose={() => setOpen(false)}
+        />
+      ) : null}
     </>
   );
 }
 
-function RankReportDialog({ locationId, runId, runAt, onClose }: { locationId: string; runId: string; runAt: string; onClose: () => void }) {
+function ReportDialog({
+  locationId,
+  type,
+  runId,
+  range,
+  subtitle,
+  onClose,
+}: {
+  locationId: string;
+  type: ReportType;
+  runId?: string;
+  range?: string;
+  subtitle: string;
+  onClose: () => void;
+}) {
   const [reportId, setReportId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const started = useRef(false);
@@ -40,13 +80,13 @@ function RankReportDialog({ locationId, runId, runAt, onClose }: { locationId: s
   useEffect(() => {
     if (started.current) return;
     started.current = true;
-    createReport({ location_id: locationId, type: "rank_tracker", run_id: runId })
+    createReport({ location_id: locationId, type, ...(runId ? { run_id: runId } : {}), ...(range ? { range } : {}) })
       .then((report) => setReportId(report.report_id))
       .catch((err: unknown) => {
         const reason = isApiError(err) ? err.reason : undefined;
         setError((reason && REPORT_CREATE_ERRORS[reason]) ?? "The report couldn't be created. Try again.");
       });
-  }, [locationId, runId]);
+  }, [locationId, type, runId, range]);
 
   const report = useQuery({
     queryKey: ["reports", reportId],
@@ -61,8 +101,8 @@ function RankReportDialog({ locationId, runId, runAt, onClose }: { locationId: s
     <Dialog open onOpenChange={(next) => (next ? undefined : onClose())}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Rank Tracker report</DialogTitle>
-          <DialogDescription>For the ranking run of {formatRunDate(runAt, true)}.</DialogDescription>
+          <DialogTitle>{REPORT_TYPE_LABEL[type] ?? "Report"}</DialogTitle>
+          <DialogDescription>{subtitle}</DialogDescription>
         </DialogHeader>
         {error ? (
           <p role="alert" className="text-sm text-critical">{error}</p>

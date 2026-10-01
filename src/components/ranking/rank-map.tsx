@@ -76,9 +76,16 @@ export function PinsMap({
   searchPoint?: LatLng | null;
   className?: string;
 }) {
-  const bounds = useMemo(() => boundsFor(searchPoint ? [...pins, searchPoint] : pins), [pins, searchPoint]);
+  const points = useMemo(() => (searchPoint ? [...pins, searchPoint] : pins), [pins, searchPoint]);
+  const bounds = useMemo(() => boundsFor(points), [points]);
+  // A single point has no extent to fit: show it at city level instead of the closest zoom.
+  const single = points.length === 1 ? points[0]! : null;
   return (
-    <MapContainer bounds={bounds} scrollWheelZoom={false} className={className ?? "h-[420px] w-full rounded-md"}>
+    <MapContainer
+      {...(single ? { center: [single.lat, single.lng] as [number, number], zoom: 11 } : { bounds })}
+      scrollWheelZoom={false}
+      className={className ?? "h-[420px] w-full rounded-md"}
+    >
       <TileLayer url={TILE_URL} attribution={TILE_ATTRIBUTION} />
       {searchPoint ? (
         <CircleMarker center={[searchPoint.lat, searchPoint.lng]} radius={7} pathOptions={{ color: "#0f172a", weight: 2, fillOpacity: 0.15 }}>

@@ -18,6 +18,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { formatDistance, formatDuration } from "@/lib/rankings/format";
 import { rankingsKey, useTracking } from "@/lib/rankings/use-rankings";
 import { cn } from "@/lib/utils";
+import { TermWithTip } from "@/components/layout/shared/info-tip";
+import { GLOSSARY } from "@/lib/rankings/glossary";
 
 const SIZES = [3, 5, 7, 9, 11, 13];
 const MIN_RADIUS_KM = 0.5;
@@ -106,7 +108,8 @@ function GridSettingsDialog({ locationId, onClose }: { locationId: string; onClo
         <DialogHeader>
           <DialogTitle>Grid settings</DialogTitle>
           <DialogDescription>
-            The grid is the set of points around your business where rankings are measured. Changes apply from the next run.
+            The grid is the set of points around the business center where rankings are measured: the business's Google Maps pin
+            (or, for a service-area business, the city or ZIP set during setup). Changes apply from the next run.
           </DialogDescription>
         </DialogHeader>
 
@@ -116,7 +119,7 @@ function GridSettingsDialog({ locationId, onClose }: { locationId: string; onClo
           <div className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label htmlFor="grid-size">Grid size</Label>
+                <Label htmlFor="grid-size"><TermWithTip term="Grid size">{GLOSSARY.gridSize}</TermWithTip></Label>
                 <Select value={String(currentSize)} onValueChange={(value) => setSize(Number(value))}>
                   <SelectTrigger id="grid-size" className="bg-background"><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -129,7 +132,7 @@ function GridSettingsDialog({ locationId, onClose }: { locationId: string; onClo
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="grid-radius">Distance from center to edge (km)</Label>
+                <Label htmlFor="grid-radius"><TermWithTip term="Distance from center to edge (km)">{GLOSSARY.gridRadius}</TermWithTip></Label>
                 <Input
                   id="grid-radius"
                   inputMode="decimal"
@@ -170,13 +173,13 @@ function GridSettingsDialog({ locationId, onClose }: { locationId: string; onClo
                 <p className="text-critical">{(estimate.error as Error).message || "That size and distance can't be combined."}</p>
               ) : estimate.data ? (
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-1">
-                  <dt className="text-muted-foreground">Searches per keyword</dt>
+                  <dt className="text-muted-foreground"><TermWithTip term="Searches per keyword">{GLOSSARY.searchesPerKeyword}</TermWithTip></dt>
                   <dd className="text-right tabular">{estimate.data.points_per_keyword}</dd>
                   <dt className="text-muted-foreground">Keywords</dt>
                   <dd className="text-right tabular">{estimate.data.keywords}</dd>
-                  <dt className="text-muted-foreground">Expected run time</dt>
+                  <dt className="text-muted-foreground"><TermWithTip term="Expected run time">{GLOSSARY.runTime}</TermWithTip></dt>
                   <dd className="text-right">{formatDuration(estimate.data.expected_duration_ms)}</dd>
-                  <dt className="text-muted-foreground">Manual refresh</dt>
+                  <dt className="text-muted-foreground"><TermWithTip term="Manual refresh">{GLOSSARY.tokenCost}</TermWithTip></dt>
                   <dd className="text-right">{estimate.data.token_cost.rankings} token{estimate.data.token_cost.rankings === 1 ? "" : "s"}</dd>
                 </dl>
               ) : estimate.isError ? (

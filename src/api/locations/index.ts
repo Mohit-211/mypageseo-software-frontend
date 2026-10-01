@@ -9,6 +9,7 @@ import type {
   LocationsListParams,
   LocationsListResponse,
   PlaceSearchResponse,
+  PlaceSuggestion,
   RankRun,
   TrackingEstimate,
   TrackingResponse,
@@ -52,9 +53,32 @@ export async function deleteLocation(locationId: string): Promise<{ deleted: boo
   return unwrapData(await api.delete(ENDPOINTS.locations.detail(locationId)));
 }
 
-/** Sets a service-area business's center from a city or ZIP (2–100 characters). */
-export async function setLocationCenter(locationId: string, query: string): Promise<LocationCenterResult> {
-  return unwrapData(await api.put(ENDPOINTS.locations.center(locationId), { query }));
+/**
+ * Sets a service-area business's center: a suggestion picked from `getPlaceSuggestions`
+ * (`{ place_id, session }`, recommended) or free text (`{ query }`, 2–100 characters).
+ */
+export async function setLocationCenter(
+  locationId: string,
+  input: { query: string } | { place_id: string; session: string },
+): Promise<LocationCenterResult> {
+  return unwrapData(await api.put(ENDPOINTS.locations.center(locationId), input));
+}
+
+/**
+ * City / region / ZIP suggestions. Send the same `session` with every keystroke and with
+ * the pick, then start a new one. 429 `rate_limited` above 120 per user per hour.
+ */
+export async function getPlaceSuggestions(
+  q: string,
+  session: string,
+  options: { locationId?: string; signal?: AbortSignal } = {},
+): Promise<{ suggestions: PlaceSuggestion[]; attribution?: { provider: string; text: string } }> {
+  return unwrapData(
+    await api.get(ENDPOINTS.places.autocomplete, {
+      query: { q, session, ...(options.locationId ? { locationId: options.locationId } : {}) },
+      ...withSignal(options.signal),
+    }),
+  );
 }
 
 export async function getTracking(locationId: string, signal?: AbortSignal): Promise<TrackingResponse> {

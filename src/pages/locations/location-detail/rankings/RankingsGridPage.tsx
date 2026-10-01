@@ -10,6 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { BUCKET_LABEL, formatRate, targetLabel } from "@/lib/rankings/format";
 import { useGroupParam, useRankingsContext, useRunParam } from "@/lib/rankings/rankings-context";
 import { useGrid } from "@/lib/rankings/use-rankings";
+import { TermWithTip } from "@/components/layout/shared/info-tip";
+import { GLOSSARY } from "@/lib/rankings/glossary";
 import { cn } from "@/lib/utils";
 
 /** Local Search Grid: one keyword's rank at every grid point, for one business. */
@@ -169,9 +171,9 @@ function GridContent({
         </Panel>
         <Panel title="Summary">
           <dl className="space-y-2 text-sm">
-            <div className="flex justify-between"><dt className="text-muted-foreground">Average rank</dt><dd><AvgRank value={summary?.avgRank} /></dd></div>
-            <div className="flex justify-between"><dt className="text-muted-foreground">Found in top 60</dt><dd className="tabular">{formatRate(summary?.foundRate)}</dd></div>
-            <div className="flex justify-between"><dt className="text-muted-foreground">In the top 3</dt><dd className="tabular">{formatRate(summary?.top3Rate)}</dd></div>
+            <div className="flex justify-between"><dt className="text-muted-foreground"><TermWithTip term="Average rank">{GLOSSARY.avgRank}</TermWithTip></dt><dd><AvgRank value={summary?.avgRank} /></dd></div>
+            <div className="flex justify-between"><dt className="text-muted-foreground"><TermWithTip term="Found in top 60">{GLOSSARY.found}</TermWithTip></dt><dd className="tabular">{formatRate(summary?.foundRate)}</dd></div>
+            <div className="flex justify-between"><dt className="text-muted-foreground"><TermWithTip term="In the top 3">{GLOSSARY.top3}</TermWithTip></dt><dd className="tabular">{formatRate(summary?.top3Rate)}</dd></div>
           </dl>
           <p className="mt-3 text-xs text-muted-foreground">Not found counts as 61; failed searches are left out.</p>
         </Panel>

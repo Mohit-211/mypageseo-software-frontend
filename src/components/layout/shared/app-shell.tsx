@@ -14,97 +14,166 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { GlobalSearch } from "@/components/mypageseo/global-search";
-import logoUrl from "@/assets/mypageseo-logo.png";
-import { navigationFor } from "@/lib/mypageseo/navigation";
+import { TokenBalance } from "@/components/layout/shared/token-balance";
+import logoUrl from "@/assets/logo.png";
+import { navigationFor, type NavGroup } from "@/lib/mypageseo/navigation";
 import { useAccountType, useWorkspace } from "@/lib/mypageseo/workspace";
 import { cn } from "@/lib/utils";
 
-function Brand() {
+/**
+ * The logo, centered on an off-white band (the logo is dark and would disappear on the
+ * dark sidebar), with a thin brand-red line underneath. Same height as the page header.
+ */
+function Brand({ className }: { className?: string }) {
   return (
-    <Link to="/dashboard" className="flex items-center px-4 py-4">
-      <span className="flex h-10 items-center justify-center rounded-md bg-white px-2">
-        <img src={logoUrl} alt="MyPageSEO" className="h-8 w-auto object-contain" />
-      </span>
+    <Link
+      to="/dashboard"
+      aria-label="Mypageseo dashboard"
+      className={cn(
+        "relative flex h-14 shrink-0 items-center justify-center bg-background px-4",
+        "after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-gradient-to-r after:from-transparent after:via-brand-accent after:to-transparent after:content-['']",
+        className,
+      )}
+    >
+      <img src={logoUrl} alt="Mypageseo" className="h-12 w-auto object-contain" />
     </Link>
   );
 }
+
+const GROUP_ORDER: NavGroup[] = ["Overview", "Visibility", "Workspace"];
 
 function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const accountType = useAccountType();
   const { pathname } = useLocation();
   const items = navigationFor(accountType);
+  // A section that owns part of a location page (e.g. /locations/:id/rankings) wins over Locations.
+  const owner = items.find(
+    (entry) => entry.locationSection && matchPath(`/locations/:locationId/${entry.locationSection}/*`, pathname),
+  );
 
   return (
-    <nav className="flex-1 overflow-y-auto px-2 pb-4" aria-label="Primary">
-      <ul className="space-y-0.5">
-        {items.map((item) => {
-          // Section is active for its path and anything nested under it.
-          // matchPath is segment-aware ("/rankings" won't match "/rankings-x").
-          // A section that owns a part of a location page (e.g. /locations/:id/rankings) wins over Locations.
-          const owner = items.find(
-            (entry) => entry.locationSection && matchPath(`/locations/:locationId/${entry.locationSection}/*`, pathname),
-          );
-          const active = owner
-            ? owner === item
-            : matchPath({ path: item.to, end: item.to === "/" }, pathname) !== null;
-          const Icon = item.icon;
-          return (
-            <li key={item.label}>
-              <Link
-                to={item.to}
-                onClick={onNavigate}
-                aria-current={active ? "page" : undefined}
-                className={cn(
-                  "relative flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors",
-                  active
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground before:absolute before:left-0 before:top-1 before:bottom-1 before:w-[3px] before:rounded-full before:bg-brand-accent before:content-['']"
-                    : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
-                )}
-              >
-                <Icon
-                  className={cn(
-                    "size-4 shrink-0",
-                    active ? "text-brand-soft" : "text-sidebar-foreground/60",
-                  )}
-                  aria-hidden
-                />
-                {item.label}
-              </Link>
-              {active && item.children ? (
-                <ul className="mt-0.5 mb-1 ml-6 space-y-0.5 border-l border-sidebar-border pl-3">
-                  {item.children.map((child) => {
-                    // On a location page the child is current when the page is its location path.
-                    const locationId = owner
-                      ? matchPath(`/locations/:locationId/${item.locationSection}/*`, pathname)?.params.locationId
-                      : undefined;
-                    const childPath =
-                      locationId !== undefined && child.locationPath !== undefined
-                        ? `/locations/${locationId}/${item.locationSection}${child.locationPath ? `/${child.locationPath}` : ""}`
-                        : null;
-                    return (
-                      <li key={child.to}>
-                        <NavLink
-                          to={childPath ?? child.to}
-                          end
-                          onClick={onNavigate}
-                          className="block rounded-md px-2 py-1.5 text-[13px] text-sidebar-foreground/70 transition-colors hover:text-sidebar-accent-foreground aria-[current=page]:font-medium aria-[current=page]:text-sidebar-accent-foreground"
-                        >
-                          {child.label}
-                        </NavLink>
-                      </li>
-                    );
-                  })}
-                </ul>
-              ) : null}
-            </li>
-          );
-        })}
-      </ul>
+    // Scrolls only on very short screens, without a visible scrollbar.
+    <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Primary">
+      {GROUP_ORDER.map((group) => {
+        const groupItems = items.filter((item) => item.group === group);
+        if (groupItems.length === 0) return null;
+        return (
+          <div key={group} className="mb-4 last:mb-0">
+            <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-sidebar-muted">{group}</p>
+            <ul className="space-y-0.5">
+              {groupItems.map((item) => {
+                const active = owner ? owner === item : matchPath({ path: item.to, end: item.to === "/" }, pathname) !== null;
+                const Icon = item.icon;
+                return (
+                  <li key={item.label}>
+                    <Link
+                      to={item.to}
+                      onClick={onNavigate}
+                      aria-current={active ? "page" : undefined}
+                      className={cn(
+                        "group relative flex items-center gap-3 rounded-lg px-3 py-[7px] text-[13.5px] font-medium transition-all duration-150",
+                        active
+                          ? "bg-white/[0.09] text-white shadow-[inset_0_1px_0_rgb(255_255_255/0.06)] before:absolute before:-left-3 before:top-1.5 before:bottom-1.5 before:w-1 before:rounded-r-full before:bg-brand-accent before:content-['']"
+                          : "text-sidebar-foreground/90 hover:bg-white/[0.05] hover:text-white",
+                      )}
+                    >
+                      <Icon
+                        className={cn(
+                          "size-[18px] shrink-0 transition-colors",
+                          active ? "text-brand-accent" : "text-sidebar-icon group-hover:text-white",
+                        )}
+                        aria-hidden
+                      />
+                      {item.label}
+                    </Link>
+                    {active && item.children ? (
+                      <ul className="mb-1.5 ml-[21px] mt-1 space-y-0.5 border-l border-white/15 pl-3">
+                        {item.children.map((child) => {
+                          // On a location page the child is current when the page is its location path.
+                          const locationId = owner
+                            ? matchPath(`/locations/:locationId/${item.locationSection}/*`, pathname)?.params.locationId
+                            : undefined;
+                          const childPath =
+                            locationId !== undefined && child.locationPath !== undefined
+                              ? `/locations/${locationId}/${item.locationSection}${child.locationPath ? `/${child.locationPath}` : ""}`
+                              : null;
+                          return (
+                            <li key={child.to}>
+                              <NavLink
+                                to={childPath ?? child.to}
+                                end
+                                onClick={onNavigate}
+                                className="relative block rounded-md px-2.5 py-1.5 text-[13px] text-sidebar-foreground/75 transition-colors hover:bg-white/[0.04] hover:text-white aria-[current=page]:font-medium aria-[current=page]:text-white aria-[current=page]:before:absolute aria-[current=page]:before:-left-[15.5px] aria-[current=page]:before:top-1/2 aria-[current=page]:before:size-1.5 aria-[current=page]:before:-translate-y-1/2 aria-[current=page]:before:rounded-full aria-[current=page]:before:bg-brand-accent aria-[current=page]:before:content-['']"
+                              >
+                                {child.label}
+                              </NavLink>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        );
+      })}
     </nav>
   );
 }
 
+/** The workspace the user is in, at the foot of the sidebar; it's also the way into Settings. */
+function SidebarFooter({ onNavigate }: { onNavigate?: () => void }) {
+  const { organization } = useWorkspace();
+  const { pathname } = useLocation();
+  const inSettings = matchPath("/settings/*", pathname) !== null;
+  if (!organization) return null;
+  const initials = organization.name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0]!.toUpperCase())
+    .join("");
+  return (
+    <div className="shrink-0 border-t border-white/10 p-3">
+      <Link
+        to="/settings"
+        onClick={onNavigate}
+        aria-current={inSettings ? "page" : undefined}
+        aria-label={`${organization.name}: settings`}
+        className={cn(
+          "group flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors",
+          inSettings ? "bg-white/[0.11] ring-1 ring-brand-accent/60" : "bg-white/[0.04] hover:bg-white/[0.08]",
+        )}
+      >
+        <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-md bg-gradient-to-br from-brand-accent to-[oklch(0.45_0.16_27.5)] text-xs font-bold text-white shadow-sm">
+          {initials || "M"}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-semibold text-white">{organization.name}</span>
+          <span className="block text-xs text-sidebar-muted">
+            <span className="capitalize">{organization.accountType}</span> · Settings
+          </span>
+        </span>
+        <Settings
+          aria-hidden
+          className={cn("size-4 shrink-0 transition-transform duration-300 group-hover:rotate-45", inSettings ? "text-brand-accent" : "text-sidebar-icon")}
+        />
+      </Link>
+    </div>
+  );
+}
+
 /** Persistent organization / client / location context in the global header. */
+/** Client filter value meaning "locations without a client". */
+const NO_CLIENT = "__none__";
+
+/**
+ * Header context. Business: the business name, then the location. Agency: the client
+ * (or "No client"), then the location. An organization switcher appears only for people
+ * who belong to more than one organization.
+ */
 function ContextSwitcher() {
   const {
     status,
@@ -120,6 +189,7 @@ function ContextSwitcher() {
   } = useWorkspace();
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  const [clientFilter, setClientFilter] = useState<string | null>(null);
 
   if (status === "loading") {
     return <span className="h-8 w-48 animate-pulse rounded-md bg-muted" aria-label="Loading workspace" />;
@@ -132,94 +202,131 @@ function ContextSwitcher() {
     );
   }
 
-  const visibleLocations = activeClient
-    ? locations.filter((l) => l.clientId === activeClient.id)
-    : locations;
-
-  // On a location page, switching location opens the same page for the new one.
-  const locationRoute = matchPath("/locations/:locationId/*", pathname) ?? matchPath("/locations/:locationId", pathname);
+  const agency = organization.accountType === "agency";
+  const locationRoute = matchPath("/locations/:locationId/*", pathname);
   const routeLocationId = locationRoute?.params.locationId;
   const onLocationPage = Boolean(routeLocationId && routeLocationId !== "add");
-  const pickLocation = (id: string | null) => {
+  const currentLocation = onLocationPage ? (locations.find((l) => l.id === routeLocationId) ?? activeLocation) : activeLocation;
+
+  // On a location page the client is that location's own (or "No client"); elsewhere the chosen filter.
+  const selectedClient: string | null = onLocationPage && currentLocation
+    ? (currentLocation.clientId ?? NO_CLIENT)
+    : (clientFilter ?? activeClient?.id ?? null);
+  const clientLabel =
+    selectedClient === null ? "All clients" : selectedClient === NO_CLIENT ? "No client" : (clients.find((c) => c.id === selectedClient)?.name ?? "Client");
+  const visibleLocations =
+    selectedClient === null
+      ? locations
+      : selectedClient === NO_CLIENT
+        ? locations.filter((l) => !l.clientId)
+        : locations.filter((l) => l.clientId === selectedClient);
+
+  const goToLocation = (id: string | null) => {
     setActiveLocationId(id);
     if (!onLocationPage || !routeLocationId) return;
     if (id) navigate(pathname.replace(`/locations/${routeLocationId}`, `/locations/${id}`));
     else navigate("/locations");
   };
-  const currentLocation = onLocationPage ? (locations.find((l) => l.id === routeLocationId) ?? activeLocation) : activeLocation;
+
+  const pickClient = (value: string | null) => {
+    setClientFilter(value);
+    setActiveClientId(value && value !== NO_CLIENT ? value : null);
+    const matches =
+      value === null ? locations : value === NO_CLIENT ? locations.filter((l) => !l.clientId) : locations.filter((l) => l.clientId === value);
+    // Keep the current location if it belongs to the client; otherwise open the client's first one.
+    if (currentLocation && matches.some((l) => l.id === currentLocation.id)) return;
+    goToLocation(matches[0]?.id ?? null);
+  };
+
+  const trigger = "flex min-w-0 items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm hover:bg-secondary";
 
   return (
     <div className="flex min-w-0 items-center gap-2">
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          disabled={organizations.length <= 1}
-          className="flex min-w-0 items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm font-medium hover:bg-secondary disabled:cursor-default disabled:hover:bg-surface"
-        >
-          <span className="truncate">{organization.name}</span>
-          {organizations.length > 1 ? <ChevronDown className="size-3.5 text-muted-foreground" aria-hidden /> : null}
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-64">
-          <DropdownMenuLabel>Organization</DropdownMenuLabel>
-          {organizations.map((entry) => {
-            const current = entry.id === organization.id;
-            return (
-              <DropdownMenuItem
-                key={entry.id}
-                onSelect={() => {
-                  if (current) return;
-                  setOrganizationId(entry.id);
-                  navigate("/dashboard");
-                }}
-                aria-current={current ? "true" : undefined}
-              >
-                <Check className={cn("size-3.5 shrink-0", current ? "opacity-100" : "opacity-0")} aria-hidden />
-                <span className="truncate">{entry.name}</span>
-                <span className="ml-auto text-xs capitalize text-muted-foreground">{entry.accountType}</span>
-              </DropdownMenuItem>
-            );
-          })}
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      {clients.length > 0 ? (
+      {organizations.length > 1 ? (
         <>
-          <span className="text-muted-foreground">/</span>
           <DropdownMenu>
-            <DropdownMenuTrigger className="flex min-w-0 items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm hover:bg-secondary">
-              <span className="truncate">{activeClient ? activeClient.name : "All clients"}</span>
+            <DropdownMenuTrigger className={cn(trigger, "font-medium")}>
+              <span className="truncate">{organization.name}</span>
               <ChevronDown className="size-3.5 text-muted-foreground" aria-hidden />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-64">
-              <DropdownMenuLabel>Client</DropdownMenuLabel>
-              <DropdownMenuItem onSelect={() => setActiveClientId(null)}>All clients</DropdownMenuItem>
-              {clients.map((client) => (
-                <DropdownMenuItem key={client.id} onSelect={() => setActiveClientId(client.id)}>
-                  {client.name}
-                </DropdownMenuItem>
-              ))}
+              <DropdownMenuLabel>Organization</DropdownMenuLabel>
+              {organizations.map((entry) => {
+                const current = entry.id === organization.id;
+                return (
+                  <DropdownMenuItem
+                    key={entry.id}
+                    onSelect={() => {
+                      if (current) return;
+                      setClientFilter(null);
+                      setOrganizationId(entry.id);
+                      navigate("/dashboard");
+                    }}
+                    aria-current={current ? "true" : undefined}
+                  >
+                    <Check className={cn("size-3.5 shrink-0", current ? "opacity-100" : "opacity-0")} aria-hidden />
+                    <span className="truncate">{entry.name}</span>
+                    <span className="ml-auto text-xs capitalize text-muted-foreground">{entry.accountType}</span>
+                  </DropdownMenuItem>
+                );
+              })}
             </DropdownMenuContent>
           </DropdownMenu>
+          <span className="text-muted-foreground">/</span>
         </>
       ) : null}
+
+      {agency ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger className={trigger} aria-label="Client">
+            <span className="truncate">{clientLabel}</span>
+            <ChevronDown className="size-3.5 text-muted-foreground" aria-hidden />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="max-h-96 w-64 overflow-y-auto">
+            <DropdownMenuLabel>Client</DropdownMenuLabel>
+            <DropdownMenuItem onSelect={() => pickClient(null)}>
+              <Check className={cn("size-3.5 shrink-0", selectedClient === null ? "opacity-100" : "opacity-0")} aria-hidden />
+              All clients
+            </DropdownMenuItem>
+            {clients.map((client) => (
+              <DropdownMenuItem key={client.id} onSelect={() => pickClient(client.id)}>
+                <Check className={cn("size-3.5 shrink-0", selectedClient === client.id ? "opacity-100" : "opacity-0")} aria-hidden />
+                <span className="truncate">{client.name}</span>
+              </DropdownMenuItem>
+            ))}
+            <DropdownMenuItem onSelect={() => pickClient(NO_CLIENT)}>
+              <Check className={cn("size-3.5 shrink-0", selectedClient === NO_CLIENT ? "opacity-100" : "opacity-0")} aria-hidden />
+              No client
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : organizations.length > 1 ? null : (
+        // A business has one organization: its name, not a menu.
+        <span className="truncate text-sm font-medium text-foreground">{organization.name}</span>
+      )}
 
       {locations.length > 0 ? (
         <>
           <span className="hidden text-muted-foreground sm:inline">/</span>
           <DropdownMenu>
-            <DropdownMenuTrigger className="hidden min-w-0 items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm hover:bg-secondary sm:flex">
+            <DropdownMenuTrigger className={cn(trigger, "hidden sm:flex")} aria-label="Location">
               <span className="truncate">{currentLocation ? currentLocation.businessName : "All locations"}</span>
               <ChevronDown className="size-3.5 text-muted-foreground" aria-hidden />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="max-h-96 w-72 overflow-y-auto">
               <DropdownMenuLabel>Location</DropdownMenuLabel>
-              <DropdownMenuItem onSelect={() => pickLocation(null)}>All locations</DropdownMenuItem>
-              {visibleLocations.map((location) => (
-                <DropdownMenuItem key={location.id} onSelect={() => pickLocation(location.id)}>
-                  <Check className={cn("size-3.5 shrink-0", currentLocation?.id === location.id ? "opacity-100" : "opacity-0")} aria-hidden />
-                  <span className="truncate">{location.businessName}</span>
-                  {location.area ? <span className="ml-auto truncate pl-2 text-xs text-muted-foreground">{location.area}</span> : null}
-                </DropdownMenuItem>
-              ))}
+              <DropdownMenuItem onSelect={() => goToLocation(null)}>All locations</DropdownMenuItem>
+              {visibleLocations.length === 0 ? (
+                <p className="px-2 py-1.5 text-xs text-muted-foreground">No locations for this client.</p>
+              ) : (
+                visibleLocations.map((location) => (
+                  <DropdownMenuItem key={location.id} onSelect={() => goToLocation(location.id)}>
+                    <Check className={cn("size-3.5 shrink-0", currentLocation?.id === location.id ? "opacity-100" : "opacity-0")} aria-hidden />
+                    <span className="truncate">{location.businessName}</span>
+                    {location.area ? <span className="ml-auto truncate pl-2 text-xs text-muted-foreground">{location.area}</span> : null}
+                  </DropdownMenuItem>
+                ))
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </>
@@ -322,6 +429,7 @@ function GlobalHeader({ onOpenNav }: { onOpenNav: () => void }) {
       <ContextSwitcher />
 
       <div className="ml-auto flex items-center gap-1">
+        <TokenBalance />
         <GlobalSearch />
         <Button variant="ghost" size="icon" aria-label="Notifications" asChild>
           <Link to="/notifications">
@@ -378,9 +486,14 @@ export function AppShell({
       >
         Skip to main content
       </a>
-      <aside aria-label="Sidebar" className="hidden w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar lg:flex">
+      {/* Stays in place while the page scrolls; the menu scrolls on its own when it's long. */}
+      <aside
+        aria-label="Sidebar"
+        className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-sidebar-border bg-gradient-to-b from-sidebar to-sidebar-deep lg:flex"
+      >
         <Brand />
         <SidebarNav />
+        <SidebarFooter />
       </aside>
 
       {navOpen ? (
@@ -391,20 +504,20 @@ export function AppShell({
             className="absolute inset-0 bg-foreground/40"
             onClick={() => setNavOpen(false)}
           />
-          <aside aria-label="Sidebar" className="relative flex h-full w-64 flex-col bg-sidebar">
-            <div className="flex items-center justify-between pr-2">
-              <Brand />
+          <aside aria-label="Sidebar" className="relative flex h-full w-64 flex-col bg-gradient-to-b from-sidebar to-sidebar-deep">
+            <div className="relative flex h-14 shrink-0 items-center bg-background pr-2">
+              <Brand className="flex-1" />
               <Button
                 variant="ghost"
                 size="icon"
                 aria-label="Close navigation"
-                className="text-sidebar-foreground hover:bg-sidebar-accent"
                 onClick={() => setNavOpen(false)}
               >
                 <X className="size-5" />
               </Button>
             </div>
             <SidebarNav onNavigate={() => setNavOpen(false)} />
+            <SidebarFooter onNavigate={() => setNavOpen(false)} />
           </aside>
         </div>
       ) : null}

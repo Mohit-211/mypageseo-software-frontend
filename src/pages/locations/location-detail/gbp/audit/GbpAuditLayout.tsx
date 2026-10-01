@@ -1,12 +1,10 @@
-import { Outlet } from "react-router-dom";
-import { GbpNavigation } from "@/components/location/location-workspace";
-import { useRequiredParams } from "@/hooks/use-required-params";
+import { Outlet, useOutletContext } from "react-router-dom";
+import type { GbpContext } from "@/lib/gbp/gbp-context";
 
-
-
+/** Passes the location on to the Audit and Competitors pages (each draws its own tabs). */
 function GbpAuditLayout() {
-  const { locationId } = useRequiredParams("locationId");
-  return <><GbpNavigation locationId={locationId} activeView="audit" /><Outlet /></>;
+  const context = useOutletContext<GbpContext>();
+  return <Outlet context={context} />;
 }
 
 export default GbpAuditLayout;

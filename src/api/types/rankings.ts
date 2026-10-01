@@ -35,7 +35,8 @@ export type RunMeta = {
   run_at: string;
   status: "done" | "partial";
   keywords_version: number;
-  center: { lat: number; lng: number };
+  /** Frozen with the run; `source` and `label` are null on older runs. */
+  center: { lat: number; lng: number; source?: "place" | "manual" | null; label?: string | null };
   /** `radius_km` (Phase 17) is center to edge; `radius_m` is the search bias around each point. */
   config: {
     grid_size: number;
@@ -135,7 +136,8 @@ export type RefreshState = {
   gbp_connected: boolean;
   next_refresh_at: string | null;
   rankings: { next_allowed_at: string | null; active_run: { run_id: string; status: string } | null };
-  gbp: { next_allowed_at: string | null; active_sync: unknown; last_synced_at: string | null } | null;
+  gbp: { next_allowed_at: string | null; active_sync: { sync_id: string; status: string } | null; last_synced_at: string | null } | null;
+  report?: { pending: boolean; scheduled_for: string | null; last_generated_at: string | null };
   tokens: { cost: { rankings: number; gbp: number }; balance: number };
 };
 
@@ -143,6 +145,9 @@ export type RefreshState = {
 export type RefreshResult = {
   rankings?:
     | { run_id: string; status: string; existing: boolean; next_allowed_at: string | null }
+    | { skipped: string; next_allowed_at: string | null };
+  gbp?:
+    | { sync_id: string; status: string; existing: boolean; next_allowed_at: string | null }
     | { skipped: string; next_allowed_at: string | null };
 };
 

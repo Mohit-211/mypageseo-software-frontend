@@ -57,6 +57,7 @@ export const ENDPOINTS = {
     grid: (locationId: string) => `locations/${encodeURIComponent(locationId)}/grid`,
     mapRanking: (locationId: string) => `locations/${encodeURIComponent(locationId)}/map-ranking`,
     refresh: (locationId: string) => `locations/${encodeURIComponent(locationId)}/refresh`,
+    gbpReport: (locationId: string) => `locations/${encodeURIComponent(locationId)}/gbp/report`,
   },
   reports: {
     list: "reports",
@@ -68,6 +69,7 @@ export const ENDPOINTS = {
   },
   places: {
     search: "places/search",
+    autocomplete: "places/autocomplete",
   },
   onboarding: {
     state: "onboarding/state",
@@ -77,6 +79,10 @@ export const ENDPOINTS = {
     list: "clients",
   },
   billing: {
+    summary: "billing",
+    tokenPacks: "billing/token-packs",
+    tokenCheckout: "billing/tokens/checkout",
+    tokenLedger: "billing/tokens/ledger",
     locationSlots: "billing/location-slots",
     sync: "billing/sync",
     captureOrder: (orderId: string) => `billing/orders/${encodeURIComponent(orderId)}/capture`,

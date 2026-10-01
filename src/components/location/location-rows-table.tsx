@@ -21,7 +21,8 @@ import { StatusBadge, TrendIndicator } from "@/components/layout/shared/data-dis
 const statusMeta: Record<LocationStatus, { label: string; tone: "success" | "warning" | "critical" | "neutral" }> = {
   active: { label: "Active", tone: "success" },
   setup_required: { label: "Setup required", tone: "warning" },
-  gbp_not_connected: { label: "GBP not connected", tone: "neutral" },
+  gbp_not_connected: { label: "No GBP", tone: "neutral" },
+  gbp_disconnected: { label: "GBP disconnected", tone: "warning" },
   reconnect_required: { label: "Reconnect Google", tone: "critical" },
 };
 
@@ -222,6 +223,11 @@ function RowMenu({ location, agency, actions }: { location: LocationRow; agency:
       {location.status === "setup_required" ? (
         <DropdownMenuItem onSelect={() => actions.onContinueSetup(location)}>
           <ListChecks aria-hidden /> Continue setup
+        </DropdownMenuItem>
+      ) : null}
+      {location.status === "gbp_disconnected" ? (
+        <DropdownMenuItem onSelect={() => actions.onReconnect(location)}>
+          <RefreshCw aria-hidden /> Connect GBP again
         </DropdownMenuItem>
       ) : null}
       {location.status === "reconnect_required" ? (

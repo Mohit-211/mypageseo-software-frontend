@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { LineChart } from "lucide-react";
-import logoAsset from "@/assets/mypageseo-logo.png";
+import logoAsset from "@/assets/logo.png";
 
 type FooterLink = { label: string; href: string; internal?: boolean };
 type FooterGroup = { title: string; links: FooterLink[] };

@@ -4,7 +4,8 @@ import type { PendingLocationAction } from "@/lib/billing/pending-location-payme
 export const LOCATION_STATUS_LABEL: Record<LocationStatus, string> = {
   active: "Active",
   setup_required: "Setup required",
-  gbp_not_connected: "GBP not connected",
+  gbp_not_connected: "No GBP",
+  gbp_disconnected: "GBP disconnected",
   reconnect_required: "Reconnect Google",
 };
 

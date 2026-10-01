@@ -9,6 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { targetLabel } from "@/lib/rankings/format";
 import { useRankingsContext, useRunParam } from "@/lib/rankings/rankings-context";
 import { useMapRanking } from "@/lib/rankings/use-rankings";
+import { TermWithTip } from "@/components/layout/shared/info-tip";
+import { GLOSSARY } from "@/lib/rankings/glossary";
 import { cn } from "@/lib/utils";
 
 const POINT_LABEL: Record<TrackerPointLabel, string> = {
@@ -138,7 +140,7 @@ function MapContent({
           </Select>
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="map-point">Search point</Label>
+          <Label htmlFor="map-point"><TermWithTip term="Search point">{GLOSSARY.mapPoint}</TermWithTip></Label>
           <Select value={point} onValueChange={onPoint}>
             <SelectTrigger id="map-point" className="w-full bg-background sm:w-44"><SelectValue /></SelectTrigger>
             <SelectContent>

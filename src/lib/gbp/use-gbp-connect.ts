@@ -1,6 +1,6 @@
 import { useCallback, useState, useSyncExternalStore } from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { disconnectGbp, isApiError } from "@/api";
+import { disconnectGbp, isApiError, type GbpDisconnectResult } from "@/api";
 import { LOCATIONS_QUERY_KEY } from "../locations/use-locations";
 import { GBP_QUERY_KEY } from "./use-gbp";
 
@@ -65,26 +65,28 @@ function errorMessage(err: unknown, fallback: string): string {
 }
 
 /**
- * Disconnects one Google account (`POST gbp/disconnect { google_sub }`). Its locations
- * stay without GBP and its picks are removed; other accounts keep working.
+ * Disconnects one Google account (`POST gbp/disconnect { google_sub }`). The locations
+ * bound through it are deleted and its picks removed; other accounts keep working.
  */
 export function useGbpDisconnect() {
   const queryClient = useQueryClient();
   const [disconnecting, setDisconnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  /** Resolves `true` when the backend confirmed the disconnect. */
+  /** Resolves with the backend's answer (incl. `locations_removed`), or null when it failed. */
   const disconnect = useCallback(
-    async (googleSub: string): Promise<boolean> => {
+    async (googleSub: string): Promise<GbpDisconnectResult | null> => {
       setDisconnecting(true);
       setError(null);
       try {
-        await disconnectGbp(googleSub);
+        const result = await disconnectGbp(googleSub);
+        // Its locations were deleted: refresh the locations list, the header and reports.
         await invalidateGbpQueries(queryClient);
-        return true;
+        await queryClient.invalidateQueries({ queryKey: ["reports"] });
+        return result;
       } catch (err) {
         setError(errorMessage(err, "The Google account could not be disconnected. Try again."));
-        return false;
+        return null;
       } finally {
         setDisconnecting(false);
       }
