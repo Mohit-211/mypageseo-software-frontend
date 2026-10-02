@@ -1,4 +1,5 @@
 import { ExternalLink, Link2Off, ListChecks, MapPin, RefreshCw, Star, Tag, Trash2 } from "lucide-react";
+import { formatDate as formatLocalDate } from "@/lib/datetime";
 import type { LocationRow, LocationSortField, LocationStatus } from "@/api";
 import { DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import {
@@ -163,8 +164,7 @@ function placeLabel(location: LocationRow) {
 
 function formatDate(iso: string | null) {
   if (!iso) return "—";
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  return formatLocalDate(iso);
 }
 
 const dash = <span className="text-sm text-muted-foreground">—</span>;

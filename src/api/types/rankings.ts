@@ -138,6 +138,14 @@ export type RefreshState = {
   rankings: { next_allowed_at: string | null; active_run: { run_id: string; status: string } | null };
   gbp: { next_allowed_at: string | null; active_sync: { sync_id: string; status: string } | null; last_synced_at: string | null } | null;
   report?: { pending: boolean; scheduled_for: string | null; last_generated_at: string | null };
+  /** `in_progress` while a GBP sync (which also fetches reviews) runs. */
+  reviews?: {
+    synced_with_gbp: boolean;
+    in_progress: boolean;
+    last_refreshed_at: string | null;
+    next_allowed_at: string | null;
+    last_synced_at: string | null;
+  } | null;
   tokens: { cost: { rankings: number; gbp: number }; balance: number };
 };
 
@@ -157,7 +165,8 @@ export type ReportRecord = {
   report_id: string;
   type: string;
   status: ReportStatus;
-  location: { location_id: string; name: string } | null;
+  /** `deleted`: the location was removed; the report and its PDF stay. */
+  location: { location_id: string; name: string | null; deleted?: boolean } | null;
   client?: { client_id: string; name: string | null } | null;
   range: string | null;
   run_id: string | null;
@@ -208,5 +217,18 @@ export type KeywordHistory = {
 
 export type KeywordGroup = { group_id: string; name: string; keywords: string[] };
 
-/** `GET reports`. */
-export type ReportsListResponse = { reports: ReportRecord[]; page: number; limit: number; total: number };
+/**
+ * An always-current in-app page listed with the reports (no PDF, no status): the GBP report
+ * (regenerated after every sync and rank run) or the stored review insights.
+ */
+export type LiveReportRow = {
+  kind: "live";
+  type: "gbp_report" | "review_insights";
+  location: { location_id: string; name: string | null; deleted?: boolean };
+  client_id: string | null;
+  generated_at: string | null;
+  link: { page: string; location_id: string };
+};
+
+/** `GET reports`. `live` only on page 1 without a status filter. */
+export type ReportsListResponse = { reports: ReportRecord[]; live?: LiveReportRow[]; page: number; limit: number; total: number };

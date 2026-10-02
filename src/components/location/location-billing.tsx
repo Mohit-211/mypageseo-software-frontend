@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { formatDate } from "@/lib/datetime";
 import { LoaderCircle } from "lucide-react";
 import { buyLocationSlots, isApiError, type LocationSlotQuote } from "@/api";
 import { Button } from "@/components/ui/button";
@@ -37,7 +38,7 @@ export function LocationSlotDialog({
 }) {
   const [paying, setPaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const periodEnd = quote.period_end ? new Date(quote.period_end) : null;
+  const periodEnd = formatDate(quote.period_end, "");
 
   const pay = async () => {
     setPaying(true);
@@ -82,7 +83,7 @@ export function LocationSlotDialog({
           <p className="font-medium text-foreground">{formatMoney(quote.amount, quote.currency)}</p>
           <p className="text-xs text-muted-foreground">
             {quote.quantity} location slot{quote.quantity === 1 ? "" : "s"}
-            {periodEnd && !Number.isNaN(periodEnd.getTime()) ? `, prorated to ${periodEnd.toLocaleDateString()}` : ""}
+            {periodEnd ? `, prorated to ${periodEnd}` : ""}
           </p>
         </div>
         {error ? (

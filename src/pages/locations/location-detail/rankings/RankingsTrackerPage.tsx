@@ -3,7 +3,6 @@ import { Panel } from "@/components/layout/shared/data-display";
 import { PageSkeleton } from "@/components/layout/shared/feedback/states";
 import { RankTrendChart } from "@/components/ranking/rank-charts";
 import { AvgRank, BucketLegend, OverallChange, RankCellView, RankChange, RankingsError, RankingsPageHeader } from "@/components/ranking/rank-ui";
-import { RankReportButton } from "@/components/report/rank-report-button";
 import { formatAvgRank, formatRate, targetLabel } from "@/lib/rankings/format";
 import { TermWithTip } from "@/components/layout/shared/info-tip";
 import { GLOSSARY, pointExplanation } from "@/lib/rankings/glossary";
@@ -28,11 +27,6 @@ function RankingsTrackerPage() {
         description="Average Google Maps rank for each keyword at the center and 4 points around it."
         run={tracker.data?.run}
         groupFilter
-        actions={
-          tracker.data ? (
-            <RankReportButton locationId={location.location_id} runId={tracker.data.run.run_id} runAt={tracker.data.run.run_at} />
-          ) : null
-        }
       />
       {tracker.isPending ? (
         <PageSkeleton />

@@ -6,7 +6,6 @@ import { PageSkeleton } from "@/components/layout/shared/feedback/states";
 import { TermWithTip } from "@/components/layout/shared/info-tip";
 import { RankTrendChart } from "@/components/ranking/rank-charts";
 import { OverallChange, RankingsError, RankingsPageHeader } from "@/components/ranking/rank-ui";
-import { RankReportButton } from "@/components/report/rank-report-button";
 import { Button } from "@/components/ui/button";
 import { BUCKET_LABEL, CHANGE_LABEL_TEXT, formatAvgRank, formatRate } from "@/lib/rankings/format";
 import { GLOSSARY } from "@/lib/rankings/glossary";
@@ -99,11 +98,6 @@ function LocationRankingsOverviewPage() {
         description="How the business ranks on Google Maps for its keywords, and how that is changing."
         run={tracker.data?.run}
         groupFilter
-        actions={
-          tracker.data ? (
-            <RankReportButton locationId={location.location_id} runId={tracker.data.run.run_id} runAt={tracker.data.run.run_at} />
-          ) : null
-        }
       />
       {tracker.isPending ? (
         <PageSkeleton />

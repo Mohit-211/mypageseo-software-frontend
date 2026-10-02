@@ -2,11 +2,20 @@ import { api, unwrapData } from "../client";
 import { ENDPOINTS } from "../endpoints";
 import type { ReportDetail, ReportRecord, ReportsListResponse } from "../types/rankings";
 
-export type ReportType = "rank_tracker" | "gbp_audit" | "competitor_analysis" | "citation" | "full";
+export type ReportType = "rank_tracker" | "gbp_audit" | "competitor_analysis" | "citation" | "reputation" | "full";
 
 /** `GET reports`, newest first. */
 export async function getReports(
-  params: { location_id?: string; client_id?: string; type?: ReportType; status?: string; page?: number; limit?: number },
+  params: {
+    location_id?: string;
+    client_id?: string;
+    type?: ReportType;
+    status?: string;
+    /** false hides reports of deleted locations. */
+    include_deleted?: boolean;
+    page?: number;
+    limit?: number;
+  },
   signal?: AbortSignal,
 ): Promise<ReportsListResponse> {
   return unwrapData(await api.get(ENDPOINTS.reports.list, { query: params, ...(signal ? { signal } : {}) }));

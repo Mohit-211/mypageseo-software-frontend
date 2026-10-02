@@ -13,14 +13,46 @@ export function AppRoot() {
 	);
 }
 
+/** Shown on the first visit while the page's code downloads (pages load on demand). */
+export function RootLoading() {
+	return (
+		<div role="status" aria-label="Loading" className="flex min-h-screen items-center justify-center bg-background">
+			<span className="size-8 animate-spin rounded-full border-2 border-border border-t-primary" />
+		</div>
+	);
+}
+
 /** Unknown URLs (router "*" route). Was __root.tsx notFoundComponent. */
 export function RootNotFound() {
 	return <NotFoundScreen standalone />;
 }
 
 /** Root error boundary. Was __root.tsx errorComponent. */
+/** A page's code file from an older release is gone after a deploy. */
+function isStaleChunkError(error: unknown): boolean {
+	const message = error instanceof Error ? error.message : String(error ?? "");
+	return /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module/i.test(message);
+}
+
+const RELOAD_KEY = "mypageseo.chunk-reload";
+
 export function RootErrorBoundary() {
 	const routeError = useRouteError();
+
+	// After a release, reload once to pick up the new files instead of showing an error.
+	if (isStaleChunkError(routeError)) {
+		let reloaded: boolean;
+		try {
+			reloaded = sessionStorage.getItem(RELOAD_KEY) === window.location.pathname;
+			if (!reloaded) sessionStorage.setItem(RELOAD_KEY, window.location.pathname);
+		} catch {
+			reloaded = false;
+		}
+		if (!reloaded) {
+			window.location.reload();
+			return <RootLoading />;
+		}
+	}
 
 	if (isRouteErrorResponse(routeError) && routeError.status === 404) {
 		return <RootNotFound />;

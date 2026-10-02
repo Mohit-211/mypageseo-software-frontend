@@ -27,6 +27,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PinsMap } from "@/components/ranking/rank-map";
 import { PlaceAutocomplete } from "@/components/location/place-autocomplete";
+import { BackgroundActivity } from "@/components/location/background-activity";
 import { useRequiredParams } from "@/hooks/use-required-params";
 import { LOCATIONS_QUERY_KEY, useLocation } from "@/lib/locations/use-locations";
 import { cn } from "@/lib/utils";
@@ -634,6 +635,7 @@ function DoneStep({ locationId, runId }: { locationId: string; runId: string | n
             The first ranking run is {status === "running" ? "running" : "queued"}. This takes a few minutes; you can leave this page.
           </p>
         )}
+        <BackgroundActivity locationId={locationId} watch />
         <div className="flex justify-end gap-2">
           <Button asChild variant="outline"><Link to="/locations">All locations</Link></Button>
           <Button asChild><Link to={`/locations/${locationId}`}>Open location</Link></Button>

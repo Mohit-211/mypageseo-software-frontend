@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { FileBarChart, FilePlus2, LoaderCircle } from "lucide-react";
-import { createReport, getReports, isApiError, type ReportStatus, type ReportType } from "@/api";
+import { ExternalLink, FileBarChart, FilePlus2, LoaderCircle, Radio } from "lucide-react";
+import { createReport, getReports, isApiError, type LiveReportRow, type ReportStatus, type ReportType } from "@/api";
 import { StatusBadge } from "@/components/layout/shared/data-display";
 import {
   TableBody,
@@ -16,6 +16,7 @@ import {
 } from "@/components/layout/shared/data-table";
 import { EmptyState, ErrorState, TableSkeleton } from "@/components/layout/shared/feedback/states";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -50,12 +51,14 @@ export function ReportsList({ locationId, reportPath }: { locationId?: string; r
   const [status, setStatus] = useState<ReportStatus | "all">("all");
   const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
+  const [hideDeleted, setHideDeleted] = useState(false);
   const location = locationId ?? (locationFilter === "all" ? undefined : locationFilter);
 
   const params = {
     ...(location ? { location_id: location } : {}),
     ...(type === "all" ? {} : { type }),
     ...(status === "all" ? {} : { status }),
+    ...(hideDeleted ? { include_deleted: false } : {}),
     page,
     limit: PAGE_SIZE,
   };
@@ -94,6 +97,12 @@ export function ReportsList({ locationId, reportPath }: { locationId?: string; r
           ))}
         </SelectContent>
       </Select>
+      {locationId ? null : (
+        <label className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Checkbox checked={hideDeleted} onCheckedChange={(value) => { setHideDeleted(value === true); setPage(1); }} />
+          Hide deleted locations
+        </label>
+      )}
       <Button size="sm" className="sm:ml-auto" onClick={() => setCreating(true)} disabled={workspace.locations.length === 0}>
         <FilePlus2 aria-hidden /> Create report
       </Button>
@@ -102,6 +111,7 @@ export function ReportsList({ locationId, reportPath }: { locationId?: string; r
 
   const total = reports.data?.total ?? 0;
   const rows = reports.data?.reports ?? [];
+  const live = reports.data?.live ?? [];
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const filtered = type !== "all" || status !== "all" || locationFilter !== "all";
 
@@ -112,7 +122,7 @@ export function ReportsList({ locationId, reportPath }: { locationId?: string; r
         <TableSkeleton rows={5} columns={5} />
       ) : reports.isError ? (
         <ErrorState description="Reports couldn't be loaded." onRetry={() => void reports.refetch()} />
-      ) : rows.length === 0 ? (
+      ) : rows.length === 0 && live.length === 0 ? (
         <EmptyState
           icon={FileBarChart}
           title={filtered ? "No reports match these filters" : "No reports yet"}
@@ -129,6 +139,22 @@ export function ReportsList({ locationId, reportPath }: { locationId?: string; r
               <Th>Created</Th>
             </TableHead>
             <TableBody>
+              {live.map((row) => (
+                // Always-current pages (no PDF): open them in the app.
+                <TableRow key={`live-${row.type}-${row.location.location_id}`} className="bg-brand-tint/30">
+                  <td className={tdClass}>
+                    <Link to={livePath(row)} className="inline-flex items-center gap-1.5 font-semibold text-foreground hover:text-primary hover:underline">
+                      {REPORT_TYPE_LABEL[row.type] ?? row.type}
+                      <ExternalLink aria-hidden className="size-3.5 text-muted-foreground" />
+                    </Link>
+                    <span className="block text-xs text-muted-foreground">Updates on its own · opens in the app</span>
+                  </td>
+                  {locationId ? null : <td className={tdClass}><LocationName location={row.location} /></td>}
+                  <td className={tdClass}>—</td>
+                  <td className={tdClass}><StatusBadge tone="info"><Radio aria-hidden className="size-3" /> Live</StatusBadge></td>
+                  <td className={tdClass}><span className="text-muted-foreground">{row.generated_at ? `Updated ${formatRunDate(row.generated_at, true)}` : "—"}</span></td>
+                </TableRow>
+              ))}
               {rows.map((report) => (
                 <TableRow key={report.report_id}>
                   <td className={tdClass}>
@@ -139,7 +165,7 @@ export function ReportsList({ locationId, reportPath }: { locationId?: string; r
                   </td>
                   {locationId ? null : (
                     <td className={tdClass}>
-                      {report.location?.name ?? "—"}
+                      {report.location ? <LocationName location={report.location} /> : "—"}
                       {report.client?.name ? <span className="block text-xs text-muted-foreground">{report.client.name}</span> : null}
                     </td>
                   )}
@@ -168,6 +194,22 @@ export function ReportsList({ locationId, reportPath }: { locationId?: string; r
         />
       ) : null}
     </div>
+  );
+}
+
+/** In-app page of a live row. */
+function livePath(row: LiveReportRow): string {
+  const id = row.link.location_id;
+  return row.type === "review_insights" ? `/locations/${id}/reputation/insights` : `/locations/${id}/gbp/audit`;
+}
+
+/** A location's name, labelled when the location was deleted (its reports are kept). */
+function LocationName({ location }: { location: { name: string | null; deleted?: boolean } }) {
+  return (
+    <span className="flex flex-wrap items-center gap-1.5">
+      <span className={location.deleted ? "text-muted-foreground" : undefined}>{location.name ?? "Unnamed location"}</span>
+      {location.deleted ? <StatusBadge tone="neutral">Deleted location</StatusBadge> : null}
+    </span>
   );
 }
 

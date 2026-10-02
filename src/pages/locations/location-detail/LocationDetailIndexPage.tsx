@@ -1,4 +1,5 @@
 import { Link, generatePath } from "react-router-dom";
+import { formatDate as formatLocalDate, formatShortDate } from "@/lib/datetime";
 import type { ReactNode } from "react";
 import { AlertTriangle, ArrowLeft, ArrowRight, Building2, FileBarChart, ListChecks, RefreshCw, TrendingUp, Users } from "lucide-react";
 import { isApiError, type LocationOverview, type Unavailable } from "@/api";
@@ -13,6 +14,8 @@ import { useGbpConnect } from "@/lib/gbp/use-gbp-connect";
 import { useLocationOverview } from "@/lib/locations/use-locations";
 import { useRequiredParams } from "@/hooks/use-required-params";
 import { centerDescription } from "@/lib/rankings/format";
+import { BackgroundActivity } from "@/components/location/background-activity";
+import { ReportMenuButton } from "@/components/report/rank-report-button";
 
 const description =
   "Everything tracked for this location: rankings, Google Business Profile health, citations, competitors and reports.";
@@ -91,10 +94,12 @@ function LocationOverviewPage() {
       <PageHeader
         title="Location Overview"
         description={description}
+        actions={<ReportMenuButton locationId={data.location_id} />}
         meta={centerDescription(data.center) ? <p className="text-xs text-muted-foreground">{centerDescription(data.center)} — rankings are measured from here.</p> : undefined}
       />
 
       <StatusBanner location={data} />
+      <BackgroundActivity locationId={data.location_id} className="mb-6" />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <RankingsSummary data={data} />
@@ -153,7 +158,7 @@ function StatusBanner({ location }: { location: LocationOverview }) {
         <AlertTitle>Google Business Profile disconnected</AlertTitle>
         <AlertDescription>
           <p>
-            This location's profile was unbound{location.gbp_disconnected_at ? ` on ${new Date(location.gbp_disconnected_at).toLocaleDateString()}` : ""}.
+            This location's profile was unbound{location.gbp_disconnected_at ? ` on ${formatLocalDate(location.gbp_disconnected_at)}` : ""}.
             Rankings keep working, but profile data, reviews and posts no longer update.
           </p>
           <Button size="sm" className="mt-3" onClick={() => connect()}>
@@ -193,8 +198,7 @@ const Big = ({ children }: { children: ReactNode }) => <p className="text-2xl fo
 
 function formatDate(iso: string | null | undefined) {
   if (!iso) return null;
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? null : date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return formatShortDate(iso, "") || null;
 }
 
 function percent(change: number | null) {

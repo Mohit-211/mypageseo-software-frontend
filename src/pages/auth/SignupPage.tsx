@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { formatDateTime } from "@/lib/datetime";
 import { Link } from "react-router-dom";
 import { Loader2, MailCheck } from "lucide-react";
 import { z } from "zod";
@@ -124,7 +125,7 @@ function SignupPage() {
   }
 
   if (created) {
-    const deadline = new Date(created.result.verify_before);
+    const deadline = formatDateTime(created.result.verify_before, "");
     return (
       <AuthLayout>
         <AuthStatePanel
@@ -135,7 +136,7 @@ function SignupPage() {
             <>
               We sent a verification link to <span className="font-medium text-foreground">{created.email}</span>. Open it to
               finish creating your account
-              {Number.isNaN(deadline.getTime()) ? "" : ` before ${deadline.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`}.
+              {deadline ? ` before ${deadline}` : ""}.
             </>
           }
         >

@@ -5,6 +5,7 @@ import {
   getKeywordHistory,
   getTracking,
   getGrid,
+  type RefreshState,
   getMapRanking,
   getRankRuns,
   getRankTracker,
@@ -55,13 +56,22 @@ export function useRankRuns(locationId: string, limit = 15, pollMs?: number) {
   });
 }
 
-export function useRefreshState(locationId: string) {
+/** True while anything runs in the background for the location (ranking run, Google sync incl. reviews, GBP report). */
+export function hasBackgroundWork(state: RefreshState | undefined): boolean {
+  return Boolean(state?.rankings.active_run || state?.gbp?.active_sync || state?.report?.pending || state?.reviews?.in_progress);
+}
+
+/**
+ * Refresh-button state and background work. Polled while work is running; `watch`
+ * keeps polling for a while even when nothing is running yet (e.g. right after setup,
+ * before the queued jobs have started).
+ */
+export function useRefreshState(locationId: string, watch = false) {
   return useQuery({
     queryKey: [...rankingsKey(locationId), "refresh"],
     queryFn: ({ signal }) => getRefreshState(locationId, signal),
     retry,
-    // While a run is active, keep the button state current.
-    refetchInterval: (query) => (query.state.data?.rankings.active_run ? 15_000 : false),
+    refetchInterval: (query) => (watch || hasBackgroundWork(query.state.data) ? 15_000 : false),
   });
 }
 

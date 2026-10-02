@@ -195,6 +195,32 @@ export type GbpProfile = {
   taken_at: string | null;
 };
 
+/**
+ * Verification. `verified` is Google's "Voice of Merchant" (the owner controls the profile).
+ * `stale`: the last sync couldn't read it, so this is the previous result (`error` says why).
+ */
+export type GbpVerification = {
+  available: true;
+  verified: boolean;
+  has_voice_of_merchant: boolean;
+  has_business_authority: boolean;
+  state:
+    | "verified"
+    | "verification_required"
+    | "verification_pending"
+    | "waiting_for_voice_of_merchant"
+    | "ownership_conflict"
+    | "comply_with_guidelines"
+    | string
+    | null;
+  guidance: string | null;
+  latest: { method: string | null; state: string | null; create_time: string | null } | null;
+  verified_at: string | null;
+  checked_at: string | null;
+  stale: boolean;
+  error: string | null;
+};
+
 export type CompetitorRow = {
   place_id: string;
   is_self: boolean;
@@ -261,7 +287,7 @@ export type GbpReport = {
   posts: PostsSection | GbpUnavailable;
   profile: GbpProfile | GbpUnavailable;
   pending_google_edits: { available: true; has_pending: boolean; diff_fields: string[]; pending_fields: string[] } | GbpUnavailable;
-  verification: { available: true; has_voice_of_merchant: boolean; has_business_authority: boolean; state: string | null } | GbpUnavailable;
+  verification: GbpVerification | (GbpUnavailable & { message?: string | null });
   sync:
     | { available?: true; last_synced_at: string | null; last_status: string | null; types: Record<string, { status: string; message: string | null }> }
     | GbpUnavailable;

@@ -1,10 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, FileText, LoaderCircle } from "lucide-react";
+import { CheckCircle2, ChevronDown, FileText, LoaderCircle } from "lucide-react";
 import { createReport, getReport, isApiError, type ReportType } from "@/api";
 import { ReportActions } from "@/components/report/report-actions";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -13,7 +20,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { formatRunDate } from "@/lib/rankings/format";
-import { REPORT_ACTIVE_STATUSES, REPORT_CREATE_ERRORS, REPORT_TYPE_LABEL } from "@/lib/reports/report-meta";
+import { REPORT_ACTIVE_STATUSES, REPORT_CREATE_ERRORS, REPORT_TYPES, REPORT_TYPE_LABEL } from "@/lib/reports/report-meta";
 
 /**
  * "Report" on the Rank Tracker: generates the Rank Tracker PDF for the run being
@@ -53,6 +60,33 @@ export function ReportButton({
           onClose={() => setOpen(false)}
         />
       ) : null}
+    </>
+  );
+}
+
+/** "Report" with a menu of every report type, for pages that cover the whole location. */
+export function ReportMenuButton({ locationId }: { locationId: string }) {
+  const [type, setType] = useState<ReportType | null>(null);
+  const chosen = REPORT_TYPES.find((entry) => entry.value === type);
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button size="sm">
+            <FileText aria-hidden /> Report <ChevronDown aria-hidden className="size-3.5" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-72">
+          <DropdownMenuLabel>Create a PDF report</DropdownMenuLabel>
+          {REPORT_TYPES.map((entry) => (
+            <DropdownMenuItem key={entry.value} onSelect={() => setType(entry.value)} className="flex-col items-start gap-0.5">
+              <span className="font-medium">{entry.label}</span>
+              <span className="text-xs text-muted-foreground">{entry.description}</span>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {type && chosen ? <ReportDialog locationId={locationId} type={type} subtitle={chosen.description} onClose={() => setType(null)} /> : null}
     </>
   );
 }

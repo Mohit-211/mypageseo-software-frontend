@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { formatShortDate } from "@/lib/datetime";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Coins, LoaderCircle } from "lucide-react";
@@ -97,7 +98,7 @@ export function TokenBalance() {
             </div>
             <p className="mt-1.5 text-xs text-muted-foreground">
               {monthlyGrant > 0
-                ? `${tokens} of ${monthlyGrant} this month${nextGrantAt ? ` · ${monthlyGrant} more on ${new Date(nextGrantAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}` : ""}`
+                ? `${tokens} of ${monthlyGrant} this month${nextGrantAt ? ` · ${monthlyGrant} more on ${formatShortDate(nextGrantAt)}` : ""}`
                 : lastTopUp
                   ? `${tokens} of ${scale} since your last top-up`
                   : "No top-ups yet"}

@@ -7,6 +7,7 @@ import { apiErrorData, isApiError, refreshLocation, type CheckState, type GbpUna
 import { PageHeader, StatusBadge } from "@/components/layout/shared/data-display";
 import { EmptyState, ErrorState } from "@/components/layout/shared/feedback/states";
 import { GbpNavigation, type GbpView } from "@/components/location/location-workspace";
+import { BackgroundActivity } from "@/components/location/background-activity";
 import { Button } from "@/components/ui/button";
 import { STATE_LABEL, STATE_TONE, unavailableCopy } from "@/lib/gbp/gbp-labels";
 import { gbpReportKey, isNoReportYet } from "@/lib/gbp/use-gbp-report";
@@ -141,6 +142,7 @@ export function GbpPageHeader({
           </div>
         }
       />
+      <BackgroundActivity locationId={locationId} className="mb-4" />
     </>
   );
 }

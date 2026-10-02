@@ -1,3 +1,4 @@
+import { formatDate, formatDateTime } from "@/lib/datetime";
 import type { ChangeLabel, RankBucket } from "@/api";
 
 /**
@@ -46,16 +47,9 @@ export function formatRate(value: number | null | undefined): string {
   return value == null ? "—" : `${Math.round(value * 100)}%`;
 }
 
+/** A backend date/time in the viewer's local time zone ("Oct 2, 2026", optionally with the time). */
 export function formatRunDate(iso: string | null | undefined, withTime = false): string {
-  if (!iso) return "—";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    ...(withTime ? { hour: "numeric", minute: "2-digit" } : {}),
-  });
+  return withTime ? formatDateTime(iso) : formatDate(iso);
 }
 
 export const CHANGE_LABEL_TEXT: Record<ChangeLabel, string> = {

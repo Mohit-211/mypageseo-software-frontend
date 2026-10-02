@@ -19,6 +19,8 @@ import { TablePagination } from "@/components/layout/shared/data-table";
 import { EmptyState, ErrorState, PageSkeleton } from "@/components/layout/shared/feedback/states";
 import { TermWithTip } from "@/components/layout/shared/info-tip";
 import { ReviewCard } from "@/components/reputation/review-card";
+import { BackgroundActivity } from "@/components/location/background-activity";
+import { ReportButton } from "@/components/report/rank-report-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -63,7 +65,16 @@ function ReviewsPage() {
       title="Reviews"
       description="Read and answer Google reviews, see which need attention, and get AI help when you want it."
       meta={summary.data ? <RefreshMeta summary={summary.data} /> : undefined}
-      actions={summary.data ? <RefreshReviewsButton locationId={locationId} summary={summary.data} /> : undefined}
+      actions={
+        summary.data ? (
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <RefreshReviewsButton locationId={locationId} summary={summary.data} />
+            {summary.data.stats && summary.data.stats.total > 0 ? (
+              <ReportButton locationId={locationId} type="reputation" subtitle="Review summary, star distribution, reviews needing attention, replies sent and insights, as a PDF." />
+            ) : null}
+          </div>
+        ) : undefined
+      }
     />
   );
 
@@ -91,6 +102,7 @@ function ReviewsPage() {
   return (
     <>
       {header}
+      <BackgroundActivity locationId={locationId} className="mb-4" />
       <Stats summary={summary.data} />
       <ReviewsList locationId={locationId} summary={summary.data} />
     </>

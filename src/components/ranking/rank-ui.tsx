@@ -21,6 +21,8 @@ import {
   formatRunDate,
 } from "@/lib/rankings/format";
 import { GridSettingsButton } from "@/components/ranking/grid-settings-dialog";
+import { BackgroundActivity } from "@/components/location/background-activity";
+import { RankReportButton } from "@/components/report/rank-report-button";
 import { GroupFilter } from "@/components/ranking/keyword-controls";
 import { InfoTip } from "@/components/layout/shared/info-tip";
 import { GLOSSARY } from "@/lib/rankings/glossary";
@@ -383,9 +385,11 @@ export function RankingsPageHeader({
             <RefreshRankingsButton locationId={locationId} />
             <GridSettingsButton locationId={locationId} />
             {actions}
+            {run ? <RankReportButton locationId={locationId} runId={run.run_id} runAt={run.run_at} /> : null}
           </div>
         }
       />
+      <BackgroundActivity locationId={locationId} className="mb-4" />
     </>
   );
 }

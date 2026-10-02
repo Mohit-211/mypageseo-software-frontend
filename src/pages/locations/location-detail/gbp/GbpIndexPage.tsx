@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { formatMonth, formatShortDate } from "@/lib/datetime";
 import { toast } from "sonner";
 import { Area, AreaChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { BadgeCheck, Copy, ExternalLink, Globe, Phone } from "lucide-react";
@@ -148,7 +149,7 @@ function Performance({ data, range }: { data: PerformanceSection; range: GbpRang
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={data.by_day} margin={{ top: 8, right: 8, bottom: 0, left: -16 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
-                <XAxis dataKey="date" tickFormatter={(value: string) => formatRunDate(value).replace(/, \d{4}$/, "")} tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" minTickGap={24} />
+                <XAxis dataKey="date" tickFormatter={(value: string) => formatShortDate(value)} tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" minTickGap={24} />
                 <YAxis allowDecimals={false} tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" />
                 <Tooltip labelFormatter={(value) => formatRunDate(String(value))} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
@@ -163,7 +164,7 @@ function Performance({ data, range }: { data: PerformanceSection; range: GbpRang
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={data.by_day} margin={{ top: 8, right: 8, bottom: 0, left: -16 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
-                <XAxis dataKey="date" tickFormatter={(value: string) => formatRunDate(value).replace(/, \d{4}$/, "")} tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" minTickGap={24} />
+                <XAxis dataKey="date" tickFormatter={(value: string) => formatShortDate(value)} tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" minTickGap={24} />
                 <YAxis allowDecimals={false} tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" />
                 <Tooltip labelFormatter={(value) => formatRunDate(String(value))} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
@@ -214,8 +215,7 @@ function SplitBar({ title, parts }: { title: string; parts: { label: string; val
 /* ----------------------------- Search terms ----------------------------- */
 
 function SearchTerms({ data }: { data: SearchKeywordsSection }) {
-  const month = new Date(`${data.latest_month}-01T00:00:00`);
-  const monthLabel = Number.isNaN(month.getTime()) ? data.latest_month : month.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  const monthLabel = formatMonth(data.latest_month, data.latest_month);
   return (
     <Panel
       title="What people searched to find the profile"
@@ -422,6 +422,16 @@ function Attributes({ attributes }: { attributes: GbpProfile["attributes"] }) {
   );
 }
 
+/** Google's verification states in plain words. */
+const VERIFICATION_STATE_LABEL: Record<string, string> = {
+  verified: "Verified",
+  verification_required: "Verification needed",
+  verification_pending: "Verification pending",
+  waiting_for_voice_of_merchant: "Waiting for Google",
+  ownership_conflict: "Ownership conflict",
+  comply_with_guidelines: "Action needed",
+};
+
 function ProfileStatus({ report }: { report: GbpReport }) {
   const verification = report.verification;
   const edits = report.pending_google_edits;
@@ -431,19 +441,45 @@ function ProfileStatus({ report }: { report: GbpReport }) {
     <div className="space-y-6">
       <Panel title="Profile status">
         <dl className="space-y-3 text-sm">
-          <div className="flex items-start justify-between gap-3">
-            <dt className="text-muted-foreground">Verification</dt>
-            <dd className="text-right">
-              {verification.available ? (
-                verification.has_voice_of_merchant ? (
-                  <StatusBadge tone="success"><BadgeCheck aria-hidden className="size-3" /> Verified</StatusBadge>
+          <div className="space-y-1.5">
+            <div className="flex items-start justify-between gap-3">
+              <dt className="text-muted-foreground">Verification</dt>
+              <dd className="text-right">
+                {verification.available ? (
+                  <StatusBadge tone={verification.verified ? "success" : verification.state === "verification_pending" ? "warning" : "critical"}>
+                    {verification.verified ? <BadgeCheck aria-hidden className="size-3" /> : null}
+                    {VERIFICATION_STATE_LABEL[verification.state ?? ""] ?? (verification.verified ? "Verified" : "Not verified")}
+                  </StatusBadge>
                 ) : (
-                  <StatusBadge tone="critical">Not verified</StatusBadge>
-                )
-              ) : (
-                <span className="text-muted-foreground">—</span>
-              )}
-            </dd>
+                  <span className="text-muted-foreground">Unknown</span>
+                )}
+              </dd>
+            </div>
+            {verification.available ? (
+              <div className="space-y-1 text-xs text-muted-foreground">
+                {verification.verified && verification.verified_at ? (
+                  <p>
+                    Verified {formatRunDate(verification.verified_at)}
+                    {verification.latest?.method ? ` by ${verification.latest.method.replace(/_/g, " ").toLowerCase()}` : ""}
+                  </p>
+                ) : null}
+                {verification.guidance ? <p className="text-warning-foreground">Google says: {verification.guidance}</p> : null}
+                {!verification.verified && verification.latest?.state ? (
+                  <p>
+                    Latest attempt: {verification.latest.state.replace(/_/g, " ").toLowerCase()}
+                    {verification.latest.create_time ? ` (${formatRunDate(verification.latest.create_time)})` : ""}
+                  </p>
+                ) : null}
+                {verification.stale ? (
+                  <p className="text-warning-foreground">
+                    Couldn't refresh this with Google{verification.checked_at ? `; last checked ${formatRunDate(verification.checked_at, true)}` : ""}.
+                    {verification.error ? ` ${verification.error}` : ""}
+                  </p>
+                ) : null}
+              </div>
+            ) : "message" in verification && verification.message ? (
+              <p className="text-xs text-muted-foreground">{verification.message}</p>
+            ) : null}
           </div>
           {openStatus ? (
             <div className="flex items-start justify-between gap-3">

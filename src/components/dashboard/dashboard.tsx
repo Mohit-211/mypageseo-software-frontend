@@ -22,6 +22,7 @@ import {
   healthTone,
 } from "@/components/layout/shared/data-display";
 import { EmptyState, MetricSkeletonGrid } from "@/components/layout/shared/feedback/states";
+import { locationSetupPath } from "@/lib/locations/location-actions";
 import type {
   AgencyDashboard,
   BusinessDashboard,
@@ -30,6 +31,12 @@ import type {
 } from "@/lib/dashboard/dashboard-data";
 
 /* ---------------------------------- utils --------------------------------- */
+
+/** A number, or "—" when the backend doesn't provide it yet. */
+function show(value: number | null | undefined, digits?: number): string | number {
+  if (value === null || value === undefined) return "—";
+  return digits === undefined ? value : value.toFixed(digits);
+}
 
 function formatChange(change: number, suffix = "") {
   const abs = Math.abs(change);
@@ -45,7 +52,7 @@ function MetricTrend({
   suffix?: string;
   lowerIsBetter?: boolean;
 }) {
-  if (metric.change === undefined) return null;
+  if (metric.change === undefined || metric.change === null) return null;
   const direction = metric.change > 0 ? "up" : metric.change < 0 ? "down" : "flat";
   const positive = lowerIsBetter ? metric.change < 0 : metric.change > 0;
   return (
@@ -146,19 +153,19 @@ export function BusinessDashboardView({ data }: { data: BusinessDashboard }) {
         <div className="grid grid-cols-1 overflow-hidden rounded-lg border border-border bg-surface shadow-card sm:grid-cols-2 xl:grid-cols-5 xl:divide-x xl:divide-border">
           <MetricCard
             label="Local Visibility" accent="brand"
-            value={data.visibilityScore.value}
+            value={show(data.visibilityScore.value)}
             trend={<MetricTrend metric={data.visibilityScore} suffix=" pts" />}
             caption="Share of local pack presence"
           />
           <MetricCard
             label="Average Rank" accent="teal"
-            value={data.averageRank.value.toFixed(1)}
+            value={show(data.averageRank.value, 1)}
             trend={<MetricTrend metric={data.averageRank} lowerIsBetter />}
-            caption={`${rankMovement.tracked} keywords tracked`}
+            caption={rankMovement.tracked === null ? "Google Maps, lower is better" : `${rankMovement.tracked} keywords tracked`}
           />
           <MetricCard
             label="GBP Health" accent="green"
-            value={data.gbpHealth.value}
+            value={show(data.gbpHealth.value)}
             trend={<MetricTrend metric={data.gbpHealth} suffix=" pts" />}
             caption="Profile completeness and issues"
           />
@@ -166,16 +173,16 @@ export function BusinessDashboardView({ data }: { data: BusinessDashboard }) {
             label="Review Rating" accent="amber"
             value={
               <span className="inline-flex items-center gap-1.5">
-                {data.reviewRating.value.toFixed(1)}
+                {show(data.reviewRating.value, 1)}
                 <Star className="size-4 text-warning" aria-hidden />
               </span>
             }
             trend={<MetricTrend metric={data.reviewRating} />}
-            caption={`${data.reviewCount.toLocaleString()} reviews`}
+            caption={data.reviewCount === null ? "No reviews yet" : `${data.reviewCount.toLocaleString()} reviews`}
           />
           <MetricCard
             label="Citation Health" accent="clay"
-            value={data.citationHealth.value}
+            value={show(data.citationHealth.value)}
             trend={<MetricTrend metric={data.citationHealth} suffix=" pts" />}
             caption="Directory accuracy"
           />
@@ -189,7 +196,7 @@ export function BusinessDashboardView({ data }: { data: BusinessDashboard }) {
             description="Ranking movement across tracked keywords"
             actions={
               <Button asChild variant="outline" size="sm">
-                <Link to="/rankings/keywords">
+                <Link to={data.focusLocationId ? `/locations/${data.focusLocationId}/rankings/keywords` : "/rankings/keywords"}>
                   View rankings <ArrowRight className="size-3.5" />
                 </Link>
               </Button>
@@ -205,7 +212,7 @@ export function BusinessDashboardView({ data }: { data: BusinessDashboard }) {
               <div className="p-4">
                 <ChartContainer
                   title="Average rank over time"
-                  description="Lower is better. Dotted line is the previous period."
+                  description="Lower is better. One point per ranking run."
                   height={240}
                 >
                   <ResponsiveContainer width="100%" height="100%">
@@ -232,7 +239,7 @@ export function BusinessDashboardView({ data }: { data: BusinessDashboard }) {
                       fontSize: 12,
                     }}
                     formatter={(value: number, name: string) => [
-                      value.toFixed(1),
+                      typeof value === "number" ? value.toFixed(1) : "—",
                       name === "averageRank" ? "This period" : "Previous period",
                     ]}
                   />
@@ -275,7 +282,7 @@ export function BusinessDashboardView({ data }: { data: BusinessDashboard }) {
             description="What is driving the profile health score"
             actions={
               <Button asChild variant="outline" size="sm">
-                <Link to="/gbp/audit">
+                <Link to={data.focusLocationId ? `/locations/${data.focusLocationId}/gbp/audit` : "/gbp/audit"}>
                   Open audit <ArrowRight className="size-3.5" />
                 </Link>
               </Button>
@@ -288,23 +295,28 @@ export function BusinessDashboardView({ data }: { data: BusinessDashboard }) {
                   GBP Health Score
                 </p>
                 <p className="mt-1 text-2xl font-semibold tabular text-foreground">
-                  {data.gbpHealth.value}
+                  {show(data.gbpHealth.value)}
                   <span className="ml-1 text-sm font-normal text-muted-foreground">/ 100</span>
                 </p>
               </div>
               <StatusBadge
                 tone={
-                  healthTone(data.gbpHealth.value) === "healthy"
-                    ? "success"
-                    : healthTone(data.gbpHealth.value) === "attention"
-                      ? "warning"
-                      : "critical"
+                  data.gbpHealth.value === null
+                    ? "neutral"
+                    : healthTone(data.gbpHealth.value) === "healthy"
+                      ? "success"
+                      : healthTone(data.gbpHealth.value) === "attention"
+                        ? "warning"
+                        : "critical"
                 }
               >
                 {data.gbpFactors.filter((f) => f.status !== "healthy").length} areas need work
               </StatusBadge>
             </div>
-            <ul className="grid gap-4 p-4 sm:grid-cols-2">
+            {data.gbpFactors.length === 0 ? (
+              <p className="p-4 text-sm text-muted-foreground">The breakdown appears once the location's GBP report is ready.</p>
+            ) : null}
+            <ul className="grid gap-4 p-4 empty:hidden sm:grid-cols-2">
               {data.gbpFactors.map((factor) => (
                 <li key={factor.label}>
                   <ScoreIndicator
@@ -326,7 +338,7 @@ export function BusinessDashboardView({ data }: { data: BusinessDashboard }) {
               description="Recent review activity for this location"
               actions={
                 <Button asChild variant="outline" size="sm">
-                  <Link to="/gbp/reviews">
+                  <Link to={data.focusLocationId ? `/locations/${data.focusLocationId}/reputation` : "/reputation/reviews"}>
                     Open reviews <ArrowRight className="size-3.5" />
                   </Link>
                 </Button>
@@ -334,9 +346,9 @@ export function BusinessDashboardView({ data }: { data: BusinessDashboard }) {
             />
             <div className="rounded-lg border border-border bg-surface">
               <div className="grid grid-cols-2 divide-x divide-border border-b border-border sm:grid-cols-4">
-                <Stat label="Rating" value={data.reviewRating.value.toFixed(1)} />
-                <Stat label="Total reviews" value={data.reviewCount.toLocaleString()} />
-                <Stat label="Last 30 days" value={`+${data.reviews.last30Days}`} />
+                <Stat label="Rating" value={String(show(data.reviewRating.value, 1))} />
+                <Stat label="Total reviews" value={data.reviewCount === null ? "—" : data.reviewCount.toLocaleString()} />
+                <Stat label="Last 30 days" value={data.reviews.last30Days === null ? "—" : `+${data.reviews.last30Days}`} />
                 <Stat
                   label="Avg. response"
                   value={
@@ -349,19 +361,19 @@ export function BusinessDashboardView({ data }: { data: BusinessDashboard }) {
               <div className="flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <div className="flex items-center gap-2">
-                    <StatusBadge tone={data.reviews.unanswered > 0 ? "warning" : "success"}>
-                      {data.reviews.unanswered} unanswered
+                    <StatusBadge tone={(data.reviews.unanswered ?? 0) > 0 ? "warning" : "success"}>
+                      {data.reviews.unanswered ?? "—"} unanswered
                     </StatusBadge>
                   </div>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    {data.reviews.unanswered > 0
+                    {(data.reviews.unanswered ?? 0) > 0
                       ? "Unanswered reviews reduce response rate and reputation signals."
                       : "Every review has received a response."}
                   </p>
                 </div>
-                {data.reviews.unanswered > 0 ? (
+                {(data.reviews.unanswered ?? 0) > 0 ? (
                   <Button asChild size="sm" className="shrink-0 self-start sm:self-auto">
-                    <Link to="/gbp/reviews">Respond to reviews</Link>
+                    <Link to={data.focusLocationId ? `/locations/${data.focusLocationId}/reputation` : "/reputation/reviews"}>Respond to reviews</Link>
                   </Button>
                 ) : null}
               </div>
@@ -374,7 +386,7 @@ export function BusinessDashboardView({ data }: { data: BusinessDashboard }) {
               description="Your position against tracked competitors"
               actions={
                 <Button asChild variant="outline" size="sm">
-                  <Link to="/competitors">
+                  <Link to={data.focusLocationId ? `/locations/${data.focusLocationId}/rankings/competitors` : "/competitors"}>
                     View competitors <ArrowRight className="size-3.5" />
                   </Link>
                 </Button>
@@ -402,17 +414,17 @@ export function BusinessDashboardView({ data }: { data: BusinessDashboard }) {
                   </thead>
                   <tbody className="divide-y divide-border">
                     {data.competitors.map((row) => (
-                      <tr key={row.name} className={row.isYou ? "bg-accent/50" : undefined}>
+                      <tr key={`${row.name}-${row.isYou ? "you" : ""}`} className={row.isYou ? "bg-accent/50" : undefined}>
                         <td className="px-4 py-2.5">
                           <span className="font-medium text-foreground">{row.name}</span>
                           {row.isYou ? (
                             <span className="ml-2 text-xs text-muted-foreground">You</span>
                           ) : null}
                         </td>
-                        <td className="px-4 py-2.5 text-right tabular">{row.averageRank.toFixed(1)}</td>
-                        <td className="px-4 py-2.5 text-right tabular">{row.rating.toFixed(1)}</td>
-                        <td className="px-4 py-2.5 text-right tabular">{row.reviews.toLocaleString()}</td>
-                        <td className="px-4 py-2.5 text-right tabular">{row.photos}</td>
+                        <td className="px-4 py-2.5 text-right tabular">{show(row.averageRank, 1)}</td>
+                        <td className="px-4 py-2.5 text-right tabular">{show(row.rating, 1)}</td>
+                        <td className="px-4 py-2.5 text-right tabular">{row.reviews === null ? "—" : row.reviews.toLocaleString()}</td>
+                        <td className="px-4 py-2.5 text-right tabular">{row.photos ?? "—"}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -424,7 +436,7 @@ export function BusinessDashboardView({ data }: { data: BusinessDashboard }) {
                 description="Add competitors to compare rank, rating, review volume and photo counts against your location."
                 action={
                   <Button asChild size="sm">
-                    <Link to="/competitors">Add competitors</Link>
+                    <Link to={data.focusLocationId ? locationSetupPath(data.focusLocationId) : "/locations"}>Add competitors</Link>
                   </Button>
                 }
               />
@@ -478,13 +490,13 @@ function AttentionSummary({ data }: { data: BusinessDashboard }) {
             </li>
           ))}
           <li className="flex gap-3 px-4 py-3.5">
-            <span className={data.reviews.unanswered > 0 ? "text-warning-foreground" : "text-success"}>
+            <span className={(data.reviews.unanswered ?? 0) > 0 ? "text-warning-foreground" : "text-success"}>
               <MessageSquareWarning className="mt-0.5 size-4" aria-hidden />
             </span>
             <div className="min-w-0">
               <p className="text-sm font-medium text-foreground">Review responses</p>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                {data.reviews.unanswered > 0
+                {(data.reviews.unanswered ?? 0) > 0
                   ? `${data.reviews.unanswered} reviews are waiting for a response.`
                   : "Every review has received a response."}
               </p>
@@ -493,7 +505,7 @@ function AttentionSummary({ data }: { data: BusinessDashboard }) {
         </ul>
         <div className="border-t border-border px-4 py-3">
           <Button asChild variant="link" size="sm" className="h-auto justify-start p-0">
-            <Link to="/gbp/audit">
+            <Link to={data.focusLocationId ? `/locations/${data.focusLocationId}/gbp/audit` : "/gbp/audit"}>
               Review all findings <ArrowRight className="size-3.5" />
             </Link>
           </Button>
@@ -524,13 +536,13 @@ export function AgencyDashboardView({ data }: { data: AgencyDashboard }) {
           <MetricCard label="Locations" accent="teal" value={data.locationCount} caption="Across all clients" />
           <MetricCard
             label="Avg. Visibility" accent="green"
-            value={data.averageVisibility.value}
+            value={show(data.averageVisibility.value)}
             trend={<MetricTrend metric={data.averageVisibility} suffix=" pts" />}
             caption="Portfolio average"
           />
           <MetricCard
             label="Avg. GBP Health" accent="clay"
-            value={data.averageGbpHealth.value}
+            value={show(data.averageGbpHealth.value)}
             trend={<MetricTrend metric={data.averageGbpHealth} suffix=" pts" />}
             caption="Portfolio average"
           />
@@ -553,7 +565,7 @@ export function AgencyDashboardView({ data }: { data: AgencyDashboard }) {
             value={data.attention.unansweredReviews}
             tone="warning"
             caption="Across all client locations"
-            to="/gbp/reviews"
+            to="/reputation/reviews"
             action="Open reviews"
           />
           <AttentionCard
@@ -570,9 +582,9 @@ export function AgencyDashboardView({ data }: { data: AgencyDashboard }) {
                 Report status
               </p>
               <div className="mt-2 flex flex-wrap gap-1.5">
-                <StatusBadge tone="success">{data.attention.reports.ready} ready</StatusBadge>
-                <StatusBadge tone="neutral">{data.attention.reports.scheduled} scheduled</StatusBadge>
-                <StatusBadge tone="critical">{data.attention.reports.failed} failed</StatusBadge>
+                <StatusBadge tone="success">{data.attention.reports.ready ?? "—"} ready</StatusBadge>
+                <StatusBadge tone="neutral">{data.attention.reports.scheduled ?? "—"} scheduled</StatusBadge>
+                <StatusBadge tone="critical">{data.attention.reports.failed ?? "—"} failed</StatusBadge>
               </div>
             </div>
             <Button asChild variant="link" size="sm" className="mt-3 h-auto justify-start p-0">
@@ -614,29 +626,37 @@ export function AgencyDashboardView({ data }: { data: AgencyDashboard }) {
               {data.portfolio.map((row) => (
                 <tr key={row.locationId} className="hover:bg-muted/40">
                   <td className="px-4 py-2.5">
-                    <Link to="/clients" className="font-medium text-foreground hover:underline">
-                      {row.clientName}
-                    </Link>
+                    {row.clientId ? (
+                      <Link to={`/clients/${row.clientId}`} className="font-medium text-foreground hover:underline">
+                        {row.clientName}
+                      </Link>
+                    ) : (
+                      <span className="text-muted-foreground">{row.clientName}</span>
+                    )}
                   </td>
                   <td className="px-4 py-2.5">
                     <span className="text-foreground">{row.locationName}</span>
                     <span className="block text-xs text-muted-foreground">{row.area}</span>
                   </td>
-                  <td className="px-4 py-2.5 text-right tabular">{row.visibility}</td>
+                  <td className="px-4 py-2.5 text-right tabular">{show(row.visibility)}</td>
                   <td className="px-4 py-2.5">
                     <div className="flex justify-end">
-                      <TrendIndicator
-                        direction={
-                          row.visibilityChange > 0 ? "up" : row.visibilityChange < 0 ? "down" : "flat"
-                        }
-                        value={formatChange(row.visibilityChange, " pts")}
-                        positive={row.visibilityChange > 0}
-                      />
+                      {row.visibilityChange === null ? (
+                        <span className="text-muted-foreground">—</span>
+                      ) : (
+                        <TrendIndicator
+                          direction={row.visibilityChange > 0 ? "up" : row.visibilityChange < 0 ? "down" : "flat"}
+                          value={formatChange(row.visibilityChange, " pts")}
+                          positive={row.visibilityChange > 0}
+                        />
+                      )}
                     </div>
                   </td>
-                  <td className="px-4 py-2.5 text-right tabular">{row.gbpHealth}</td>
+                  <td className="px-4 py-2.5 text-right tabular">{show(row.gbpHealth)}</td>
                   <td className="px-4 py-2.5 text-right tabular">
-                    {row.unansweredReviews > 0 ? (
+                    {row.unansweredReviews === null ? (
+                      "—"
+                    ) : row.unansweredReviews > 0 ? (
                       <span className="text-warning-foreground">{row.unansweredReviews}</span>
                     ) : (
                       "0"
@@ -651,7 +671,7 @@ export function AgencyDashboardView({ data }: { data: AgencyDashboard }) {
                   </td>
                   <td className="px-4 py-2.5 text-right">
                     <Button asChild variant="ghost" size="sm">
-                      <Link to="/locations">Open</Link>
+                      <Link to={`/locations/${row.locationId}`}>Open</Link>
                     </Button>
                   </td>
                 </tr>
@@ -675,10 +695,10 @@ function AttentionCard({
   action,
 }: {
   label: string;
-  value: number;
+  value: number | null;
   caption: string;
   tone: "critical" | "warning";
-  to: "/rankings/keywords" | "/gbp/reviews" | "/gbp/audit";
+  to: string;
   action: string;
 }) {
   return (
@@ -687,10 +707,10 @@ function AttentionCard({
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
         <p
           className={`mt-2 text-2xl font-semibold tabular ${
-            value === 0 ? "text-foreground" : tone === "critical" ? "text-critical" : "text-warning-foreground"
+            !value ? "text-foreground" : tone === "critical" ? "text-critical" : "text-warning-foreground"
           }`}
         >
-          {value}
+          {value ?? "—"}
         </p>
         <p className="mt-1 text-xs text-muted-foreground">{caption}</p>
       </div>
