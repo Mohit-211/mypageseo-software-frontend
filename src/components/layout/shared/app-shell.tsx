@@ -50,6 +50,8 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const owner = items.find(
     (entry) => entry.locationSection && matchPath(`/locations/:locationId/${entry.locationSection}/*`, pathname),
   );
+  // Open/closed per section the user has toggled; untouched sections are open while you're in them.
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   return (
     // Scrolls only on very short screens, without a visible scrollbar.
@@ -64,29 +66,44 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
               {groupItems.map((item) => {
                 const active = owner ? owner === item : matchPath({ path: item.to, end: item.to === "/" }, pathname) !== null;
                 const Icon = item.icon;
+                const open = item.children ? (expanded[item.label] ?? active) : false;
+                const rowClass = cn(
+                  "group relative flex w-full items-center gap-3 rounded-lg px-3 py-[7px] text-left text-[13.5px] font-medium transition-all duration-150",
+                  active
+                    ? "bg-white/[0.09] text-white shadow-[inset_0_1px_0_rgb(255_255_255/0.06)] before:absolute before:-left-3 before:top-1.5 before:bottom-1.5 before:w-1 before:rounded-r-full before:bg-brand-accent before:content-['']"
+                    : "text-sidebar-foreground/90 hover:bg-white/[0.05] hover:text-white",
+                );
+                const rowContent = (
+                  <>
+                    <Icon
+                      className={cn("size-[18px] shrink-0 transition-colors", active ? "text-brand-accent" : "text-sidebar-icon group-hover:text-white")}
+                      aria-hidden
+                    />
+                    {item.label}
+                  </>
+                );
                 return (
                   <li key={item.label}>
-                    <Link
-                      to={item.to}
-                      onClick={onNavigate}
-                      aria-current={active ? "page" : undefined}
-                      className={cn(
-                        "group relative flex items-center gap-3 rounded-lg px-3 py-[7px] text-[13.5px] font-medium transition-all duration-150",
-                        active
-                          ? "bg-white/[0.09] text-white shadow-[inset_0_1px_0_rgb(255_255_255/0.06)] before:absolute before:-left-3 before:top-1.5 before:bottom-1.5 before:w-1 before:rounded-r-full before:bg-brand-accent before:content-['']"
-                          : "text-sidebar-foreground/90 hover:bg-white/[0.05] hover:text-white",
-                      )}
-                    >
-                      <Icon
-                        className={cn(
-                          "size-[18px] shrink-0 transition-colors",
-                          active ? "text-brand-accent" : "text-sidebar-icon group-hover:text-white",
-                        )}
-                        aria-hidden
-                      />
-                      {item.label}
-                    </Link>
-                    {active && item.children ? (
+                    {item.children ? (
+                      // A section with sub-pages only opens and closes its list; it doesn't navigate.
+                      <button
+                        type="button"
+                        onClick={() => setExpanded((current) => ({ ...current, [item.label]: !open }))}
+                        aria-expanded={open}
+                        className={rowClass}
+                      >
+                        {rowContent}
+                        <ChevronDown
+                          aria-hidden
+                          className={cn("ml-auto size-4 shrink-0 text-sidebar-icon transition-transform duration-200", open && "rotate-180")}
+                        />
+                      </button>
+                    ) : (
+                      <Link to={item.to} onClick={onNavigate} aria-current={active ? "page" : undefined} className={rowClass}>
+                        {rowContent}
+                      </Link>
+                    )}
+                    {open && item.children ? (
                       <ul className="mb-1.5 ml-[21px] mt-1 space-y-0.5 border-l border-white/15 pl-3">
                         {item.children.map((child) => {
                           // On a location page the child is current when the page is its location path.

@@ -4,7 +4,8 @@ import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Panel } from "@/components/layout/shared/data-display";
 import { SectionSkeleton } from "@/components/layout/shared/feedback/states";
-import { ConfirmDialog, FormSaveBar, RequiredFieldsNote, useSubmitGuard } from "@/components/layout/shared/form-fields";
+import { ConfirmDialog, FormSaveBar, RequiredFieldsNote } from "@/components/layout/shared/form-fields";
+import { useSubmitGuard } from "@/hooks/use-submit-guard";
 import { Button } from "@/components/ui/button";
 import {
   EMPTY_BRANDING,

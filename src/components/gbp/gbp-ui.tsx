@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -14,6 +14,7 @@ import { gbpReportKey, isNoReportYet } from "@/lib/gbp/use-gbp-report";
 import { useGbpConnect } from "@/lib/gbp/use-gbp-connect";
 import { formatRunDate } from "@/lib/rankings/format";
 import { rankingsKey, useRefreshState } from "@/lib/rankings/use-rankings";
+import { useNow } from "@/hooks/use-now";
 
 export function StateBadge({ state }: { state: CheckState }) {
   return <StatusBadge tone={STATE_TONE[state]}>{STATE_LABEL[state]}</StatusBadge>;
@@ -31,15 +32,6 @@ export function SectionUnavailable({ section, compact = false }: { section: GbpU
     );
   }
   return <EmptyState title={copy.title} description={copy.description} className="min-h-40" />;
-}
-
-function useNow(intervalMs = 60_000) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), intervalMs);
-    return () => window.clearInterval(timer);
-  }, [intervalMs]);
-  return now;
 }
 
 /** Manual GBP refresh: a sync now (tokens, once per 24 h); the report regenerates ~2 min after it. */

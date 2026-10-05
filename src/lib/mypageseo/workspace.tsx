@@ -224,7 +224,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
+// oxlint-disable-next-line react/only-export-components
 export function useWorkspace(): WorkspaceValue {
   const ctx = useContext(WorkspaceContext);
   if (!ctx) throw new Error("useWorkspace must be used inside WorkspaceProvider");
@@ -232,7 +232,7 @@ export function useWorkspace(): WorkspaceValue {
 }
 
 /** Account type drives whether client/portfolio surfaces are shown. */
-// eslint-disable-next-line react-refresh/only-export-components
+// oxlint-disable-next-line react/only-export-components
 export function useAccountType(): AccountType {
   const { organization } = useWorkspace();
   return organization?.accountType ?? "business";

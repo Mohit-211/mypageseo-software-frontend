@@ -4,6 +4,7 @@ import { CalendarCheck2, CalendarRange, CheckCircle2, Hourglass } from "lucide-r
 import { Skeleton } from "@/components/ui/skeleton";
 import type { AiGbpPost } from "@/lib/gbp/ai-posts";
 import { cn } from "@/lib/utils";
+import { useNow } from "@/hooks/use-now";
 
 type SummaryCard = {
   label: string;
@@ -14,7 +15,7 @@ type SummaryCard = {
 };
 
 export function PostsSummaryCards({ posts }: { posts: AiGbpPost[] }) {
-  const now = new Date();
+  const now = new Date(useNow());
   const scheduled = posts
     .filter((p) => p.status === "scheduled" && p.scheduledAt && isAfter(new Date(p.scheduledAt), now))
     .sort((a, b) => (a.scheduledAt ?? "").localeCompare(b.scheduledAt ?? ""));

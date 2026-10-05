@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { useAccess } from "@/components/mypageseo/access";
+import { useAccess } from "@/hooks/use-access";
 import type { Permission } from "@/lib/mypageseo/access";
 
 type SettingsSection =

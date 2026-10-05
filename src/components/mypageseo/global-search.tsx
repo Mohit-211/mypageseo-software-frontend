@@ -56,7 +56,13 @@ export function GlobalSearch() {
 	);
 	const flat = useMemo(() => flattenGroups(groups), [groups]);
 
-	useEffect(() => setActiveIndex(0), [query, desktopOpen, mobileOpen]);
+	// Back to the first result whenever the query changes or the search opens or closes.
+	const resetKey = `${query}|${desktopOpen}|${mobileOpen}`;
+	const [indexKey, setIndexKey] = useState(resetKey);
+	if (indexKey !== resetKey) {
+		setIndexKey(resetKey);
+		setActiveIndex(0);
+	}
 
 	// Close the desktop dropdown when focus or a click leaves the search area.
 	useEffect(() => {
@@ -279,7 +285,6 @@ function ResultsPanel({
 		);
 	}
 
-	let cursor = -1;
 	return (
 		<ul
 			id="global-search-results"
@@ -302,8 +307,8 @@ function ResultsPanel({
 						aria-labelledby={`global-search-group-${groupIndex}`}
 					>
 						{group.results.map((result) => {
-							cursor += 1;
-							const index = cursor;
+							// Position in the flat list, which keyboard navigation moves through.
+							const index = flat.indexOf(result);
 							const active = index === activeIndex;
 							return (
 								<li key={result.id} role="presentation">

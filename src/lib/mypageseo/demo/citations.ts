@@ -150,8 +150,8 @@ function buildStatePlan(location: DemoLocationFacts): CitationState[] {
   const total = location.citationTotal;
   const issues = location.citationIssues;
   let inconsistentCount = Math.round(issues * 0.5);
-  let missingCount = Math.round(issues * 0.3);
-  let duplicateCount = Math.round(issues * 0.15);
+  const missingCount = Math.round(issues * 0.3);
+  const duplicateCount = Math.round(issues * 0.15);
   let pendingCount = issues - inconsistentCount - missingCount - duplicateCount;
   if (pendingCount < 0) {
     inconsistentCount += pendingCount;

@@ -4,7 +4,8 @@ import { Eye, Save } from "lucide-react";
 import { toast } from "sonner";
 import { Panel } from "@/components/layout/shared/data-display";
 import { SectionSkeleton } from "@/components/layout/shared/feedback/states";
-import { FormGrid, FormTextareaField, FormTextField, SubmitButton, useSubmitGuard } from "@/components/layout/shared/form-fields";
+import { FormGrid, FormTextareaField, FormTextField, SubmitButton } from "@/components/layout/shared/form-fields";
+import { useSubmitGuard } from "@/hooks/use-submit-guard";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -18,13 +19,14 @@ import {
 import { ImageUploader } from "./branding/image-uploader";
 import { brandedButton, themeStyle } from "./white-label-theme";
 import { AgencyMark } from "./white-label-ui";
+import { useNow } from "@/hooks/use-now";
 
 type Errors = Partial<Record<"senderName" | "senderEmail", string>>;
 
 /** The report-ready email a client receives, in agency branding. */
 function EmailPreview({ email, branding, clientName }: { email: EmailBranding; branding: AgencyBranding | null; clientName: string }) {
   const theme = { ...reportTheme(branding), ...(email.logoUrl ? { logoUrl: email.logoUrl } : {}) };
-  const month = format(new Date(), "MMMM yyyy");
+  const month = format(new Date(useNow()), "MMMM yyyy");
   return (
     <div className="overflow-hidden rounded-lg border border-border">
       <div className="space-y-1 border-b border-border bg-muted/50 px-4 py-3 text-xs">

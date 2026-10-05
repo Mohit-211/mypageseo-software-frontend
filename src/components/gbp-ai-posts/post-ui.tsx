@@ -17,6 +17,7 @@ import {
   type Weekday,
 } from "@/lib/gbp/ai-posts";
 import { cn } from "@/lib/utils";
+import { useNow } from "@/hooks/use-now";
 
 export const AI_POSTS_PATH = "/gbp/ai-posts";
 
@@ -119,7 +120,7 @@ export function DatePickerButton({
   invalid?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const today = new Date();
+  const today = new Date(useNow());
   today.setHours(0, 0, 0, 0);
   return (
     <Popover open={open} onOpenChange={setOpen}>

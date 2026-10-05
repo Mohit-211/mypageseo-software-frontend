@@ -35,7 +35,7 @@ function HelpPage() {
   const help = useMemo(() => getHelp(accountType), [accountType]);
 
   const categories = help.status === "ready" ? help.categories : [];
-  const filtered = useMemo(() => searchHelp(categories, query), [categories, query]);
+  const filtered = searchHelp(categories, query);
   const trimmed = query.trim();
 
   return (

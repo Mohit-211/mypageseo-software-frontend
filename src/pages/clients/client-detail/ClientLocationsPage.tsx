@@ -27,8 +27,6 @@ const searchSchema = z.object({
   page: z.coerce.number().optional(),
 });
 
-type LocationSearch = z.infer<typeof searchSchema>;
-
 const statusTone: Record<ClientAccountStatus, "success" | "warning" | "critical"> = {
   active: "success",
   setup_required: "warning",

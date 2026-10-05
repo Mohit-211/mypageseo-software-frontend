@@ -151,6 +151,15 @@ export const router = createBrowserRouter([
           { path: "signup", lazy: () => import("@/pages/auth/SignupPage").then(page) },
         ],
       },
+      {
+        // Staff dashboard (sales audit): its own sign-in with an admin session.
+        path: "staff",
+        children: [
+          { index: true, element: <Navigate to="/staff/audits" replace /> },
+          { path: "login", lazy: () => import("@/pages/staff/StaffLoginPage").then(page) },
+          { path: "audits", lazy: () => import("@/pages/staff/StaffAuditsPage").then(page) },
+        ],
+      },
       { path: "forgot-password", lazy: () => import("@/pages/auth/ForgotPasswordPage").then(page) },
       { path: "reset-password", lazy: () => import("@/pages/auth/ResetPasswordPage").then(page) },
       { path: "verify-email", lazy: () => import("@/pages/auth/VerifyEmailPage").then(page) },

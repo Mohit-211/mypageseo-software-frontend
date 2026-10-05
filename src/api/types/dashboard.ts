@@ -14,10 +14,41 @@ export type DashboardAction = {
   impact: number;
 };
 
+export type DashboardRange = "15d" | "30d" | "60d";
+
+export type PerformanceFigures = {
+  impressions: number;
+  maps: number;
+  search: number;
+  actions: number;
+  calls: number;
+  website_clicks: number;
+  direction_requests: number;
+  actions_per_1000_impressions: number | null;
+};
+
+/** GBP performance over `range` vs the window before it. `change` values are fractions (0.15 = +15 %), `null` with too little data. */
+export type PerformanceBlock =
+  | {
+      available: true;
+      range: DashboardRange;
+      days: number;
+      latest_date: string | null;
+      current: PerformanceFigures;
+      previous: PerformanceFigures;
+      change: Record<keyof PerformanceFigures, number | null>;
+      coverage: { current: { days_with_data: number; days: number }; previous: { days_with_data: number; days: number } };
+    }
+  | { available: false; reason: "gbp_not_connected" | "no_data" | string; range: DashboardRange };
+
+export type SelectedLocation = { location_id: string; name: string; city: string | null } | null;
+
 export type CitationsBlock =
   | {
       available: true;
       score: number | null;
+      /** Last movement of the score, kept while it stays the same. */
+      score_change?: number | null;
       grade: string | null;
       coverage: number | null;
       listings: number;
@@ -32,6 +63,9 @@ export type ReviewsBlock =
   | {
       available: true;
       rating: number | null;
+      /** Average rating now minus at the start of the range (2 decimals). */
+      rating_change?: number | null;
+      new_in_range?: number;
       count: number | null;
       unreplied?: number | null;
       new_this_month?: number;
@@ -51,8 +85,11 @@ export type StatusCounts = Partial<Record<LocationStatus, number>>;
 
 export type BusinessDashboard = {
   type: "business";
+  range: DashboardRange;
+  selected_location: SelectedLocation;
+  performance: PerformanceBlock;
   locations_count: number;
-  visibility: { avg_rank: number | null; change: number | null; top3_rate: number | null; trend: { run_at: string; avg_rank: number | null }[] } | null;
+  visibility: { avg_rank: number | null; change: number | null; top3_rate: number | null; top3_rate_change?: number | null; trend: { run_at: string; avg_rank: number | null }[] } | null;
   gbp: { available: true; score: number | null; grade: string | null; change: number | null; partial: boolean } | Unavailable;
   reviews: ReviewsBlock;
   citations?: CitationsBlock;
@@ -72,6 +109,7 @@ export type BusinessDashboard = {
   locations: {
     location_id: string;
     name: string;
+    city?: string | null;
     status: LocationStatus;
     avg_rank: number | null;
     change: number | null;
@@ -84,8 +122,9 @@ export type AgencyTableRow = {
   location_id: string;
   name: string;
   client: { client_id: string; name: string } | null;
+  city?: string | null;
   status: LocationStatus;
-  visibility: { avg_rank: number | null; change: number | null; top3_rate: number | null } | null;
+  visibility: { avg_rank: number | null; change: number | null; top3_rate: number | null; top3_rate_change?: number | null } | null;
   gbp: { score: number | null; grade: string | null; change: number | null } | null;
   reviews?: { rating: number | null; total: number | null; awaiting_attention: number; suspicious: number } | null;
   citations?: { score: number | null; grade: string | null; nap_wrong: number } | null;
@@ -93,12 +132,18 @@ export type AgencyTableRow = {
 
 export type AgencyDashboard = {
   type: "agency";
+  range: DashboardRange;
+  selected_location: SelectedLocation;
+  performance: PerformanceBlock;
+  /** ready / failed: not archived, for the visible locations; scheduled: active schedules. */
+  reports: { ready: number; scheduled: number; failed: number };
   clients_count: number;
   locations_count: number;
   portfolio: {
     avg_rank: number | null;
     avg_rank_change: number | null;
     avg_top3_rate: number | null;
+    avg_top3_rate_change?: number | null;
     avg_gbp_score: number | null;
     avg_gbp_score_change: number | null;
     avg_citation_score?: number | null;

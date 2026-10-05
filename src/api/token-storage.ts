@@ -36,7 +36,6 @@ export function subscribeToAccessToken(listener: Listener): () => void {
 }
 
 function read(key: string): string | null {
-  console.log(key,"key")
   try {
     return window.localStorage.getItem(key) ?? window.sessionStorage.getItem(key);
   } catch {
@@ -47,7 +46,6 @@ function read(key: string): string | null {
 export function getAccessToken(): string | null {
   return read(ACCESS_KEY);
 }
-console.log(REFRESH_KEY,"REFRESH_KEY")
 export function getRefreshToken(): string | null {
   return read(REFRESH_KEY);
 }

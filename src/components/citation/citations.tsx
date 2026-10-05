@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { AlertCircle, AlertTriangle, ExternalLink, Info } from "lucide-react";
 import { MetricCard, Panel, SectionHeader, StatusBadge, type StatusTone } from "@/components/layout/shared/data-display";
-import { EmptyState, ErrorState, MetricSkeletonGrid, TableSkeleton } from "@/components/layout/shared/feedback/states";
+import { ErrorState, MetricSkeletonGrid, TableSkeleton } from "@/components/layout/shared/feedback/states";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -28,7 +28,7 @@ import {
   tdClass,
   tdMutedClass,
 } from "@/components/layout/shared/data-table";
-import { NoCitationsEmpty, NoResultsEmpty } from "@/components/layout/shared/feedback/empty-states";
+import { NoCitationsEmpty } from "@/components/layout/shared/feedback/empty-states";
 
 const stateTone: Record<CitationState, StatusTone> = {
   correct: "success",

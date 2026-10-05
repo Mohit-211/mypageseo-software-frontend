@@ -1,9 +1,9 @@
 import { api, unwrapData } from "../client";
-import type { Dashboard, DashboardSort } from "../types/dashboard";
+import type { Dashboard, DashboardRange, DashboardSort } from "../types/dashboard";
 
-/** The organization's dashboard (business or agency shape). Agency table: sort / order / page. */
+/** The organization's dashboard (business or agency shape). Agency table: sort / order / page; `location_id` narrows it to one location; `range` (default 30d) is the performance and reviews period. */
 export async function getDashboard(
-  params: { page?: number; limit?: number; sort?: DashboardSort; order?: "asc" | "desc" } = {},
+  params: { page?: number; limit?: number; sort?: DashboardSort; order?: "asc" | "desc"; location_id?: string; range?: DashboardRange } = {},
   signal?: AbortSignal,
 ): Promise<Dashboard> {
   return unwrapData(await api.get("dashboard", { query: params, ...(signal ? { signal } : {}) }));

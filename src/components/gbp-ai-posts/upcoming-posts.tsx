@@ -9,12 +9,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AI_POST_TYPE_LABEL, RECURRENCE_LABEL, type AiGbpPost } from "@/lib/gbp/ai-posts";
 import { PostActionsMenu } from "./post-actions";
 import { AI_POSTS_PATH, AiIndicator, PostStatusBadge, PostThumbnail } from "./post-ui";
+import { useNow } from "@/hooks/use-now";
 
 const INITIAL_VISIBLE = 5;
 
 export function UpcomingPosts({ posts, onCreate }: { posts: AiGbpPost[]; onCreate: () => void }) {
   const [showAll, setShowAll] = useState(false);
-  const now = new Date();
+  const now = new Date(useNow());
   const upcoming = posts
     .filter((p) => p.status !== "published" && p.scheduledAt && isAfter(new Date(p.scheduledAt), now))
     .sort((a, b) => (a.scheduledAt ?? "").localeCompare(b.scheduledAt ?? ""));

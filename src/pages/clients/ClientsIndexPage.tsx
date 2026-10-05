@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { RequireAccess } from "@/components/mypageseo/access";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { z } from "zod";
 import { Search } from "lucide-react";
 import { AppShell } from "@/components/layout/shared/app-shell";
@@ -18,7 +18,8 @@ import {
   type ManagedClient,
 } from "@/lib/mypageseo/clients-data";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
-import { PlanLimitNotice, usePlanLimit } from "@/components/mypageseo/plan";
+import { PlanLimitNotice } from "@/components/mypageseo/plan";
+import { usePlanLimit } from "@/hooks/use-plan";
 import { planLimitMessage } from "@/lib/mypageseo/plan";
 import { useTypedSearch } from "@/hooks/use-typed-search";
 
@@ -52,7 +53,6 @@ const ClientsIndexPage = () => (
 
 function ClientsPage() {
   const workspace = useWorkspace();
-  const navigate = useNavigate();
   const [search, setSearch] = useTypedSearch(searchSchema);
   const capabilities = getClientCapabilities();
   const clientLimit = usePlanLimit("clients");

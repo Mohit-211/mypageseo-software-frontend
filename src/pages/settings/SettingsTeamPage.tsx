@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { RequireAccess } from "@/components/mypageseo/access";
 import { Link } from "react-router-dom";
 import { ArrowLeft, MoreHorizontal, Search, UserPlus } from "lucide-react";
@@ -17,7 +17,6 @@ import {
   FormTextField,
   RequiredFieldsNote,
   SubmitButton,
-  useSubmitGuard,
 } from "@/components/layout/shared/form-fields";
 import {
   Dialog,
@@ -53,6 +52,7 @@ import {
   type TeamRole,
 } from "@/lib/mypageseo/team";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
+import { useSubmitGuard } from "@/hooks/use-submit-guard";
 
 const SettingsTeamPage = () => (
     <RequireAccess permission="team.view">
@@ -94,11 +94,9 @@ function TeamSettingsPage() {
   const [editing, setEditing] = useState<TeamMember | null>(null);
   const [pending, setPending] = useState<PendingAction | null>(null);
 
-  const members = useMemo(() => {
-    return [...baseMembers, ...added]
-      .filter((member) => !removed.includes(member.id))
-      .map((member) => ({ ...member, ...(overrides[member.id] ?? {}) }));
-  }, [baseMembers, added, removed, overrides]);
+  const members = [...baseMembers, ...added]
+    .filter((member) => !removed.includes(member.id))
+    .map((member) => ({ ...member, ...(overrides[member.id] ?? {}) }));
 
   const clientName = (clientId: string) =>
     workspace.clients.find((client) => client.id === clientId)?.name ?? clientId;

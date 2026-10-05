@@ -31,6 +31,7 @@ import {
 } from "@/lib/gbp/gbp-posts";
 import { cn } from "@/lib/utils";
 import { TablePagination } from "@/components/layout/shared/data-table";
+import { useNow } from "@/hooks/use-now";
 
 const statusTone: Record<PostLifecycle, StatusTone> = {
   draft: "neutral",
@@ -250,8 +251,9 @@ export function GbpPostsContent({ data, onRetry }: { data: GbpPostsData; onRetry
 
 /** Operational month grid placing posts on their scheduled or published day. */
 function PostsCalendar({ posts, onSelect }: { posts: GbpPost[]; onSelect: (post: GbpPost) => void }) {
+  const now = useNow();
   const dated = posts.filter((post) => post.timestamp);
-  const anchor = dated[0]?.timestamp ? new Date(dated[0].timestamp) : new Date();
+  const anchor = dated[0]?.timestamp ? new Date(dated[0].timestamp) : new Date(now);
   const year = anchor.getFullYear();
   const month = anchor.getMonth();
   const firstDay = new Date(year, month, 1);

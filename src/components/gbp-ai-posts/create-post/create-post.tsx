@@ -23,7 +23,7 @@ import {
   validateForDraft,
   validateForPublish,
   type CreatePostErrors,
-  type CreatePostForm,
+  type CreatePostForm as CreatePostFormValues,
 } from "./form-model";
 import { PostBasicInfo } from "./post-basic-info";
 import { PostPreview } from "./post-preview";
@@ -104,7 +104,7 @@ function CreatePostForm({
   editing,
   locations,
 }: {
-  initial: CreatePostForm;
+  initial: CreatePostFormValues;
   editing: AiGbpPost | null;
   locations: LocationSummary[];
 }) {
@@ -118,7 +118,7 @@ function CreatePostForm({
   const when = form.publishMode === "now" ? null : scheduledDate(form);
   const dateLabel = when ? format(when, "MMM d, yyyy") : "Just now";
 
-  const onChange = (patch: Partial<CreatePostForm>) => {
+  const onChange = (patch: Partial<CreatePostFormValues>) => {
     setForm((current) => ({ ...current, ...patch }));
     // Clear errors for the fields being edited.
     setErrors((current) => {

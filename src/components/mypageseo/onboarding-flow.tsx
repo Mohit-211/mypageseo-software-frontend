@@ -89,23 +89,16 @@ const STEP_COPY: Record<OnboardingStepId, { title: string; description: string }
 
 export function OnboardingFlow({ accountType }: { accountType: AccountType }) {
   const session = useOnboardingSession();
-  const [hydrated, setHydrated] = useState(false);
-
-  useEffect(() => {
-    setHydrated(true);
-  }, []);
-
   // A user landing straight on the setup URL gets a fresh session.
   useEffect(() => {
-    if (!hydrated) return;
     if (!session || session.accountType !== accountType) {
       startOnboardingSession({ accountType });
     }
-  }, [hydrated, session, accountType]);
+  }, [session, accountType]);
 
   const result = getOnboarding(accountType);
 
-  if (!hydrated || !session || session.accountType !== accountType || result.status === "loading") {
+  if (!session || session.accountType !== accountType || result.status === "loading") {
     return (
       <OnboardingFrame>
         <div className="flex items-center gap-2 text-sm text-muted-foreground" role="status">

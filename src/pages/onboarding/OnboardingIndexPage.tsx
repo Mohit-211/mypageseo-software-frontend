@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { AuthLayout, AuthWordmark } from "@/components/auth/auth";
@@ -8,11 +8,6 @@ import {
 } from "@/lib/auth/onboarding-state";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
 
-const DESCRIPTION =
-  "Finish setting up your Mypageseo workspace so local rankings, Google Business Profile data and reporting can start.";
-
-
-
 /**
  * Entry point: resumes the saved setup session, sends completed accounts to the
  * dashboard, and routes Business and Agency accounts to their own flow.
@@ -20,14 +15,7 @@ const DESCRIPTION =
 function OnboardingEntryPage() {
   const workspace = useWorkspace();
   const navigate = useNavigate();
-  const [hydrated, setHydrated] = useState(false);
-
   useEffect(() => {
-    setHydrated(true);
-  }, []);
-
-  useEffect(() => {
-    if (!hydrated) return;
     const session =
       getOnboardingSession() ??
       startOnboardingSession({
@@ -40,7 +28,7 @@ function OnboardingEntryPage() {
       return;
     }
     navigate(session.accountType === "agency" ? "/onboarding/agency" : "/onboarding/business", { replace: true });
-  }, [hydrated, navigate, workspace.organization]);
+  }, [navigate, workspace.organization]);
 
   return (
     <AuthLayout>

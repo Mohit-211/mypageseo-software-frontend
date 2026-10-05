@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { ArrowDownRight, ArrowRight, ArrowUpRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { healthTone, type HealthTone } from "@/lib/health-tone";
 
 /** Page header used at the top of every product screen. */
 export function PageHeader({
@@ -219,13 +220,6 @@ export function Panel({
   );
 }
 
-export type HealthTone = "healthy" | "attention" | "critical";
-
-export function healthTone(score: number): HealthTone {
-  if (score >= 80) return "healthy";
-  if (score >= 60) return "attention";
-  return "critical";
-}
 
 /** Score indicator: a labelled 0-100 bar with a semantic fill. */
 export function ScoreIndicator({

@@ -19,14 +19,15 @@ import {
   SectionHeader,
   StatusBadge,
   TrendIndicator,
-  healthTone,
 } from "@/components/layout/shared/data-display";
 import { EmptyState, MetricSkeletonGrid } from "@/components/layout/shared/feedback/states";
+import { healthTone } from "@/lib/health-tone";
 import { locationSetupPath } from "@/lib/locations/location-actions";
 import type {
   AgencyDashboard,
   BusinessDashboard,
   MetricPoint,
+  PerformanceView,
   RecommendedAction,
 } from "@/lib/dashboard/dashboard-data";
 
@@ -38,25 +39,27 @@ function show(value: number | null | undefined, digits?: number): string | numbe
   return digits === undefined ? value : value.toFixed(digits);
 }
 
-function formatChange(change: number, suffix = "") {
+function formatChange(change: number, suffix = "", digits?: number) {
   const abs = Math.abs(change);
-  return `${abs.toFixed(abs < 10 ? 1 : 0)}${suffix}`;
+  return `${abs.toFixed(digits ?? (abs < 10 ? 1 : 0))}${suffix}`;
 }
 
 function MetricTrend({
   metric,
   suffix = "",
   lowerIsBetter = false,
+  digits,
 }: {
   metric: MetricPoint;
   suffix?: string;
   lowerIsBetter?: boolean;
+  digits?: number;
 }) {
   if (metric.change === undefined || metric.change === null) return null;
   const direction = metric.change > 0 ? "up" : metric.change < 0 ? "down" : "flat";
   const positive = lowerIsBetter ? metric.change < 0 : metric.change > 0;
   return (
-    <TrendIndicator direction={direction} value={formatChange(metric.change, suffix)} positive={positive} />
+    <TrendIndicator direction={direction} value={formatChange(metric.change, suffix, digits)} positive={positive} />
   );
 }
 
@@ -73,6 +76,48 @@ const severityLabel = {
 } as const;
 
 /* ------------------------------ shared sections ---------------------------- */
+
+/** Google Business Profile performance over the selected period vs the one before. */
+function ProfilePerformance({ performance, rangeDays, connectTo }: { performance: PerformanceView; rangeDays: number; connectTo: string }) {
+  if (!performance.available) {
+    return (
+      <section>
+        <SectionHeader title="Profile performance" description={`Google Business Profile views and actions, last ${rangeDays} days`} />
+        <div className="flex flex-col gap-3 rounded-lg border border-dashed border-border bg-surface px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-muted-foreground">
+            {performance.reason === "gbp_not_connected"
+              ? "Connect a Google Business Profile to see how many people find the business and what they do next."
+              : "Performance figures appear after the first sync with Google. Google reports them a few days behind."}
+          </p>
+          {performance.reason === "gbp_not_connected" ? (
+            <Button asChild variant="outline" size="sm" className="shrink-0 self-start sm:self-auto">
+              <Link to={connectTo}>Connect Google <ArrowRight className="size-3.5" /></Link>
+            </Button>
+          ) : null}
+        </div>
+      </section>
+    );
+  }
+  return (
+    <section>
+      <SectionHeader
+        title="Profile performance"
+        description={`Google Business Profile, last ${performance.days} days${performance.latestDate ? ` up to ${performance.latestDate}` : ""}${performance.partial ? " · some days have no data yet" : ""}`}
+      />
+      <div className="grid grid-cols-1 overflow-hidden rounded-lg border border-border bg-surface shadow-card sm:grid-cols-2 xl:grid-cols-5 xl:divide-x xl:divide-border">
+        {performance.metrics.map((metric) => (
+          <MetricCard
+            key={metric.key}
+            label={metric.label}
+            value={metric.value === null ? "—" : metric.value.toLocaleString()}
+            trend={<MetricTrend metric={metric} suffix="%" />}
+            caption={metric.caption}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
 
 export function RecommendedActions({ actions }: { actions: RecommendedAction[] }) {
   if (actions.length === 0) {
@@ -177,7 +222,7 @@ export function BusinessDashboardView({ data }: { data: BusinessDashboard }) {
                 <Star className="size-4 text-warning" aria-hidden />
               </span>
             }
-            trend={<MetricTrend metric={data.reviewRating} />}
+            trend={<MetricTrend metric={data.reviewRating} digits={2} />}
             caption={data.reviewCount === null ? "No reviews yet" : `${data.reviewCount.toLocaleString()} reviews`}
           />
           <MetricCard
@@ -188,6 +233,8 @@ export function BusinessDashboardView({ data }: { data: BusinessDashboard }) {
           />
         </div>
       </section>
+
+      <ProfilePerformance performance={data.performance} rangeDays={data.rangeDays} connectTo={data.focusLocationId ? `/locations/${data.focusLocationId}/gbp` : "/locations"} />
 
       <div className="grid gap-8 xl:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
         <section className="min-w-0">
@@ -348,7 +395,7 @@ export function BusinessDashboardView({ data }: { data: BusinessDashboard }) {
               <div className="grid grid-cols-2 divide-x divide-border border-b border-border sm:grid-cols-4">
                 <Stat label="Rating" value={String(show(data.reviewRating.value, 1))} />
                 <Stat label="Total reviews" value={data.reviewCount === null ? "—" : data.reviewCount.toLocaleString()} />
-                <Stat label="Last 30 days" value={data.reviews.last30Days === null ? "—" : `+${data.reviews.last30Days}`} />
+                <Stat label={`Last ${data.rangeDays} days`} value={data.reviews.newInRange === null ? "—" : `+${data.reviews.newInRange}`} />
                 <Stat
                   label="Avg. response"
                   value={
@@ -548,6 +595,8 @@ export function AgencyDashboardView({ data }: { data: AgencyDashboard }) {
           />
         </div>
       </section>
+
+      <ProfilePerformance performance={data.performance} rangeDays={data.rangeDays} connectTo="/locations" />
 
       <section>
         <SectionHeader title="Needs attention" description="Where to act across the portfolio" />

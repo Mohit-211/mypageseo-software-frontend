@@ -52,15 +52,6 @@ export type ClientUsersResult =
       capabilities: ClientUserCapabilities;
     };
 
-const NO_CAPABILITIES: ClientUserCapabilities = {
-  canInvite: false,
-  canResendInvite: false,
-  canEditAccess: false,
-  canAssignLocations: false,
-  canDeactivate: false,
-  canRemove: false,
-};
-
 const DEMO_CAPABILITIES: ClientUserCapabilities = {
   canInvite: true,
   canResendInvite: true,

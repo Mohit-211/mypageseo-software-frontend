@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { FormAlert, FormField, FormSelectField, SubmitButton, useSubmitGuard } from "@/components/layout/shared/form-fields";
+import { FormAlert, FormField, FormSelectField, SubmitButton } from "@/components/layout/shared/form-fields";
+import { useSubmitGuard } from "@/hooks/use-submit-guard";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";

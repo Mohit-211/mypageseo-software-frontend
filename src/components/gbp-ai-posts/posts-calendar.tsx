@@ -26,6 +26,7 @@ import {
 } from "@/lib/gbp/ai-posts";
 import { cn } from "@/lib/utils";
 import { CalendarPostCard } from "./calendar-post-card";
+import { useNow } from "@/hooks/use-now";
 
 const WEEKDAY_HEADERS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MAX_VISIBLE_PER_DAY = 2;
@@ -59,7 +60,7 @@ export function PostsCalendar({
   const [month, setMonth] = useState(() => startOfMonth(new Date()));
   const [selectedDay, setSelectedDay] = useState<Date>(() => startOfDay(new Date()));
   const expanded = useMediaQuery("(min-width: 1024px)");
-  const today = startOfDay(new Date());
+  const today = startOfDay(new Date(useNow()));
 
   const days = useMemo(
     () =>
@@ -110,7 +111,7 @@ export function PostsCalendar({
           <span className="inline-flex h-8 items-center rounded-md border border-border bg-brand-tint px-2.5 text-xs font-medium text-primary">
             Month
           </span>
-          <Button variant="outline" size="sm" onClick={() => goTo(new Date())} disabled={isSameMonth(month, new Date())}>
+          <Button variant="outline" size="sm" onClick={() => goTo(new Date())} disabled={isSameMonth(month, today)}>
             Today
           </Button>
           <div className="inline-flex">

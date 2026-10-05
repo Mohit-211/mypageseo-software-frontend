@@ -4,7 +4,8 @@ import { Save } from "lucide-react";
 import { toast } from "sonner";
 import { Panel } from "@/components/layout/shared/data-display";
 import { SectionSkeleton } from "@/components/layout/shared/feedback/states";
-import { FormField, FormGrid, SubmitButton, useSubmitGuard } from "@/components/layout/shared/form-fields";
+import { FormField, FormGrid, SubmitButton } from "@/components/layout/shared/form-fields";
+import { useSubmitGuard } from "@/hooks/use-submit-guard";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -16,6 +17,7 @@ import {
   type ReportExpiration,
   type ReportVisibility,
 } from "@/lib/white-label/white-label";
+import { useNow } from "@/hooks/use-now";
 
 const PASSWORD_MIN_LENGTH = 8;
 
@@ -48,7 +50,8 @@ export function ReportAccessSettings({ settings }: { settings: ReportAccessSetti
   const [confirm, setConfirm] = useState("");
   const [errors, setErrors] = useState<Errors>({});
   const { pending, run } = useSubmitGuard();
-  const minExpiry = format(addDays(new Date(), 1), "yyyy-MM-dd");
+  const now = useNow();
+  const minExpiry = format(addDays(new Date(now), 1), "yyyy-MM-dd");
 
   // A saved password protection doesn't require re-entering the password.
   const passwordRequired = draft.visibility === "password" && settings.visibility !== "password";

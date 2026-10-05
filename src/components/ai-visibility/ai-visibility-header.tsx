@@ -14,6 +14,7 @@ import {
   type DateRangePreset,
   type DateRangeValue,
 } from "@/lib/ai-visibility/ai-visibility";
+import { useNow } from "@/hooks/use-now";
 
 const PRESETS: DateRangePreset[] = ["7d", "30d", "3m", "6m", "custom"];
 
@@ -28,7 +29,7 @@ export function DateRangeSelect({
 }) {
   const [customOpen, setCustomOpen] = useState(false);
   const [draft, setDraft] = useState<DateRange | undefined>(undefined);
-  const today = new Date();
+  const today = new Date(useNow());
 
   const openCustom = () => {
     setDraft(value.from && value.to ? { from: new Date(value.from), to: new Date(value.to) } : undefined);

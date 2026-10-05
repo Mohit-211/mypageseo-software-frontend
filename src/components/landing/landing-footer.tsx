@@ -75,7 +75,13 @@ export function LandingFooter({
       </div>
       <div className="border-t border-sidebar-border">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 text-xs text-sidebar-foreground/60 sm:px-6">
-          <span>{copyright}</span>
+          <span className="flex items-center gap-3">
+            {copyright}
+            <span aria-hidden className="text-sidebar-foreground/30">·</span>
+            <Link to="/staff/login" className="hover:text-sidebar-accent-foreground">
+              Emp Login
+            </Link>
+          </span>
           <span className="flex items-center gap-1.5">
             <LineChart className="size-3.5" aria-hidden /> {motto}
           </span>

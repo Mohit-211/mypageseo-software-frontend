@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -37,6 +37,7 @@ import {
 import { useRankingsContext, useRunParam } from "@/lib/rankings/rankings-context";
 import type { RunMeta } from "@/api";
 import { cn } from "@/lib/utils";
+import { useNow } from "@/hooks/use-now";
 
 
 function cellTitle(cell: RankCell) {
@@ -266,16 +267,6 @@ export function RunPicker({
       </SelectContent>
     </Select>
   );
-}
-
-/** The current time, updated every minute, so time-based UI re-renders without reading the clock during render. */
-function useNow(intervalMs = 60_000) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), intervalMs);
-    return () => window.clearInterval(timer);
-  }, [intervalMs]);
-  return now;
 }
 
 /** Manual rankings refresh: costs tokens, at most once per 24 h; the monthly refresh is free. */
