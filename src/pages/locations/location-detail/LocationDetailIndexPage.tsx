@@ -16,6 +16,8 @@ import { useRequiredParams } from "@/hooks/use-required-params";
 import { centerDescription } from "@/lib/rankings/format";
 import { BackgroundActivity } from "@/components/location/background-activity";
 import { ReportMenuButton } from "@/components/report/rank-report-button";
+import { REPORT_CREATE_ERRORS } from "@/lib/reports/report-meta";
+import { citationsUnavailableText, coverageText } from "@/lib/citations/citations";
 
 const description =
   "Everything tracked for this location: rankings, Google Business Profile health, citations, competitors and reports.";
@@ -94,7 +96,12 @@ function LocationOverviewPage() {
       <PageHeader
         title="Location Overview"
         description={description}
-        actions={<ReportMenuButton locationId={data.location_id} />}
+        actions={
+          <ReportMenuButton
+            locationId={data.location_id}
+            unavailable={data.citations?.available === false && data.citations.reason === "no_citations_yet" ? { citation: REPORT_CREATE_ERRORS.no_citations_yet! } : undefined}
+          />
+        }
         meta={centerDescription(data.center) ? <p className="text-xs text-muted-foreground">{centerDescription(data.center)} — rankings are measured from here.</p> : undefined}
       />
 
@@ -107,6 +114,7 @@ function LocationOverviewPage() {
         <PerformanceSummary data={data} />
         <ReviewsSummary data={data} />
         <CompetitorsSummary data={data} />
+        <CitationsSummary data={data} />
       </div>
       {data.attribution ? (
         <p className="-mt-4 mb-6 text-[11px] text-muted-foreground">Ratings, reviews and competitor names: {data.attribution.text}</p>
@@ -281,6 +289,40 @@ function CompetitorsSummary({ data }: { data: LocationOverview }) {
           {section.best_competitor.public_score != null ? ` (${section.best_competitor.public_score})` : ""}
         </Muted>
       ) : null}
+    </Summary>
+  );
+}
+
+function CitationsSummary({ data }: { data: LocationOverview }) {
+  const section = data.citations;
+  const link = (
+    <Link to={`/locations/${data.location_id}/citations`} className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+      Open citations <ArrowRight className="size-3.5" aria-hidden />
+    </Link>
+  );
+  if (!section) return null;
+  if (!section.available) {
+    return (
+      <Summary title="Citation Health">
+        <Muted>{citationsUnavailableText(section.reason)}</Muted>
+        {section.reason === "not_checked_yet" ? link : null}
+      </Summary>
+    );
+  }
+  const change = section.score_change;
+  return (
+    <Summary title="Citation Health">
+      <Big>
+        {section.score == null ? "—" : section.score}
+        {section.grade ? <span className="ml-2 text-base font-medium text-muted-foreground">{section.grade}</span> : null}
+      </Big>
+      {change ? <TrendIndicator direction={change > 0 ? "up" : "down"} value={`${Math.abs(change)} pts`} positive={change > 0} /> : null}
+      <Muted>
+        {coverageText(section.coverage, section.listings)}
+        {section.counts.nap_wrong > 0 ? ` · ${section.counts.nap_wrong} wrong NAP` : ""}
+        {section.counts.not_found > 0 ? ` · ${section.counts.not_found} not listed` : ""}
+      </Muted>
+      {link}
     </Summary>
   );
 }

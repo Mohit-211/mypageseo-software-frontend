@@ -1,3 +1,5 @@
+import type { CitationCounts, CitationHealthSummary } from "./citations";
+
 /** Google's attribution for Places content: show `text` near business names, ratings and reviews. */
 export type Attribution = { provider: string; text: string };
 
@@ -40,11 +42,13 @@ export type LocationRow = {
   rank: { overall_avg_rank: number | null; change: number | null } | null;
   gbp: { score: number | null; grade: string | null; partial: boolean } | null;
   reviews: { rating: number | null; count: number | null } | null;
+  /** Citation Health; null until the MyPageSEO team has checked a listing. */
+  citations?: CitationHealthSummary | null;
   last_refreshed_at: string | null;
   next_refresh_at: string | null;
 };
 
-export type LocationSortField = "name" | "city" | "rank" | "gbp_score" | "rating" | "last_refreshed";
+export type LocationSortField = "name" | "city" | "rank" | "gbp_score" | "rating" | "citation_score" | "last_refreshed";
 
 export type LocationsListParams = {
   search?: string;
@@ -141,6 +145,19 @@ export type LocationOverview = LocationHeader & {
       }
     | Unavailable;
   reviews: { available: true; rating: number | null; count: number | null; unreplied: number | null } | Unavailable;
+  /** `no_citations_yet` (no list) or `not_checked_yet` (a list, nothing checked) when unavailable. */
+  citations?:
+    | {
+        available: true;
+        score: number | null;
+        grade: string | null;
+        score_change: number | null;
+        coverage: number | null;
+        listings: number;
+        counts: CitationCounts;
+        last_checked_at: string | null;
+      }
+    | Unavailable;
   competitors:
     | {
         available: true;
@@ -325,6 +342,8 @@ export type BillingSummary = {
     monthly_grant?: number;
     last_grant_at?: string | null;
     next_grant_at?: string | null;
+    /** Tokens per AI action, e.g. `post_draft` (1) and `post_image` (3). */
+    ai_costs?: Record<string, number>;
   };
   online_payments: boolean;
 };

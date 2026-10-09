@@ -50,7 +50,6 @@ const POLICY_LABEL: Record<string, string> = {
 };
 
 const SKIP_REASON: Record<string, string> = {
-  rating_not_eligible: "AI drafts are for 4–5 star reviews; write this reply yourself.",
   has_reply: "Already replied.",
   suspicious: "Flagged as suspicious; review it before replying.",
   no_text: "No written review.",

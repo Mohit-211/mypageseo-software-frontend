@@ -105,11 +105,6 @@ export function GlobalSearch() {
 					`/locations/${target.locationId}/competitors/${target.competitorId}`,
 				);
 				return;
-			case 'citation':
-				void navigate(
-					`/locations/${target.locationId}/citations/${target.citationId}`,
-				);
-				return;
 			case 'report':
 				void navigate(`/reports/${target.reportId}`);
 				return;

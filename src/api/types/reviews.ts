@@ -61,7 +61,18 @@ export type ReviewsSummary = {
   next_refresh_allowed_at: string | null;
   v4_enabled: boolean;
   gbp_connected: boolean;
-  ai: { configured: boolean; paused_today: boolean; token_costs: ReviewTokenCosts; token_balance: number };
+  ai: {
+    configured: boolean;
+    paused_today: boolean;
+    token_costs: ReviewTokenCosts;
+    token_balance: number;
+    /** Unreplied, non-suspicious reviews without a current draft (Phase 9.1). */
+    draftable?: number;
+    /** Tokens to draft all of them. */
+    draft_all_cost?: number;
+    /** Reviews drafted per "Draft all" call (50). */
+    draft_all_max?: number;
+  };
 };
 
 export type ReviewsQuery = {

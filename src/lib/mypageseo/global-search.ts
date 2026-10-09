@@ -10,7 +10,6 @@
 
 import { withDemoFallback } from "./demo/demo-mode";
 import { DEMO_CLIENTS, DEMO_LOCATIONS, demoCompetitors, demoKeywords } from "./demo/entities";
-import { demoCitations } from "./demo/citations";
 import { demoReportRows } from "./demo/reports";
 import { primaryNavigation, type AccountType } from "./navigation";
 
@@ -42,7 +41,6 @@ export type SearchTarget =
   | { kind: "location"; locationId: string }
   | { kind: "keywords"; locationId: string }
   | { kind: "competitor"; locationId: string; competitorId: string }
-  | { kind: "citation"; locationId: string; citationId: string }
   | { kind: "report"; reportId: string }
   | { kind: "client"; clientId: string }
   | { kind: "page"; to: string };
@@ -146,23 +144,6 @@ function demoSearchIndex(scope: SearchScope): SearchResult[] {
         },
         locationId: location.id,
         haystack: `${competitor.primaryCategory} ${competitor.website}`,
-      });
-    }
-
-    for (const citation of demoCitations(location.id)) {
-      entries.push({
-        id: `cit:${citation.id}`,
-        group: "citations",
-        title: citation.directory,
-        context: location.businessName,
-        meta: citation.state.replace(/_/g, " "),
-        target: {
-          kind: "citation",
-          locationId: location.id,
-          citationId: citation.id,
-        },
-        locationId: location.id,
-        haystack: `${citation.directoryType ?? ""} citation listing`,
       });
     }
   }

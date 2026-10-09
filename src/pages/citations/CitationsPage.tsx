@@ -1,33 +1,24 @@
 import { AppShell } from "@/components/layout/shared/app-shell";
 import { PageHeader } from "@/components/layout/shared/data-display";
-import { CitationsContent } from "@/components/citation/citations";
+import { CitationsContent, CitationsError, CitationsLoading, CitationsSettingUp } from "@/components/citation/citations";
 import { EmptyState } from "@/components/layout/shared/feedback/states";
-import { getCitations } from "@/lib/citations/citations";
+import { useCitations } from "@/lib/citations/use-citations";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
 
-
-
+/** Citations for the location picked in the workspace switcher. */
 function CitationsPage() {
   const workspace = useWorkspace();
   const location = workspace.activeLocation ?? workspace.locations[0] ?? null;
-  const data = location ? getCitations(location.id) : null;
 
   return (
     <AppShell>
       <PageHeader
         title="Citations"
-        description="Directory listings and NAP consistency."
-        meta={
-          location ? (
-            <p className="text-xs text-muted-foreground">
-              {location.businessName} · {location.area}
-              {data?.lastCheckedAt ? ` · Last checked ${data.lastCheckedAt}` : ""}
-            </p>
-          ) : undefined
-        }
+        description="Your directory listings, checked by hand by the MyPageSEO team."
+        meta={location ? <p className="text-xs text-muted-foreground">{location.businessName} · {location.area}</p> : undefined}
       />
-      {location && data ? (
-        <CitationsContent data={data} locationId={location.id} onRetry={() => window.location.reload()} />
+      {location ? (
+        <LocationCitations locationId={location.id} />
       ) : (
         <EmptyState
           title="No locations in this workspace"
@@ -36,6 +27,14 @@ function CitationsPage() {
       )}
     </AppShell>
   );
+}
+
+function LocationCitations({ locationId }: { locationId: string }) {
+  const citations = useCitations(locationId);
+  if (citations.isPending) return <CitationsLoading />;
+  if (citations.isError) return <CitationsError onRetry={() => void citations.refetch()} />;
+  if (!citations.data.available) return <CitationsSettingUp />;
+  return <CitationsContent data={citations.data} locationId={locationId} />;
 }
 
 export default CitationsPage;

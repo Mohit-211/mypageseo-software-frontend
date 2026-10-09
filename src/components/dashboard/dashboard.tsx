@@ -229,7 +229,7 @@ export function BusinessDashboardView({ data }: { data: BusinessDashboard }) {
             label="Citation Health" accent="clay"
             value={show(data.citationHealth.value)}
             trend={<MetricTrend metric={data.citationHealth} suffix=" pts" />}
-            caption="Directory accuracy"
+            caption={data.citationCaption}
           />
         </div>
       </section>
@@ -578,7 +578,7 @@ export function AgencyDashboardView({ data }: { data: AgencyDashboard }) {
     <div className="flex flex-col gap-8">
       <section>
         <SectionHeader title="Portfolio summary" description={data.comparisonLabel} />
-        <div className="grid grid-cols-1 overflow-hidden rounded-lg border border-border bg-surface shadow-card sm:grid-cols-2 xl:grid-cols-4 xl:divide-x xl:divide-border">
+        <div className="grid grid-cols-1 overflow-hidden rounded-lg border border-border bg-surface shadow-card sm:grid-cols-2 xl:grid-cols-5 xl:divide-x xl:divide-border">
           <MetricCard label="Clients" accent="brand" value={data.clientCount} caption="Active in this workspace" />
           <MetricCard label="Locations" accent="teal" value={data.locationCount} caption="Across all clients" />
           <MetricCard
@@ -592,6 +592,11 @@ export function AgencyDashboardView({ data }: { data: AgencyDashboard }) {
             value={show(data.averageGbpHealth.value)}
             trend={<MetricTrend metric={data.averageGbpHealth} suffix=" pts" />}
             caption="Portfolio average"
+          />
+          <MetricCard
+            label="Avg. Citation Health" accent="amber"
+            value={show(data.averageCitationScore)}
+            caption={data.averageCitationScore === null ? "No listings checked yet" : "Locations with checked listings"}
           />
         </div>
       </section>
@@ -666,6 +671,7 @@ export function AgencyDashboardView({ data }: { data: AgencyDashboard }) {
                 <th className="px-4 py-2.5 text-right font-medium">Visibility</th>
                 <th className="px-4 py-2.5 text-right font-medium">Trend</th>
                 <th className="px-4 py-2.5 text-right font-medium">GBP health</th>
+                <th className="px-4 py-2.5 text-right font-medium">Citations</th>
                 <th className="px-4 py-2.5 text-right font-medium">Unanswered</th>
                 <th className="px-4 py-2.5 text-right font-medium">Issues</th>
                 <th className="px-4 py-2.5" />
@@ -702,6 +708,16 @@ export function AgencyDashboardView({ data }: { data: AgencyDashboard }) {
                     </div>
                   </td>
                   <td className="px-4 py-2.5 text-right tabular">{show(row.gbpHealth)}</td>
+                  <td className="px-4 py-2.5 text-right tabular">
+                    {row.citationScore === null ? (
+                      "—"
+                    ) : (
+                      <Link to={`/locations/${row.locationId}/citations`} className="hover:underline">
+                        {row.citationScore}
+                        {row.citationNapWrong > 0 ? <span className="ml-1.5 text-xs text-warning-foreground">{row.citationNapWrong} wrong</span> : null}
+                      </Link>
+                    )}
+                  </td>
                   <td className="px-4 py-2.5 text-right tabular">
                     {row.unansweredReviews === null ? (
                       "—"

@@ -23,7 +23,7 @@
 **Postman:** `docs/postman/MyPageSEO.postman_collection.json` + `MyPageSEO.local.postman_environment.json`, generated from this catalogue by `npm run postman:generate` (rerun after changing the catalogue).
 
 **Auth:**
-- `admin` (Phase 10): header `Authorization: Bearer <admin session token>` from `POST /admin/auth/login` (HS256, `ADMIN_JWT_SECRET`, 12 h). `admin (\`<permission>\`)` also needs that permission: `admins.manage` (super admin), `platform.read` / `platform.write` (super admin, admin), `content.manage` (super admin, admin, editor), `citations.view` and `citations.manage` (Phase 16; super admin, admin, editor), `billing.read` and `billing.manage` (Phase 13a; super admin, admin), `support.read` and `support.manage` (Phase 13b; super admin, admin, editor), `audits.run` (Phase 19; super admin, admin, sales representative). No token or an invalid one → **401**; a missing permission → **403** `{ reason: "forbidden", permission }`.
+- `admin` (Phase 10): header `Authorization: Bearer <admin session token>` from `POST /admin/auth/login` (HS256, `ADMIN_JWT_SECRET`, 12 h). `admin (\`<permission>\`)` also needs that permission: `admins.manage` (super admin), `platform.read` / `platform.write` (super admin, admin), `content.manage` (super admin, admin, editor), `citations.view` and `citations.manage` (Phase 16; super admin, admin, editor), `billing.read` and `billing.manage` (Phase 13a; super admin, admin), `support.read` and `support.manage` (Phase 13b; super admin, admin, editor), `audits.run` (Phase 19; super admin, admin, sales representative), `leads.read` (Phase 20; super admin, admin, sales representative) and `leads.manage` (Phase 20; super admin, admin). No token or an invalid one → **401**; a missing permission → **403** `{ reason: "forbidden", permission }`.
 - `user`: header `Authorization: Bearer <access token>`. A missing or invalid token gives **401**.
 - `owner` (location routes, Phase 8): the caller must be an active member of the location's **organization** (a `client_user` only for its clients' locations). Otherwise **404**; a malformed id gives **400**. Writes (anything but GET) need the role owner or member: a `client_user` gets **403** `{ reason: "read_only" }`.
 - `org`: the route acts in the current organization: the `X-Organization-Id` header (one of the caller's organizations, else **403** `not_a_member`), otherwise the user's default organization. A user without an organization gets **403** `{ reason: "no_organization" }`.
@@ -67,11 +67,21 @@ Reads, billing, support and GBP connect / bind stay open.
 - `POST /reports`
 - the white-label branding writes
 
-## Summary (2026-10-02)
+## Summary (2026-10-09)
 
-**252 endpoints:** 251 live, 1 dev-only.
-- **By origin:** 217 rebuilt or new, 35 legacy.
-- **By auth:** 118 user, 98 platform admin (each with a permission), 36 none.
+**305 endpoints:** 304 live, 1 dev-only.
+- **By origin:** 273 rebuilt or new, 32 legacy.
+- **By auth:** 148 user, 113 platform admin (each with a permission), 44 none.
+
+**Phase 9.1 (AI modules, 2026-10-09):** `POST /locations/:locationId/reviews/drafts/all` (#212): AI reply drafts for every unreplied review (all ratings, not suspicious), 50 per call. `POST …/reviews/send` now takes up to 100 ids; `POST …/reviews/drafts` covers all ratings. AI in the post editor (#213–#215: `posts/ai-draft`, `posts/ai-image`, `posts/:postId/ai-regenerate`) and AI auto-post series (#216–#224, `/locations/:locationId/post-series*`).
+
+**Phase 9 (GBP posts, 2026-10-09):** 19 `/locations/:locationId/posts*` routes and the organization calendar `GET /posts/calendar` (#191–#210), plus the public photo route `GET /m/:file` that Google fetches. The 3 legacy `/gbp/post/*` routes were removed. Shapes: [API.md](API.md) "GBP posts (Phase 9)".
+
+**Citations follow-up (2026-10-08):** `GET /admin/citations/locations` (#190), the admin's index of every location with its citation summary.
+
+**Phase 20 (free audit on the marketing site):** 7 public `/public/audits` routes (#178–#184; no login, Cloudflare Turnstile on start and lead, the audit's `X-Audit-Token` on every call about it) and 5 `/admin/leads/audits` routes (#185–#189, `leads.read` / `leads.manage`).
+
+**Admin panel additions (2026-10-05):** `POST /admin/users`, `DELETE /admin/users/:userId`, `GET /admin/reports`, `GET /admin/reports/:reportId`, `GET /admin/reports/:reportId/pdf`; user-list filters `type` / `role` / `organization_id`; the limit override `free_locations`. Later the same day (frontend requests): `POST /admin/admins/:adminId/password` (and an optional `password` on `POST /admin/admins`), `PATCH /admin/users/:userId`, `GET /admin/organizations/:organizationId/clients`, `DELETE /admin/organizations/:organizationId/members/:userId`. Reference for the admin frontend: [ADMIN_PANEL.md](ADMIN_PANEL.md).
 
 **Phase 19 (sales audit):** 6 `/staff/audits` routes (#172–#177) for the staff dashboard, permission `audits.run` (the sales representative role, plus super admin and admin).
 
@@ -103,10 +113,11 @@ Paths are full paths. Auth: `none`, `user` (user access token), `user + org` (ac
 | POST | `/api/v1/admin/auth/change-password` | admin | Change your own password (current, new, confirm); other sessions end; returns a new token | 13b | live |
 | GET | `/api/v1/admin/auth/me` | admin | The signed-in admin: role name and permissions | 13b | live |
 | GET | `/api/v1/admin/admins` | admin (`admins.manage`) | Admin accounts (`?active=true\|false`) | 13b | live |
-| POST | `/api/v1/admin/admins` | admin (`admins.manage`) | Create an admin (`name, email, role_id`); no password: a set-password link is emailed (72 h) | 13b | live |
+| POST | `/api/v1/admin/admins` | admin (`admins.manage`) | Create an admin (`name, email, role_id`): a set-password link is emailed (72 h); 2026-10-05: or `password` + `confirm_password` set it now (no link) | 13b | live |
 | GET | `/api/v1/admin/admins/:adminId` | admin (`admins.manage`) | One admin | 13b | live |
 | PATCH | `/api/v1/admin/admins/:adminId` | admin (`admins.manage`) | Name, email, role, `is_active` (deactivate; admins are never deleted). Not your own role or activity; the last super admin stays | 13b | live |
 | POST | `/api/v1/admin/admins/:adminId/password-link` | admin (`admins.manage`) | Email a new set-password link (no password yet) or reset link; older links stop working | 13b | live |
+| POST | `/api/v1/admin/admins/:adminId/password` | admin (`admins.manage`) | Set an employee's password (`password`, `confirm_password`); pending links stop working, their sessions end; not your own (403 `own_account`) | 2026-10-05 | live |
 | GET | `/api/v1/admin/roles` | admin (`admins.manage`) | The admin roles (super admin, admin, editor, sales representative) with the permissions each grants; read-only (roles are fixed in `adminPermissions.ts`) | 13b | live |
 
 ### Auth (rebuilt app)
@@ -267,8 +278,9 @@ Read routes for every member (client_user: its clients' locations); changes need
 | GET | `/api/v1/locations/:locationId/reviews` | user + owner | Reviews of the location (filters: rating, replied, reply_state, flagged, has_draft, search; sort; pages). No AI | 18 | live |
 | GET | `/api/v1/locations/:locationId/reviews/summary` | user + owner | Review stats (total, average, new this month, 4-5 / 1-3 counts, unreplied, awaiting attention, flagged, drafts pending, replies sent this month), last refresh, AI status and token costs. No AI | 18 | live |
 | POST | `/api/v1/locations/:locationId/reviews/refresh` | user + owner | Refresh Reviews: fetch new / updated reviews from Google (newest first, stops at known ones; once per 15 min). No AI | 18 | live |
-| POST | `/api/v1/locations/:locationId/reviews/drafts` | user + owner | AI reply drafts for selected 4-5 star reviews (tokens per started 10; cached drafts free) | 18 | live |
-| POST | `/api/v1/locations/:locationId/reviews/send` | user + owner | Publish the selected reviews' drafts as replies on Google | 18 | live |
+| POST | `/api/v1/locations/:locationId/reviews/drafts` | user + owner | AI reply drafts for selected reviews: any rating except suspicious (1-3 stars with careful rules; tokens per started 10; cached drafts free) | 18, changed 9.1 | live |
+| POST | `/api/v1/locations/:locationId/reviews/drafts/all` | user + owner | "Draft all unreplied": AI drafts for every unreplied, non-suspicious review, oldest first, 50 per call (`remaining` left); the whole call's cost checked first | 9.1 | live |
+| POST | `/api/v1/locations/:locationId/reviews/send` | user + owner | Publish the selected reviews' drafts as replies on Google (up to 100) | 18, changed 9.1 | live |
 | POST | `/api/v1/locations/:locationId/reviews/analyze` | user + owner | AI analysis of selected reviews: sentiment, severity, suspicious indicators, recommended action (tokens per started 10; cached) | 18 | live |
 | GET | `/api/v1/locations/:locationId/reviews/insights` | user + owner | The stored review insights (themes, praise, complaints, observations) | 18 | live |
 | POST | `/api/v1/locations/:locationId/reviews/insights` | user + owner | Generate review insights with AI (condensed data; tokens) | 18 | live |
@@ -278,13 +290,45 @@ Read routes for every member (client_user: its clients' locations); changes need
 | POST | `/api/v1/locations/:locationId/reviews/:reviewId/appeal-draft` | user + owner | AI draft of a removal report for a flagged or 1-3 star review, with Google's report link (no Google report API exists) | 18 | live |
 | PATCH | `/api/v1/locations/:locationId/reviews/:reviewId/report-status` | user + owner | Record what happened with a report on Google | 18 | live |
 
-### GBP posting (legacy, rebuilt in Phase 9)
+### GBP posts (Phase 9)
+
+Reads for every member (client_user: its clients' locations); changes need owner / member (403 `read_only`), except approve / reject, which the approvers of the location's approval mode may use (a client_user in `client` mode). All need the `gbp_posts` feature; publishing, scheduling, approving and Refresh also `requireBilling`. Google is called only on publish, on an edit or delete of a post that is on Google, and on Refresh posts, or by the `post-publish` job at the scheduled time.
 
 | Method | Path | Auth | Purpose | Phase | Status |
 |---|---|---|---|---|---|
-| POST | `/api/v1/gbp/post/add` | user | Add Post To GBP | legacy | live |
-| GET | `/api/v1/gbp/post/all/:location_id/:type` | user | Get All Post By Location Id | legacy | live |
-| DELETE | `/api/v1/gbp/post/remove` | user | Delete Post | legacy | live |
+| GET | `/api/v1/locations/:locationId/posts` | user + owner | Posts of the location (filters: status list, type, source, date range; pages), each with `issues` (what blocks publishing) and `warnings` | 9 | live |
+| POST | `/api/v1/locations/:locationId/posts` | user + owner | Create a post: a draft (may be incomplete), or `action: schedule \| publish` (through approval when required) | 9 | live |
+| GET | `/api/v1/locations/:locationId/posts/summary` | user + owner | Counts by status, last / next post, posting settings, connection (GBP, v4, photos publishable), and what the caller may do (needs approval, can approve) | 9 | live |
+| GET | `/api/v1/locations/:locationId/posts/calendar` | user + owner | Dated posts (published / scheduled) between `from` and `to` (≤ 93 days) | 9 | live |
+| POST | `/api/v1/locations/:locationId/posts/refresh` | user + owner | Refresh posts: read states back from Google and import posts made on Google (free; once per 15 min) | 9 | live |
+| PUT | `/api/v1/locations/:locationId/posts/settings` | user + owner | Posting settings: approval `off \| team \| client`, default button, language (owner only) | 9 | live |
+| GET | `/api/v1/locations/:locationId/posts/media` | user + owner | The location's post photos (newest 50) | 9 | live |
+| POST | `/api/v1/locations/:locationId/posts/media` | user + owner | Upload a post photo (multipart `file`, JPEG / PNG ≤ 5 MB, ≥ 250×250; stored as a 4:3 JPEG without metadata) | 9 | live |
+| DELETE | `/api/v1/locations/:locationId/posts/media/:mediaId` | user + owner | Delete a photo (409 while an unpublished post uses it) | 9 | live |
+| GET | `/api/v1/locations/:locationId/posts/:postId` | user + owner | One post | 9 | live |
+| PATCH | `/api/v1/locations/:locationId/posts/:postId` | user + owner | Edit a post; a post on Google is patched there first (only the changed fields) | 9 | live |
+| DELETE | `/api/v1/locations/:locationId/posts/:postId` | user + owner | Delete a post (also on Google when it is there) | 9 | live |
+| POST | `/api/v1/locations/:locationId/posts/:postId/schedule` | user + owner | Schedule (or reschedule) at `scheduled_at` (2 min to 1 year ahead), through approval when required | 9 | live |
+| POST | `/api/v1/locations/:locationId/posts/:postId/unschedule` | user + owner | Back to drafts (cancels the job or the approval request) | 9 | live |
+| POST | `/api/v1/locations/:locationId/posts/:postId/publish` | user + owner | Publish now, through approval when required | 9 | live |
+| POST | `/api/v1/locations/:locationId/posts/:postId/retry` | user + owner | Publish a failed post again | 9 | live |
+| POST | `/api/v1/locations/:locationId/posts/:postId/duplicate` | user + owner | Copy a post as a new draft | 9 | live |
+| POST | `/api/v1/locations/:locationId/posts/:postId/approve` | user + owner (read; approver role checked) | Approve a waiting post: it publishes at its time (or now) | 9 | live |
+| POST | `/api/v1/locations/:locationId/posts/:postId/reject` | user + owner (read; approver role checked) | Send a waiting post back to drafts with a note | 9 | live |
+| POST | `/api/v1/locations/:locationId/posts/ai-draft` | user + owner | AI post text: 1–3 variants for a topic and tone (OpenAI; `post_draft` tokens) | 9.1 | live |
+| POST | `/api/v1/locations/:locationId/posts/ai-image` | user + owner | AI image for a post or a description, stored as a post photo (OpenAI Images; `post_image` tokens) | 9.1 | live |
+| POST | `/api/v1/locations/:locationId/posts/:postId/ai-regenerate` | user + owner | New AI text and / or image for a post not on Google yet (a scheduled post keeps its time) | 9.1 | live |
+| GET | `/api/v1/locations/:locationId/post-series` | user + owner | AI auto-post series of the location (with next slots and recent outcomes) | 9.1 | live |
+| POST | `/api/v1/locations/:locationId/post-series` | user + owner | Set up AI auto-posts: cadence, time, topics, tone, button, image on / off, house rules, lead time (max 3 active) | 9.1 | live |
+| GET | `/api/v1/locations/:locationId/post-series/:seriesId` | user + owner | One series | 9.1 | live |
+| PATCH | `/api/v1/locations/:locationId/post-series/:seriesId` | user + owner | Change a series (applies to posts not generated yet) | 9.1 | live |
+| DELETE | `/api/v1/locations/:locationId/post-series/:seriesId` | user + owner | Delete a series; its scheduled posts go back to drafts unless `keep_scheduled=true` | 9.1 | live |
+| POST | `/api/v1/locations/:locationId/post-series/:seriesId/pause` | user + owner | Pause (no new posts; already scheduled ones stay) | 9.1 | live |
+| POST | `/api/v1/locations/:locationId/post-series/:seriesId/resume` | user + owner | Resume | 9.1 | live |
+| GET | `/api/v1/locations/:locationId/post-series/:seriesId/preview` | user + owner | The next slot times and topics (no AI) | 9.1 | live |
+| POST | `/api/v1/locations/:locationId/post-series/:seriesId/generate-next` | user + owner | Generate the next slot's post now (a sample; tokens) | 9.1 | live |
+| GET | `/api/v1/posts/calendar` | user + org | The organization-wide post calendar (every location the caller may see, or `location_ids`) | 9 | live |
+| GET | `/m/:file` | none (photo token) | Public post photo `/m/<64-hex token>.jpg` that Google fetches (noindex; the same empty 404 for anything unknown) | 9 | live |
 
 ### Citations (Phase 16)
 
@@ -304,6 +348,7 @@ Manual, admin-managed citation tracking (no external citation APIs). Admin route
 | PATCH | `/api/v1/admin/citations/categories/:categoryId` | admin (`citations.manage`) | Update a directory category | 16 | live |
 | DELETE | `/api/v1/admin/citations/categories/:categoryId` | admin (`citations.manage`) | Delete a directory category (409 `in_use` while directories use it) | 16 | live |
 | GET | `/api/v1/admin/citations/business-categories` | admin (`citations.view`) | Search the GBP business categories (`?q=`, 20 results) for mapping | 16 | live |
+| GET | `/api/v1/admin/citations/locations` | admin (`citations.view`) | Every live location with its citation summary, to find one to work on (search, organization, client, country, has / has no list; sort by name, score or last check) | 16 (follow-up 2026-10-08) | live |
 | GET | `/api/v1/admin/citations/locations/:locationId` | admin (`citations.view`) | A location's citation list: expected NAP, category matching, Citation Health, entries (and those taken off the list) | 16 | live |
 | POST | `/api/v1/admin/citations/locations/:locationId/suggest` | admin (`citations.manage`) | Add the matching directories (country, region, category group) as `not_checked`; `?dry_run=true` previews | 16 | live |
 | POST | `/api/v1/admin/citations/locations/:locationId/entries` | admin (`citations.manage`) | Add directories by hand (restores ones taken off the list) | 16 | live |
@@ -373,16 +418,19 @@ Platform admins: `billing.read` / `billing.manage` (super admin, admin). Every c
 | GET | `/api/v1/admin/billing/coupons` | admin (`billing.read`) | Coupons (token packs only) | 13a | live |
 | POST | `/api/v1/admin/billing/coupons` | admin (`billing.manage`) | Create a coupon | 13a | live |
 | PATCH | `/api/v1/admin/billing/coupons/:couponId` | admin (`billing.manage`) | Edit a coupon | 13a | live |
-| GET | `/api/v1/admin/billing/audit` | admin (`billing.read`) | Billing audit log (who, when, before → after) | 13a | live |
+| GET | `/api/v1/admin/billing/audit` | admin (`billing.read`) | Audit log (who, when, before → after): billing and, since 2026-10-05, admin-panel actions | 13a | live |
 
 ### Admin panel (Phase 13b)
 
-Platform admins: overview, users and organizations need `platform.read` / `platform.write` (super admin, admin); support tickets need `support.read` / `support.manage` (super admin, admin, editor). Every change is audit-logged. Shapes: [API.md](API.md#admin-panel-phase-13b).
+Platform admins: overview, users, organizations and reports need `platform.read` / `platform.write` (super admin, admin); support tickets need `support.read` / `support.manage` (super admin, admin, editor). Every change is audit-logged. Shapes: [API.md](API.md#admin-panel-phase-13b).
 
 | Method | Path | Auth | Purpose | Phase | Status |
 |---|---|---|---|---|---|
 | GET | `/api/v1/admin/overview` | admin (`platform.read`) | Platform overview: organizations by type and billing state, paying subscriptions and MRR per currency, trials ending in 7 days, token sales and signups (30 days), open tickets | 13b | live |
-| GET | `/api/v1/admin/users` | admin (`platform.read`) | Users: search by email or name, filter active / disabled / unverified | 13b | live |
+| GET | `/api/v1/admin/users` | admin (`platform.read`) | Users: search by email or name, filter active / disabled / unverified; 2026-10-05: `type` (business / agency), `role` (owner / member / client_user), `organization_id`, and each row's primary `organization` | 13b | live |
+| POST | `/api/v1/admin/users` | admin (`platform.write`) | Create a customer account (verified, set-password link emailed): a new Business / Agency organization it owns, or a member / client_user of an existing organization | 2026-10-05 | live |
+| PATCH | `/api/v1/admin/users/:userId` | admin (`platform.write`) | Edit a customer's `name`, `email`, `mobile`; a new email must be free (409 `email_taken`), stays verified and ends every session | 2026-10-05 | live |
+| DELETE | `/api/v1/admin/users/:userId` | admin (`platform.write`) | Delete a user (`reason` required); 409 `owns_organization` while an owned organization has other members, locations or an open subscription | 2026-10-05 | live |
 | GET | `/api/v1/admin/users/:userId` | admin (`platform.read`) | A user: memberships, verification, last logins, Google connections | 13b | live |
 | POST | `/api/v1/admin/users/:userId/disable` | admin (`platform.write`) | Disable sign-in (reason required); ends every session | 13b | live |
 | POST | `/api/v1/admin/users/:userId/enable` | admin (`platform.write`) | Enable a disabled user | 13b | live |
@@ -394,7 +442,12 @@ Platform admins: overview, users and organizations need `platform.read` / `platf
 | POST | `/api/v1/admin/organizations/:organizationId/suspend` | admin (`platform.write`) | Suspend (reason required): read-only, money-costing actions answer 403 `organization_suspended` | 13b | live |
 | POST | `/api/v1/admin/organizations/:organizationId/unsuspend` | admin (`platform.write`) | Lift a suspension | 13b | live |
 | PATCH | `/api/v1/admin/organizations/:organizationId/trial` | admin (`platform.write`) | Set / extend the trial end (moved here from the billing admin) | 13b | live |
-| PATCH | `/api/v1/admin/organizations/:organizationId/limits` | admin (`platform.write`) | Limit overrides on top of the plan: `max_locations` (null = no cap), `extra_users`; an empty body clears them | 13b | live |
+| PATCH | `/api/v1/admin/organizations/:organizationId/limits` | admin (`platform.write`) | Limit overrides on top of the plan: `max_locations` (null = no cap), `extra_users`, 2026-10-05 `free_locations` (locations without payment, never billed); an empty body clears them | 13b | live |
+| GET | `/api/v1/admin/organizations/:organizationId/clients` | admin (`platform.read`) | An agency's clients `[{ id, name, is_active, locations }]` (for assigning a client_user) | 2026-10-05 | live |
+| DELETE | `/api/v1/admin/organizations/:organizationId/members/:userId` | admin (`platform.write`) | Remove a user from one organization (`reason` required); the account stays; the owner can't be removed (403 `owner_protected`) | 2026-10-05 | live |
+| GET | `/api/v1/admin/reports` | admin (`platform.read`) | Every organization's generated reports: filter organization, location, type, status, trigger, created from / to | 2026-10-05 | live |
+| GET | `/api/v1/admin/reports/:reportId` | admin (`platform.read`) | A report: status, frozen snapshot and document blocks (as `GET /reports/:id`) | 2026-10-05 | live |
+| GET | `/api/v1/admin/reports/:reportId/pdf` | admin (`platform.read`) | Download its PDF; 409 when not ready | 2026-10-05 | live |
 | GET | `/api/v1/admin/support/tickets` | admin (`support.read`) | Support tickets: filter status, organization, assignee, unassigned, number / subject search | 13b | live |
 | GET | `/api/v1/admin/support/tickets/counts` | admin (`support.read`) | Ticket counts by status, unassigned open | 13b | live |
 | GET | `/api/v1/admin/support/tickets/:ticketId` | admin (`support.read`) | A ticket with its full thread (internal notes included) | 13b | live |
@@ -425,6 +478,30 @@ The staff dashboard's free audit: one business, one keyword, public data only (P
 | GET | `/api/v1/staff/audits/:auditId` | admin (`audits.run`) | Status and result (poll until `done` / `failed`) | 19 | live |
 | GET | `/api/v1/staff/audits/:auditId/pdf` | admin (`audits.run`) | One PDF: ranking + heatmap, then the quick GBP score (rendered on request, not stored) | 19 | live |
 | DELETE | `/api/v1/staff/audits/:auditId` | admin (`audits.run`) | Close the audit (deletes it) | 19 | live |
+
+### Free audit, marketing site (Phase 20)
+
+The public tool on mypageseo.com (the page calls api.mypageseo.com). No login: start and lead need a Cloudflare Turnstile token (`turnstile_token`), and every call about an audit needs its `X-Audit-Token` (returned once by the start). A preview first (free), the full report after the lead's email is verified. Shapes: [API.md](API.md#free-audit-marketing-site-phase-20); handoff: [MARKETING_CLAUDE_NOTE.md](MARKETING_CLAUDE_NOTE.md).
+
+| Method | Path | Auth | Purpose | Phase | Status |
+|---|---|---|---|---|---|
+| GET | `/api/v1/public/audits/places/autocomplete` | none (rate-limited) | Business (`kind=business`) or city / ZIP (`kind=city`) suggestions, US / CA | 20 | live |
+| POST | `/api/v1/public/audits` | none (Turnstile, rate-limited) | Start: `{ turnstile_token, place_id, session?, keyword, center }`; returns the audit and its `access_token` | 20 | live |
+| GET | `/api/v1/public/audits/:auditId` | none (`X-Audit-Token`) | Poll: a stripped preview until the email is verified, then the full report | 20 | live |
+| POST | `/api/v1/public/audits/:auditId/lead` | none (`X-Audit-Token`, Turnstile) | The lead `{ business_name, name, email, phone, consent }`; emails a 6-digit code | 20 | live |
+| POST | `/api/v1/public/audits/:auditId/lead/resend` | none (`X-Audit-Token`) | A new code (once a minute, 5 per audit) | 20 | live |
+| POST | `/api/v1/public/audits/:auditId/verify` | none (`X-Audit-Token`) | `{ code }`: unlocks the full report and queues it | 20 | live |
+| GET | `/api/v1/public/audits/:auditId/pdf` | none (`X-Audit-Token`) | The PDF once the full report is ready | 20 | live |
+
+### Free-audit leads, admin (Phase 20)
+
+| Method | Path | Auth | Purpose | Phase | Status |
+|---|---|---|---|---|---|
+| GET | `/api/v1/admin/leads/audits` | admin (`leads.read`) | Every free audit with its lead (`from`, `to`, `verified`, `q`, `page`, `limit`) | 20 | live |
+| GET | `/api/v1/admin/leads/audits/export` | admin (`leads.read`) | The same list as CSV (max 5,000 rows) | 20 | live |
+| GET | `/api/v1/admin/leads/audits/:leadId` | admin (`leads.read`) | One lead with its full audit | 20 | live |
+| GET | `/api/v1/admin/leads/audits/:leadId/pdf` | admin (`leads.read`) | Its PDF (verified and finished audits) | 20 | live |
+| DELETE | `/api/v1/admin/leads/audits/:leadId` | admin (`leads.manage`) | Delete a lead and its report (privacy requests); audit-logged | 20 | live |
 
 ### Reference data
 
@@ -620,10 +697,10 @@ Every location, client and report belongs to an organization; roles `owner`, `me
 | 36 | PATCH | `/organization` | user + org (owner) | `{ name?, country? }` | As #35 |
 | 37 | GET | `/organization/usage` | user + org | – | `{ plan: { id, name, kind }, billing: { state, read_only, trial_ends_at, current_period_end }, locations: { used, limit, max }, users: { used, limit }, tokens: { balance }, keywords: { used, limit: null }, clients, api_usage: { … } }` (13a; `api_usage` 12.5) |
 | 38 | GET | `/organization/members` | user + org (owner/member) | – | `[{ user_id, name, email, role, client_ids, status }]` |
-| 39 | GET | `/locations` | user + org | `search, client_id, status (active\|setup_required\|gbp_not_connected\|gbp_disconnected\|reconnect_required), sort, order, page, limit` | `{ locations: [row], page, limit, total, pending_gbp }`; rows have `gbp_disconnected_at` (2026-10-01) |
+| 39 | GET | `/locations` | user + org | `search, client_id, status (active\|setup_required\|gbp_not_connected\|gbp_disconnected\|reconnect_required), sort, order, page, limit` | `{ locations: [row], page, limit, total, pending_gbp }`; rows have `gbp_disconnected_at` (2026-10-01) and `citations: { score, grade, nap_wrong } \| null` (2026-10-08; `sort=citation_score`) |
 | 40 | POST | `/locations` | user + org (owner/member) | `{ place_id, client_id? }` | **201** `{ location, api_calls }`; **409** `duplicate_place`; 13a: **402** `subscription_required` (trial allowance used / read-only), **402** `location_payment_required` `{ used, paid, quote }`, **403** `enterprise_required` `{ used, max }` |
 | 41 | GET | `/locations/:locationId` | user, owner | – | Location header; `center: { source: place\|manual, label, lat, lng } \| null` (where rankings are measured from), `gbp_disconnected_at` (2026-10-01) |
-| 42 | GET | `/locations/:locationId/overview` | user, owner | – | Header + `rankings, gbp, performance, reviews, competitors, refresh, empty_states` |
+| 42 | GET | `/locations/:locationId/overview` | user, owner | – | Header + `rankings, gbp, performance, reviews, competitors, citations (2026-10-08), refresh, empty_states` |
 | 43 | PATCH | `/locations/:locationId` | user, owner (write) | `{ name?, timezone?, client_id? }` | Header |
 | 44 | DELETE | `/locations/:locationId` | user, owner (write) | – | `{ deleted, gbp_unbound, jobs_cancelled, usage }` |
 | 45 | GET | `/clients` | user + org (agency) | `search, status, page, limit` (limit 1–100) | `{ clients, page, limit, total }` |
@@ -737,6 +814,7 @@ Admin auth: a platform-admin token with the permission shown. Errors carry `data
 | 104 | GET | `/admin/citations/queue/recent` | admin (`citations.view`) | `days (default 7), organization_id, client_id, status (the new status), directory_id, type, page, limit` | `{ days, changes: [history row + directory + location], page, limit, total }` |
 | 105 | GET | `/locations/:locationId/citations` | user + owner | `status` | `{ available: true, health: { score, grade, coverage, total }, counts, last_checked_at, recent_changes: [change], citations: [{ directory: { name, url, type }, status, nap_issues: [{ field, found, expected }], listing_url, last_checked_at }] }` (problems first); `{ available: false, reason: "no_citations_yet" }` |
 | 106 | GET | `/locations/:locationId/citations/changes` | user + owner | `page, limit` | `{ changes: [{ at, directory: { name, type }, action, from, to, changed_fields, by: "MyPageSEO team" }], page, limit, total }` |
+| 190 | GET | `/admin/citations/locations` | admin (`citations.view`) | `q` (name or city), `organization_id, client_id, country (US\|CA), list (has\|none), sort (name (default)\|score (lowest first, no list last)\|checked (least recently first)), page, limit (≤ 100)` | `{ locations: [{ location: { id, name, city, country, organization, client }, citations: { score, grade, coverage, total, counts, last_checked_at } \| null }], page, limit, total }` (`citations: null` = no list yet: open it and run suggest) |
 
 ### Billing (Phase 13a)
 
@@ -790,7 +868,7 @@ Money is in the organization's currency (US → USD, CA → CAD). Errors carry `
 | 146 | GET | `/admin/billing/coupons` | admin (`billing.read`) | – | `[{ id, code, discount_type, value, pack_ids, max_redemptions, redemptions, expires_at, is_active, note }]` |
 | 147 | POST | `/admin/billing/coupons` | admin (`billing.manage`) | `{ code, discount_type: percent\|fixed, value, pack_ids?, max_redemptions?, expires_at?, is_active?, note? }` | **201** coupon; **409** `code_taken` |
 | 148 | PATCH | `/admin/billing/coupons/:couponId` | admin (`billing.manage`) | any field of #146 except `code` | coupon |
-| 151 | GET | `/admin/billing/audit` | admin (`billing.read`) | `organization_id, action, page, limit` | `{ entries: [{ id, action, organization_id, target, before, after, note, by: { admin_id, name }, at }], page, limit, total }` |
+| 151 | GET | `/admin/billing/audit` | admin (`billing.read`) | `organization_id, action (exact), page, limit`; 2026-10-05: lists `billing.*` and `admin.*` actions (admin panel and admin accounts) | `{ entries: [{ id, action, organization_id, target, before, after, note, by: { admin_id, name }, at }], page, limit, total }` |
 
 ### Reviews (Phase 18)
 
@@ -799,8 +877,8 @@ Money is in the organization's currency (US → USD, CA → CAD). Errors carry `
 | 159 | GET | `/locations/:locationId/reviews` | user, owner | query `rating` (1-5 or `4,5`), `replied`, `reply_state` (none\|draft\|sent\|failed), `flagged` (any\|suspicious\|attention\|none), `has_draft`, `search`, `sort` (newest\|oldest\|rating_asc\|rating_desc), `page`, `limit` (≤ 100) | `{ reviews: [review], page, limit, total, attribution }`; review = `{ review_id, rating, comment, reviewer, create_time, reply, reply_state, draft, flags, flag_level, analysis, appeal, report_status, ai_reply_eligible, ai_reply_skip_reason, appeal_eligible, … }` |
 | 160 | GET | `/locations/:locationId/reviews/summary` | user, owner | – | `{ stats: { total, average_rating, new_this_month, positive, negative, unreplied, awaiting_attention, flagged, suspicious, drafts_pending, replies_sent_this_month, last_review_at }, last_synced_at, last_refreshed_at, next_refresh_allowed_at, v4_enabled, gbp_connected, ai: { configured, paused_today, token_costs, token_balance } }` |
 | 161 | POST | `/locations/:locationId/reviews/refresh` | user, owner (write) | – | `{ refreshed_at, google_calls, new_reviews, updated_reviews, stats }`; **429** `rate_limited` + `next_allowed_at`; **400** `gbp_not_connected`, `v4_access_pending` |
-| 162 | POST | `/locations/:locationId/reviews/drafts` | user, owner (write) | `{ review_ids: [≤ 20], regenerate? }` | `{ drafts: [review], generated, reused, skipped: [{ review_id, reason: rating_not_eligible\|already_replied\|flagged\|no_rating\|not_found }], tokens_spent }`; **402** `insufficient_tokens`; **503** `ai_not_configured` / `ai_budget_reached`; **502** `ai_failed` (refunded) |
-| 163 | POST | `/locations/:locationId/reviews/send` | user, owner (write) | `{ review_ids: [≤ 50] }` | `{ results: [{ review_id, status: sent\|failed\|skipped, reason }], sent, failed }` |
+| 162 | POST | `/locations/:locationId/reviews/drafts` | user, owner (write) | `{ review_ids: [≤ 20], regenerate? }` | `{ drafts: [review], generated, reused, skipped: [{ review_id, reason: already_replied\|flagged\|no_rating\|not_found }], tokens_spent }` (9.1: every rating; 1-3 stars drafted in their own batches); **402** `insufficient_tokens`; **503** `ai_not_configured` / `ai_budget_reached`; **502** `ai_failed` (refunded) |
+| 163 | POST | `/locations/:locationId/reviews/send` | user, owner (write) | `{ review_ids: [≤ 100] }` | `{ results: [{ review_id, status: sent\|failed\|skipped, reason }], sent, failed }` |
 | 164 | POST | `/locations/:locationId/reviews/analyze` | user, owner (write) | `{ review_ids: [≤ 20], regenerate? }` | `{ reviews: [review], analyzed, reused, skipped, tokens_spent }`; errors as #162 |
 | 165 | GET | `/locations/:locationId/reviews/insights` | user, owner | – | `{ generated_at, ai_model, basis, insight: { themes, praise, complaints, observations } }`; **404** `no_insights` |
 | 166 | POST | `/locations/:locationId/reviews/insights` | user, owner (write) | – | **201** `{ generated_at, ai_model, basis, insight, tokens_spent }`; **400** `no_reviews`; errors as #162 |
@@ -809,6 +887,7 @@ Money is in the organization's currency (US → USD, CA → CAD). Errors carry `
 | 169 | DELETE | `/locations/:locationId/reviews/:reviewId/reply` | user, owner (write) | – | `{ deleted, review_id }`; **400** `no_reply` |
 | 170 | POST | `/locations/:locationId/reviews/:reviewId/appeal-draft` | user, owner (write) | `{ regenerate? }` | `{ review, appeal: { text, policy_reason, generated_at, stale }, report_url, tokens_spent }`; **400** `not_eligible`; errors as #162 |
 | 171 | PATCH | `/locations/:locationId/reviews/:reviewId/report-status` | user, owner (write) | `{ status: not_reported\|reported\|appeal_submitted\|removed\|kept }` | review |
+| 212 | POST | `/locations/:locationId/reviews/drafts/all` | user, owner (write) | `{ regenerate? }` | `{ drafted, remaining, tokens_spent, drafts: [review] }` (up to 50 per call, oldest unanswered first; user-written or edited drafts kept unless `regenerate`); **402** `insufficient_tokens` `{ cost, balance, reviews }` before anything is spent; errors as #162 |
 
 ### Sales audit (Phase 19)
 
@@ -817,9 +896,63 @@ Money is in the organization's currency (US → USD, CA → CAD). Errors carry `
 | 172 | GET | `/staff/audits/places/autocomplete` | admin (`audits.run`) | query `input` (2–120), `session` (8–36 of `A-Za-z0-9_-`) | `{ suggestions: [{ place_id, description, main_text, secondary_text, types }], attribution }` (businesses only); **429** `rate_limited` (120 / h per staff member); **503** `places_not_configured`; **502** `places_error` |
 | 173 | GET | `/staff/audits` | admin (`audits.run`) | – | `{ audits: [audit without result] }` (newest first, max 50) |
 | 174 | POST | `/staff/audits` | admin (`audits.run`) | `{ place_id, session?, keyword: 2–80 }` | **201** audit (`status: queued`); **400** `unsupported_country` (US / CA only), `no_location`; **429** `daily_limit_reached` (`STAFF_AUDIT_DAILY_LIMIT` per 24 h, `limit`, `retry_after_seconds`); **503** / **502** as #172 |
-| 175 | GET | `/staff/audits/:auditId` | admin (`audits.run`) | – | audit = `{ id, status: queued\|running\|done\|failed, keyword, business: { place_id, name, address, lat, lng, country, region, rating, user_rating_count, category, website, phone, has_hours, photo_count, score: { score, grade, parts, flag }, checklist }, grid: { size: 7, radius_km: 5, spacing_km }, result: { cells: [{ row, col, lat, lng, rank, status }], summary: { center_rank, center_status, avg_rank, found_rate, top3_rate, points, failed_points }, higher: [{ rank, name, address, is_self }] \| null, competitors: [{ rank, name, address, facts, score, checklist }] } \| null, warnings, failure_reason, api_calls, created_at, finished_at, expires_at, attribution }`; **404** `audit_not_found` |
+| 175 | GET | `/staff/audits/:auditId` | admin (`audits.run`) | – | audit = `{ id, status: queued\|running\|done\|failed, keyword, business: { place_id, name, address, lat, lng, country, region, rating, user_rating_count, category, website, phone, has_hours, photo_count, score: { score, grade, parts, flag }, checklist }, grid: { size: 7, radius_km: 5, spacing_km }, result: { cells: [{ row, col, lat, lng, rank, status }], summary: { center_rank, center_status, avg_rank, found_rate, top3_rate, points, failed_points, area_rank }, basis: "area", higher: [{ rank, name, address, is_self, avg_rank, top3_rate }] (up to 10 ahead across the area + the business's own row last) \| null, competitors: [{ rank, avg_rank, top3_rate, name, address, facts, score, checklist }] (the area top 3), area: { entries, self_rank, ahead, seen, points } } \| null, warnings, failure_reason, api_calls, created_at, finished_at, expires_at, attribution }`; **404** `audit_not_found` |
 | 176 | GET | `/staff/audits/:auditId/pdf` | admin (`audits.run`) | – | `application/pdf` (attachment `audit-<business>-<date>.pdf`); **409** `audit_not_ready`; **404** `audit_not_found` |
 | 177 | DELETE | `/staff/audits/:auditId` | admin (`audits.run`) | – | `{ deleted: true, id }`; **404** `audit_not_found` |
+
+### Free audit, marketing site (Phase 20)
+
+| # | Method | Path | Auth | Input | Returns |
+|---|---|---|---|---|---|
+| 178 | GET | `/public/audits/places/autocomplete` | none (rate-limited) | query `input` (2–120), `session` (8–36 of `A-Za-z0-9_-`), `kind` (`business` default \| `city`) | `{ suggestions: [{ place_id, description, main_text, secondary_text, types }], attribution }`; **429** `rate_limited` (100 / h per IP) or `daily_cap_reached`; **503** `places_not_configured`; **502** `places_error` |
+| 179 | POST | `/public/audits` | none (Turnstile, rate-limited) | `{ turnstile_token, place_id, session?, keyword: 2–80, center: { source: "business" } \| { source: "city", place_id, session? } }` | **201** view (below) + `access_token` (64 hex, shown once); **403** `turnstile_failed`; **429** `limit_reached` `{ which: business\|ip, limit, contact_url }`, `daily_cap_reached`; **400** `unsupported_country`, `no_location` (pick a city), `city_not_found`; **503** `tool_disabled`, `places_not_configured`; **502** `places_error` |
+| 180 | GET | `/public/audits/:auditId` | none (`X-Audit-Token`) | – | view = `{ id, stage: preview_queued\|preview_running\|preview_done\|full_queued\|full_running\|done\|failed, preview_ready, full_ready, polling, locked, keyword, center: { source, label, lat, lng }, grid, business, preview: { summary (incl. area_rank), cells: [{ row, col, bucket }], score: { score, grade }, businesses_ahead } \| null, result (full, unlocked only: as #175 with basis "area"; `area` = counts only) \| null, pdf_available, lead: { submitted, email_masked, verified, code_expires_at, attempts_left }, warnings, failure_reason, created_at, finished_at, attribution }`; **404** `audit_not_found` (also a wrong or missing token, or expired) |
+| 181 | POST | `/public/audits/:auditId/lead` | none (`X-Audit-Token`, Turnstile) | `{ turnstile_token, business_name: 2–120, name: 2–80, email, phone (US / CA), consent: true }` | view (`lead.submitted: true`); **400** `invalid_phone`, `invalid_input`; **403** `turnstile_failed`; **409** `already_verified`, `audit_failed`; **429** `limit_reached` `{ which: email\|phone }`, `code_resend_too_soon` `{ retry_after_seconds }`, `too_many_codes`; **502** `email_failed` |
+| 182 | POST | `/public/audits/:auditId/lead/resend` | none (`X-Audit-Token`) | – | view; **400** `lead_missing`; **409** `already_verified`; **429** `code_resend_too_soon`, `too_many_codes` |
+| 183 | POST | `/public/audits/:auditId/verify` | none (`X-Audit-Token`) | `{ code: 6 digits }` | view (`lead.verified: true`, stage moves to `full_queued`); **400** `code_invalid` `{ attempts_left }`, `code_expired`, `lead_missing`; **429** `too_many_attempts` (ask for a new code), `limit_reached`; **409** `audit_failed` |
+| 184 | GET | `/public/audits/:auditId/pdf` | none (`X-Audit-Token`) | – | `application/pdf` (attachment); **409** `audit_not_ready` |
+| 185 | GET | `/admin/leads/audits` | admin (`leads.read`) | query `from`, `to` (ISO dates), `verified` (true\|false), `q` (name, email, phone digits, business, keyword), `page`, `limit` (≤ 100) | `{ leads: [{ id, created_at, stage, keyword, business: { name, address, rating, user_rating_count }, center: { source, label }, lead: { business_name, name, email, phone, verified_at } \| null, summary: { center_rank, avg_rank, top3_rate } \| null, score: { score, grade } \| null }], page, limit, total }` |
+| 186 | GET | `/admin/leads/audits/export` | admin (`leads.read`) | the list filters | `text/csv` (`free-audit-leads-<date>.csv`) |
+| 187 | GET | `/admin/leads/audits/:leadId` | admin (`leads.read`) | – | `{ id, stage, keyword, business, center, grid, result, warnings, failure_reason, lead: { business_name, name, email, phone, consent_at, consent_text_version, verified_at, submitted_at }, api_calls, report_emailed_at, created_at, finished_at, expires_at, attribution }`; **404** `audit_not_found` |
+| 188 | GET | `/admin/leads/audits/:leadId/pdf` | admin (`leads.read`) | – | `application/pdf`; **409** `audit_not_ready` |
+| 189 | DELETE | `/admin/leads/audits/:leadId` | admin (`leads.manage`) | – | `{ deleted: true, id }`; **404** `audit_not_found` |
+
+### GBP posts (Phase 9)
+
+| # | Method | Path | Auth | Input | Returns |
+|---|---|---|---|---|---|
+| 191 | GET | `/locations/:locationId/posts` | user, owner | query `status` (comma list of draft\|pending_approval\|scheduled\|publishing\|published\|failed\|rejected), `type`, `source` (manual\|ai\|google), `from`, `to` (ISO; on published / scheduled time), `page`, `limit` (≤ 100) | `{ posts: [post], page, limit, total }`; post shape in API.md |
+| 192 | POST | `/locations/:locationId/posts` | user, owner (write) | post fields (API.md) + `action: draft\|schedule\|publish` (default draft) + `scheduled_at` (with schedule) | **201** post; **422** `post_incomplete` `{ issues }`; **400** `gbp_not_connected`, `v4_access_pending`, `schedule_in_past`, `schedule_too_far`, `media_not_found` |
+| 193 | GET | `/locations/:locationId/posts/summary` | user, owner | – | `{ stats: { drafts, pending_approval, scheduled, published, failed, rejected, published_last_30_days, last_published_at, next_scheduled_at }, settings, connection: { gbp_connected, v4_enabled, photos_publishable }, you: { role, needs_approval, can_approve } }` |
+| 194 | GET | `/locations/:locationId/posts/calendar` | user, owner | query `from`, `to` (ISO, ≤ 93 days) | `{ from, to, items: [{ post_id, location_id, type, status, source, date, summary (≤ 140), event, recurrence }] }`; **400** `range_too_long`, `invalid_range` |
+| 195 | POST | `/locations/:locationId/posts/refresh` | user, owner (write) | – | `{ updated, imported, missing, refreshed_at, next_allowed_at }`; **429** `refresh_too_soon` + `next_allowed_at`; **400** `gbp_not_connected`, `v4_access_pending`; **502** with Google's reason |
+| 196 | PUT | `/locations/:locationId/posts/settings` | user, owner (owner role) | `{ approval?: off\|team\|client, default_cta?: { type, url } \| null, language_code? }` | `{ settings }`; **403** `owner_only`; **400** `no_client` (client approval needs a client) |
+| 197 | GET | `/locations/:locationId/posts/media` | user, owner | – | `{ media: [{ media_id, kind: upload\|ai, url, width, height, bytes, created_at }] }` |
+| 198 | POST | `/locations/:locationId/posts/media` | user, owner (write) | multipart `file` | **201** media; **400** `media_type`, `media_too_small`, `media_too_large`, `media_too_plain`, `media_unreadable`, `invalid_upload` |
+| 199 | DELETE | `/locations/:locationId/posts/media/:mediaId` | user, owner (write) | – | `{ media_id, deleted: true }`; **409** `media_in_use`; **404** `media_not_found` |
+| 200 | GET | `/locations/:locationId/posts/:postId` | user, owner | – | post; **404** `post_not_found` |
+| 201 | PATCH | `/locations/:locationId/posts/:postId` | user, owner (write) | any post field | post; **409** `invalid_status`, `deleted_on_google`, `type_change_on_published`, `post_changed`; **422** `post_incomplete` (scheduled / published posts must stay complete); **502** Google refused the change |
+| 202 | DELETE | `/locations/:locationId/posts/:postId` | user, owner (write) | – | `{ post_id, deleted: true, deleted_on_google }`; **502** Google refused |
+| 203 | POST | `/locations/:locationId/posts/:postId/schedule` | user, owner (write) | `{ scheduled_at }` | post (`scheduled` or `pending_approval`); errors as #192; **409** `invalid_status` |
+| 204 | POST | `/locations/:locationId/posts/:postId/unschedule` | user, owner (write) | – | post (`draft`) |
+| 205 | POST | `/locations/:locationId/posts/:postId/publish` | user, owner (write) | – | post (`published`, `rejected`, `failed` with `error`, or `pending_approval`) |
+| 206 | POST | `/locations/:locationId/posts/:postId/retry` | user, owner (write) | – | as #205 (from `failed` only) |
+| 207 | POST | `/locations/:locationId/posts/:postId/duplicate` | user, owner (write) | – | **201** post (`draft`) |
+| 208 | POST | `/locations/:locationId/posts/:postId/approve` | user, owner (read; approver) | `{ note? }` | post (`scheduled` or published now); **403** `not_an_approver`; **409** `invalid_status` |
+| 209 | POST | `/locations/:locationId/posts/:postId/reject` | user, owner (read; approver) | `{ note? }` | post (`draft`, `approval.decision: rejected`) |
+| 210 | GET | `/posts/calendar` | user, org | query `from`, `to` (≤ 93 days), `location_ids?` (comma list) | `{ from, to, locations: [{ location_id, name }], items: [as #194 + location_name] }` |
+| 213 | POST | `/locations/:locationId/posts/ai-draft` | user, owner (write) | `{ topic: 3–300, tone?: friendly\|professional\|enthusiastic\|informative, type?: standard\|event\|offer, cta_type?, variants?: 1–3, language_code? }` | `{ drafts: [{ summary, event_title, cta_type, image_idea }], tokens_spent, model }`; **402** `insufficient_tokens`; **503** `ai_not_configured` / `ai_budget_reached`; **502** `ai_failed` (refunded) |
+| 214 | POST | `/locations/:locationId/posts/ai-image` | user, owner (write) | `{ post_id? \| prompt_hint?: 3–500, style? }` (style keys in API.md) | **201** `{ media: { media_id, kind: "ai", url, width, height, … }, style, tokens_spent }`; errors as #213; **404** `post_not_found`; **400** `subject_required` |
+| 215 | POST | `/locations/:locationId/posts/:postId/ai-regenerate` | user, owner (write) | `{ text?: true, image?: false, topic?, tone? }` | `{ post, tokens_spent }`; **409** `invalid_status` (only draft, scheduled, waiting or failed posts); errors as #213 |
+| 216 | GET | `/locations/:locationId/post-series` | user, owner | – | `{ series: [series], limit: 3 }`; series shape in API.md |
+| 217 | POST | `/locations/:locationId/post-series` | user, owner (write) | `{ name, cadence: { kind: weekly, days_of_week } \| { kind: every_n_days, n: 1–30 } \| { kind: monthly, day_of_month: 1–28 }, time_of_day: "HH:mm", starts_on, ends_on?, topics: [1–20], tone?, cta?, include_image? (true), language_code?, instructions? (≤ 500), lead_hours? (12–168, 48) }` | **201** series; **400** `gbp_not_connected`, `ends_before_start`, `no_days`; **409** `too_many_series` |
+| 218 | GET | `/locations/:locationId/post-series/:seriesId` | user, owner | – | series; **404** `series_not_found` |
+| 219 | PATCH | `/locations/:locationId/post-series/:seriesId` | user, owner (write) | any field of #217 | series |
+| 220 | DELETE | `/locations/:locationId/post-series/:seriesId` | user, owner (write) | query `keep_scheduled` (false) | `{ series_id, deleted: true, posts_unscheduled }` |
+| 221 | POST | `/locations/:locationId/post-series/:seriesId/pause` | user, owner (write) | – | series (`active: false`) |
+| 222 | POST | `/locations/:locationId/post-series/:seriesId/resume` | user, owner (write) | – | series; **409** `too_many_series` |
+| 223 | GET | `/locations/:locationId/post-series/:seriesId/preview` | user, owner | query `count` (1–20, 5) | `{ time_zone, slots: [{ slot_at, topic, generates_at }] }` |
+| 224 | POST | `/locations/:locationId/post-series/:seriesId/generate-next` | user, owner (write) | – | **201** `{ series, post }`; **409** `no_slots`; **402** / **503** / **502** with the AI reason |
 
 ## Removed endpoints
 
@@ -832,5 +965,7 @@ Removed in Phase 16: the 13 legacy `/api/v1/citation/*` routes (manual pricings,
 Removed on 2026-10-01: `GET /api/v1/gbp`, `POST /api/v1/gbp/bind`, `GET /api/v1/onboarding/gbp-profiles` and `POST /api/v1/onboarding/select-profile` (replaced by the connect, pick and bind flow, #14–#15a).
 
 Removed in Phase 8.1: `POST /api/v1/auth/verify-email/resend` (now `POST /api/v1/auth/resend-verification`) and the legacy `POST /api/v1/user/auth/register` (use `POST /api/v1/auth/signup`).
+
+Removed in Phase 9: the legacy posting routes `POST /api/v1/gbp/post/add`, `GET /api/v1/gbp/post/all/:location_id/:type` and `DELETE /api/v1/gbp/post/remove` (untyped, raw axios, whole documents in job data), replaced by `/locations/:locationId/posts*` (#191–#209). `POST /api/v1/gbp/unbind` stays, moved to the connect controller.
 
 Removed in the legacy cleanup (Phase 9a): the old ranking routes (`/rank-tracker`, `/local-search-grid`, `/local-map-ranking`), `/gbp-audit`, `/reputation-manager`, the white-label report links and the Search Console connect. See [LEGACY_FEATURES.md](LEGACY_FEATURES.md).

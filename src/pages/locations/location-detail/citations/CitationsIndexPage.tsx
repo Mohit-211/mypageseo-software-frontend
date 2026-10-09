@@ -1,64 +1,74 @@
 import { Link } from "react-router-dom";
-import { useEffect } from "react";
 import { ArrowLeft } from "lucide-react";
+import { isApiError } from "@/api";
 import { AppShell } from "@/components/layout/shared/app-shell";
 import { PageHeader } from "@/components/layout/shared/data-display";
 import { LocationHeader, LocationNavigation } from "@/components/location/location-workspace";
-import { CitationsContent } from "@/components/citation/citations";
-import { EmptyState, ErrorState } from "@/components/layout/shared/feedback/states";
+import { CitationsContent, CitationsError, CitationsLoading, CitationsSettingUp } from "@/components/citation/citations";
+import { ReportButton } from "@/components/report/rank-report-button";
+import { EmptyState, ErrorState, PageSkeleton } from "@/components/layout/shared/feedback/states";
 import { Button } from "@/components/ui/button";
-import { getCitations } from "@/lib/citations/citations";
-import { useWorkspace } from "@/lib/mypageseo/workspace";
+import { useCitations } from "@/lib/citations/use-citations";
+import { useLocation } from "@/lib/locations/use-locations";
 import { useRequiredParams } from "@/hooks/use-required-params";
 
 const description =
-  "Monitor this location's business listings across directories and identify citation health, consistency, missing listings, duplicates, and recent changes.";
-
-
+  "Your business listings on online directories, checked by hand by the MyPageSEO team: which are live and correct, which show the wrong name, address or phone, and where you aren't listed.";
 
 function LocationCitationsPage() {
   const { locationId } = useRequiredParams("locationId");
-  const workspace = useWorkspace();
-  const location = workspace.locations.find((item) => item.id === locationId) ?? null;
+  const location = useLocation(locationId);
+  const citations = useCitations(locationId);
 
-  useEffect(() => {
-    if (location && workspace.activeLocation?.id !== location.id) {
-      workspace.setActiveClientId(location.clientId ?? null);
-      workspace.setActiveLocationId(location.id);
-    }
-  }, [location, workspace]);
-
-  const data = getCitations(locationId);
-
-  if (workspace.status === "loading") {
-    return <AppShell><div role="status" aria-live="polite" className="h-64 animate-pulse rounded-lg bg-muted" aria-label="Loading location workspace" /></AppShell>;
-  }
-  if (workspace.status === "unavailable") {
-    return <AppShell><ErrorState description="We couldn't load this location workspace. Try again without leaving this page." onRetry={() => window.location.reload()} /></AppShell>;
-  }
-  if (!location) {
+  if (location.isPending) return <AppShell><PageSkeleton /></AppShell>;
+  if (location.isError) {
     return (
       <AppShell>
-        <PageHeader title="Location unavailable" description="This location is not available in the current organization." />
-        <EmptyState
-          title="Location not found"
-          description="Choose an available location to open its citation workspace."
-          action={<Button asChild variant="outline"><Link to="/locations"><ArrowLeft aria-hidden /> Back to locations</Link></Button>}
-        />
+        {isApiError(location.error) && location.error.status === 404 ? (
+          <EmptyState
+            title="Location not found"
+            description="It may have been deleted, or it isn't in this organization."
+            action={<Button asChild variant="outline"><Link to="/locations"><ArrowLeft aria-hidden /> Back to locations</Link></Button>}
+          />
+        ) : (
+          <ErrorState description="We couldn't load this location." onRetry={() => void location.refetch()} />
+        )}
       </AppShell>
     );
   }
 
+  const data = location.data;
+  const available = citations.data?.available === true;
+
   return (
     <AppShell showLocationContext={false}>
-      <LocationHeader location={location} />
-      <LocationNavigation locationId={location.id} activeSection="citations" />
+      <LocationHeader
+        location={{
+          id: data.location_id,
+          ...(data.client ? { clientId: data.client.client_id } : {}),
+          businessName: data.name,
+          area: [data.city, data.state, data.country].filter(Boolean).join(", "),
+        }}
+      />
+      <LocationNavigation locationId={data.location_id} activeSection="citations" />
       <PageHeader
         title="Citations"
         description={description}
-        meta={data.lastCheckedAt ? <p className="text-xs text-muted-foreground">Last checked {data.lastCheckedAt}</p> : undefined}
+        actions={
+          available ? (
+            <ReportButton locationId={data.location_id} type="citation" subtitle="Citation Health, every listing, wrong details and recent changes." />
+          ) : undefined
+        }
       />
-      <CitationsContent data={data} locationId={location.id} onRetry={() => window.location.reload()} />
+      {citations.isPending ? (
+        <CitationsLoading />
+      ) : citations.isError ? (
+        <CitationsError onRetry={() => void citations.refetch()} />
+      ) : citations.data.available ? (
+        <CitationsContent data={citations.data} locationId={data.location_id} />
+      ) : (
+        <CitationsSettingUp />
+      )}
     </AppShell>
   );
 }

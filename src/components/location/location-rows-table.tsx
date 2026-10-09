@@ -73,7 +73,7 @@ export function LocationRowsTable({
   return (
     <TableCard>
       <div className="hidden md:block">
-        <TableScroll minWidth={980} label="Locations">
+        <TableScroll minWidth={1080} label="Locations">
           <TableHead>
             <SortableTh label="Location" value="name" active={sort} order={order} onSort={onSort} className="min-w-[240px]" />
             <SortableTh label="City" value="city" active={sort} order={order} onSort={onSort} />
@@ -81,6 +81,7 @@ export function LocationRowsTable({
             <SortableTh label="Avg. rank" value="rank" active={sort} order={order} onSort={onSort} />
             <SortableTh label="GBP score" value="gbp_score" active={sort} order={order} onSort={onSort} />
             <SortableTh label="Reviews" value="rating" active={sort} order={order} onSort={onSort} />
+            <SortableTh label="Citations" value="citation_score" active={sort} order={order} onSort={onSort} />
             <Th>Status</Th>
             <SortableTh label="Last refreshed" value="last_refreshed" active={sort} order={order} onSort={onSort} />
             <Th className="w-12" srOnly>
@@ -106,6 +107,7 @@ export function LocationRowsTable({
                 <td className={tdClass}><RankCell location={location} /></td>
                 <td className={tdClass}><GbpScoreCell location={location} /></td>
                 <td className={tdClass}><ReviewsCell location={location} /></td>
+                <td className={tdClass}><CitationsCell location={location} /></td>
                 <td className={tdClass}><LocationRowStatusBadge status={location.status} /></td>
                 <td className={tdClass}><span className="text-sm text-muted-foreground">{formatDate(location.last_refreshed_at)}</span></td>
                 <td className="px-2 py-3.5"><RowMenu location={location} agency={agency} actions={actions} /></td>
@@ -131,10 +133,11 @@ export function LocationRowsTable({
             <div className="mt-3 grid grid-cols-3 gap-3 border-y border-border py-3">
               <MobileField label="Avg. rank" value={location.rank?.overall_avg_rank == null ? "—" : location.rank.overall_avg_rank.toFixed(1)} />
               <MobileField label="GBP score" value={location.gbp?.score == null ? "—" : `${location.gbp.score}${location.gbp.grade ? ` (${location.gbp.grade})` : ""}`} />
-              <MobileField label="Last refreshed" value={formatDate(location.last_refreshed_at)} />
+              <MobileField label="Citations" value={<CitationsCell location={location} />} />
             </div>
             <div className="mt-3 flex items-center justify-between gap-3">
               <ReviewsCell location={location} />
+              <span className="text-xs text-muted-foreground">Refreshed {formatDate(location.last_refreshed_at)}</span>
               <LocationRowStatusBadge status={location.status} />
             </div>
           </MobileListRow>
@@ -210,6 +213,21 @@ function ReviewsCell({ location }: { location: LocationRow }) {
       <Star className="size-3.5 fill-warning text-warning" aria-hidden />
       <span className="font-medium">{rating.toFixed(1)}</span>
       {count != null ? <span className="text-xs text-muted-foreground">({count.toLocaleString()})</span> : null}
+    </span>
+  );
+}
+
+function CitationsCell({ location }: { location: LocationRow }) {
+  const citations = location.citations;
+  if (citations?.score == null) return dash;
+  return (
+    <span className="text-sm font-medium text-foreground">
+      {citations.score}
+      <span className="text-xs font-normal text-muted-foreground">/100</span>
+      {citations.grade ? <span className="ml-1.5 text-xs text-muted-foreground">{citations.grade}</span> : null}
+      {citations.nap_wrong > 0 ? (
+        <span className="mt-0.5 block text-xs font-normal text-warning-foreground">{citations.nap_wrong} wrong NAP</span>
+      ) : null}
     </span>
   );
 }

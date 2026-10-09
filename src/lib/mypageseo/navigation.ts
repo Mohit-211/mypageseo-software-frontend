@@ -63,7 +63,6 @@ export const primaryNavigation: NavItem[] = [
       { label: "Audit", to: "/gbp/audit", locationPath: "audit" },
       { label: "Competitors", to: "/gbp/competitors", locationPath: "audit/competitors" },
       { label: "Posts", to: "/gbp/posts", locationPath: "posts" },
-      { label: "AI Posts", to: "/gbp/ai-posts" },
     ],
   },
   {

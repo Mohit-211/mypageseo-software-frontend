@@ -52,7 +52,7 @@ const searchSchema = z.object({
 
 const PAGE_SIZE = 25;
 const STATUSES: LocationStatus[] = ["active", "setup_required", "gbp_disconnected", "gbp_not_connected", "reconnect_required"];
-const SORTS: LocationSortField[] = ["name", "city", "rank", "gbp_score", "rating", "last_refreshed"];
+const SORTS: LocationSortField[] = ["name", "city", "rank", "gbp_score", "rating", "citation_score", "last_refreshed"];
 const DESCRIPTION = "Manage the Google Business Profiles connected to your Mypageseo account.";
 
 /** Delays a fast-changing value (the search box) so each keystroke doesn't send a request. */

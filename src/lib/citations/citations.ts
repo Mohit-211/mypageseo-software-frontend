@@ -1,150 +1,68 @@
-import { withDemoFallback } from "../mypageseo/demo/demo-mode";
-import { demoCitationDetail, demoCitationsData } from "../mypageseo/demo/citations";
+import type { CitationNapIssue, CitationStatus } from "@/api";
+import type { StatusTone } from "@/components/layout/shared/data-display";
 
-export type CitationsStatus = "loading" | "ready" | "not_scanned" | "error";
+/** Citations are checked by hand by the MyPageSEO team; customers only read them. */
 
-export type CitationState =
-  | "correct"
-  | "inconsistent"
-  | "missing"
-  | "duplicate"
-  | "pending"
-  | "unknown";
-
-/** Campaign workflow states, only used when the backend supplies them. */
-export type CitationCampaignState =
-  | "ordered"
-  | "todo"
-  | "submitted"
-  | "pending"
-  | "live"
-  | "updated"
-  | "existing"
-  | "replaced";
-
-export type CitationNap = {
-  name: string | null;
-  address: string | null;
-  phone: string | null;
-  website: string | null;
+export const CITATION_STATUS_LABEL: Record<CitationStatus, string> = {
+  live_correct: "Live & correct",
+  nap_wrong: "Wrong name/address/phone",
+  not_found: "Not listed",
+  duplicate: "Duplicate listing",
+  submitted: "Submitted",
+  pending: "Pending approval",
+  not_checked: "Not checked yet",
+  removed: "Removed",
 };
 
-export type CitationDiscrepancy = {
-  field: "name" | "address" | "phone" | "website";
-  expected: string | null;
-  found: string | null;
+/** Shorter labels for the count chips. */
+export const CITATION_STATUS_SHORT: Record<CitationStatus, string> = {
+  ...CITATION_STATUS_LABEL,
+  nap_wrong: "Wrong NAP",
 };
 
-export type Citation = {
-  id: string;
-  directory: string;
-  directoryType: string | null;
-  state: CitationState;
-  campaignState: CitationCampaignState | null;
-  nap: CitationNap;
-  discrepancies: CitationDiscrepancy[];
-  /** Directory strength metric supplied by the backend, never derived here. */
-  authority: number | null;
-  priority: "high" | "medium" | "low" | null;
-  lastChecked: string | null;
-  listingUrl: string | null;
+export const CITATION_STATUS_TONE: Record<CitationStatus, StatusTone> = {
+  live_correct: "success",
+  nap_wrong: "warning",
+  not_found: "critical",
+  duplicate: "critical",
+  submitted: "info",
+  pending: "info",
+  not_checked: "neutral",
+  removed: "neutral",
 };
 
-export type CitationsSummary = {
-  checked: number | null;
-  correct: number | null;
-  inconsistent: number | null;
-  missing: number | null;
-  duplicate: number | null;
-  recentlyChanged: number | null;
-};
+/** Filter chips, in the backend's row order (problems first). `removed` is shown only when present. */
+export const CITATION_STATUS_ORDER: CitationStatus[] = [
+  "live_correct",
+  "nap_wrong",
+  "not_found",
+  "duplicate",
+  "submitted",
+  "pending",
+  "not_checked",
+  "removed",
+];
 
-export type CitationIssue = {
-  id: string;
-  title: string;
-  detail: string;
-  severity: "critical" | "warning" | "info";
-  citationId: string | null;
-};
+const NAP_FIELD_LABEL: Record<string, string> = { name: "Name", address: "Address", phone: "Phone", website: "Website" };
 
-export type CitationsCapabilities = {
-  canScan: boolean;
-  canSearch: boolean;
-  canFilterByDate: boolean;
-  canFixListing: boolean;
-  canRunCampaign: boolean;
-};
-
-export type CitationsData = {
-  status: CitationsStatus;
-  lastCheckedAt: string | null;
-  summary: CitationsSummary;
-  citations: Citation[];
-  issues: CitationIssue[];
-  capabilities: CitationsCapabilities;
-};
-
-/**
- * The live citation scanning source is not connected in this frontend, so
- * this adapter falls back to a deterministic demo dataset scoped to the
- * active location. Genuine "not scanned" states are returned untouched once a
- * real source exists.
- */
-export function getCitations(locationId?: string | null, real?: CitationsData | null): CitationsData {
-  return withDemoFallback(real, () => demoCitationsData(locationId));
+/** "Phone: listed as (416) 555-0199, should be 416 555 0100". */
+export function napIssueText(issue: CitationNapIssue) {
+  const field = NAP_FIELD_LABEL[issue.field] ?? issue.field;
+  return `${field}: listed as ${issue.found ?? "nothing"}, should be ${issue.expected ?? "—"}`;
 }
 
-export const CITATION_STATE_LABEL: Record<CitationState, string> = {
-  correct: "Correct",
-  inconsistent: "Inconsistent",
-  missing: "Missing",
-  duplicate: "Duplicate",
-  pending: "Pending",
-  unknown: "Unknown",
+/** Copy for a citations `{ available: false, reason }`. */
+export const CITATIONS_UNAVAILABLE_COPY: Record<string, string> = {
+  no_citations_yet: "Our team is setting up your citation tracking.",
+  not_checked_yet: "Being checked by our team.",
 };
 
-export const CITATION_CAMPAIGN_LABEL: Record<CitationCampaignState, string> = {
-  ordered: "Ordered",
-  todo: "To do",
-  submitted: "Submitted",
-  pending: "Pending",
-  live: "Live",
-  updated: "Updated",
-  existing: "Existing",
-  replaced: "Replaced",
-};
+export function citationsUnavailableText(reason: string) {
+  return CITATIONS_UNAVAILABLE_COPY[reason] ?? "Not available yet.";
+}
 
-export const CITATIONS_PAGE_SIZE = 25;
-
-export type CitationHistoryEvent = {
-  id: string;
-  occurredAt: string;
-  label: string;
-  detail: string | null;
-  state: CitationState | null;
-};
-
-export type CitationDetailStatus = "loading" | "ready" | "not_found" | "error";
-
-export type CitationDetailData = {
-  status: CitationDetailStatus;
-  citation: Citation | null;
-  /** Expected values as stored for the business, used for NAP comparison. */
-  expectedNap: CitationNap | null;
-  category: string | null;
-  history: CitationHistoryEvent[] | null;
-  issues: CitationIssue[];
-  capabilities: CitationsCapabilities;
-};
-
-/**
- * The live citation record source is not connected in this frontend, so this
- * falls back to the deterministic demo listing for the requested citation.
- */
-export function getCitationDetail(
-  citationId: string,
-  locationId?: string | null,
-  real?: CitationDetailData | null,
-): CitationDetailData {
-  return withDemoFallback(real, () => demoCitationDetail(citationId, locationId));
+/** "5 of 6 checked" from the 0–1 coverage and the listing total. */
+export function coverageText(coverage: number | null, total: number) {
+  if (coverage == null) return `${total} listing${total === 1 ? "" : "s"}`;
+  return `${Math.round(coverage * total)} of ${total} checked`;
 }

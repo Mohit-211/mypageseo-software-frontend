@@ -6,7 +6,7 @@ type Unavailable = { available: false; reason: string };
 /** `source` decides where the action leads. */
 export type DashboardAction = {
   id: string;
-  source: "connection" | "setup" | "ranking" | "gbp" | "citations" | "reviews" | string;
+  source: "connection" | "setup" | "ranking" | "gbp" | "citations" | "reviews" | "posts" | string;
   location_id?: string | null;
   location_name?: string | null;
   title: string;

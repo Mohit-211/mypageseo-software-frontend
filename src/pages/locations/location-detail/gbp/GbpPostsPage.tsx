@@ -1,25 +1,17 @@
 import { PageHeader } from "@/components/layout/shared/data-display";
 import { GbpNavigation } from "@/components/location/location-workspace";
-import { GbpPostsContent } from "@/components/gbp-audit/gbp-posts";
-import { getGbpPosts } from "@/lib/gbp/gbp-posts";
-import { useRequiredParams } from "@/hooks/use-required-params";
+import { PostsPageContent } from "@/components/gbp-posts/posts-page";
+import { useGbpContext } from "@/lib/gbp/gbp-context";
 
-const description = "Create, schedule, publish, and manage Google Business Profile posts for this location.";
-
-
+const description = "Write, schedule and publish Google Business Profile posts for this location. Posts made on Google show here too.";
 
 function LocationGbpPostsPage() {
-  const { locationId } = useRequiredParams("locationId");
-  const data = getGbpPosts(locationId);
+  const { location } = useGbpContext();
   return (
     <>
-      <GbpNavigation locationId={locationId} activeView="posts" />
-      <PageHeader
-        title="GBP Posts"
-        description={description}
-        meta={data.lastCheckedAt ? <p className="text-xs text-muted-foreground">Last checked {data.lastCheckedAt}</p> : undefined}
-      />
-      <GbpPostsContent data={data} onRetry={() => window.location.reload()} />
+      <GbpNavigation locationId={location.location_id} activeView="posts" />
+      <PageHeader title="Posts" description={description} />
+      <PostsPageContent locationId={location.location_id} clientAssigned={location.client !== null} />
     </>
   );
 }

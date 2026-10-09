@@ -1,11 +1,14 @@
 import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { getOrganization, getOrganizationUsage, updateOrganization } from "@/api";
+import { classifyError } from "@/lib/mypageseo/errors";
 import { RequireAccess } from "@/components/mypageseo/access";
 import { Link } from "react-router-dom";
-import { Building2, MapPin, Users } from "lucide-react";
+import { Building2, CreditCard, MapPin, Users } from "lucide-react";
 import { AppShell } from "@/components/layout/shared/app-shell";
 import { PageHeader, Panel, SectionHeader } from "@/components/layout/shared/data-display";
 import { SettingsNav } from "@/components/settings/settings-nav";
-import { EmptyState, ErrorState, TableSkeleton } from "@/components/layout/shared/feedback/states";
+import { ErrorState, TableSkeleton } from "@/components/layout/shared/feedback/states";
 import {
   FormGrid,
   FormSaveBar,
@@ -13,12 +16,9 @@ import {
   FormTextField,
   RequiredFieldsNote,
 } from "@/components/layout/shared/form-fields";
-import { countries } from "@/lib/mock-data/countries";
 import {
+  ORGANIZATION_COUNTRIES,
   ORGANIZATION_NAME_MAX_LENGTH,
-  REPORT_COMPARISON_PERIODS,
-  SUPPORTED_TIMEZONES,
-  getOrganizationSettings,
   settingsAreEqual,
   validateOrganizationSettings,
   type OrganizationSettings,
@@ -31,6 +31,8 @@ const SettingsIndexPage = () => (
       <SettingsPage />
     </RequireAccess>
   );
+
+const ORGANIZATION_KEY = ["organization"] as const;
 
 const DESCRIPTION = "Organization administrators manage the configuration of this Mypageseo organization here.";
 
@@ -66,103 +68,129 @@ function SettingsPage() {
     <AppShell>
       <PageHeader title="Settings" description={DESCRIPTION} />
       <SettingsNav active="general" isAgency={isAgency} />
-      <GeneralSettings
-        accountType={isAgency ? "agency" : "business"}
-        locationCount={workspace.locations.length}
-        clientCount={workspace.clients.length}
-      />
+      <GeneralSettings accountType={isAgency ? "agency" : "business"} />
     </AppShell>
   );
 }
 
-function GeneralSettings({
-  accountType,
-  locationCount,
-  clientCount,
-}: {
-  accountType: "business" | "agency";
-  locationCount: number;
-  clientCount: number;
-}) {
-  const result = getOrganizationSettings(accountType);
-  const saved = result.status === "ready" ? result.settings : null;
+function GeneralSettings({ accountType }: { accountType: "business" | "agency" }) {
+  const organization = useQuery({ queryKey: ORGANIZATION_KEY, queryFn: ({ signal }) => getOrganization(signal) });
+  const usage = useQuery({ queryKey: [...ORGANIZATION_KEY, "usage"], queryFn: ({ signal }) => getOrganizationUsage(signal) });
 
-  const [values, setValues] = useState<OrganizationSettings | null>(saved);
+  if (organization.isPending) return <TableSkeleton rows={5} columns={2} />;
+  if (organization.isError) {
+    return <ErrorState description={classifyError(organization.error).description} onRetry={() => void organization.refetch()} />;
+  }
+
+  const data = organization.data;
+  const saved: OrganizationSettings = {
+    organizationName: data.organization.name,
+    country: data.organization.country === "US" || data.organization.country === "CA" ? data.organization.country : "",
+  };
+
+  return (
+    <div className="space-y-6">
+      <OrganizationForm key={`${saved.organizationName}|${saved.country}`} saved={saved} readOnly={data.role !== "owner"} />
+
+      <section aria-labelledby="settings-structure">
+        <SectionHeader
+          title="Account structure"
+          description={
+            accountType === "agency"
+              ? "Agency-level overview. Client-specific configuration lives on each client."
+              : "Locations managed under this business account."
+          }
+        />
+        <Panel>
+          {usage.isPending ? (
+            <TableSkeleton rows={1} columns={4} />
+          ) : usage.isError ? (
+            <ErrorState description="We couldn't load your plan and usage." onRetry={() => void usage.refetch()} />
+          ) : (
+            <dl className="grid gap-4 sm:grid-cols-4">
+              <Field icon={Building2} label="Account type" value={accountType === "agency" ? "Agency" : "Business"} />
+              <Field icon={CreditCard} label="Plan" value={usage.data.plan?.name ?? "No plan yet"} />
+              <Field icon={MapPin} label="Locations" value={usedOf(usage.data.locations.used, usage.data.locations.limit)} />
+              {usage.data.users ? <Field icon={Users} label="Users" value={usedOf(usage.data.users.used, usage.data.users.limit)} /> : null}
+              {usage.data.clients ? <Field icon={Users} label="Clients" value={String(usage.data.clients.used)} /> : null}
+            </dl>
+          )}
+          <p className="mt-4 text-xs text-muted-foreground">
+            Plan, location slots and invoices are managed on{" "}
+            <Link to="/settings/billing" className="font-medium text-foreground underline underline-offset-2">Billing</Link>.
+            {accountType === "agency" ? (
+              <>
+                {" "}Settings for an individual client are managed from that client&rsquo;s screens.{" "}
+                <Link to="/clients" className="font-medium text-foreground underline underline-offset-2">Go to clients</Link>
+              </>
+            ) : null}
+          </p>
+        </Panel>
+      </section>
+    </div>
+  );
+}
+
+function usedOf(used: number, limit: number | null) {
+  return limit == null ? String(used) : `${used} of ${limit}`;
+}
+
+function OrganizationForm({ saved, readOnly }: { saved: OrganizationSettings; readOnly: boolean }) {
+  const queryClient = useQueryClient();
+  const [values, setValues] = useState<OrganizationSettings>(saved);
   const [errors, setErrors] = useState<OrganizationSettingsErrors>({});
-  const [baseline, setBaseline] = useState<OrganizationSettings | null>(saved);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  if (result.status === "loading") return <TableSkeleton rows={5} columns={2} />;
-
-  if (result.status === "error") {
-    return <ErrorState description={result.message} onRetry={() => window.location.reload()} />;
-  }
-
-  if (result.status === "unavailable") {
-    return <EmptyState title="Organization settings are unavailable" description={result.reason} />;
-  }
-
-  if (!values || !baseline) return <TableSkeleton rows={5} columns={2} />;
-
-  const capabilities = result.capabilities;
-  const readOnly = !capabilities.canEdit;
-  const dirty = !settingsAreEqual(values, baseline);
+  const dirty = !settingsAreEqual(values, saved);
   const hasErrors = Object.keys(errors).length > 0;
 
   const update = <K extends keyof OrganizationSettings>(key: K, value: OrganizationSettings[K]) => {
-    setValues((current) => (current ? { ...current, [key]: value } : current));
+    setValues((current) => ({ ...current, [key]: value }));
     setErrors((current) => ({ ...current, [key]: undefined }));
     setSavedAt(null);
     setSaveError(null);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (saving || readOnly) return;
     const nextErrors = validateOrganizationSettings(values);
     setErrors(nextErrors);
-    if (Object.keys(nextErrors).length > 0) return;
-    if (!capabilities.canSave) {
-      setSaveError("Saving organization settings requires the settings service, which isn't connected yet.");
-      return;
-    }
+    if (Object.keys(nextErrors).length > 0 || !values.country) return;
     setSaving(true);
     setSaveError(null);
-    window.setTimeout(() => {
-      const normalized = { ...values, organizationName: values.organizationName.trim() };
-      setValues(normalized);
-      setBaseline(normalized);
-      setSaving(false);
+    try {
+      const result = await updateOrganization({ name: values.organizationName.trim(), country: values.country });
+      queryClient.setQueryData(ORGANIZATION_KEY, result);
+      // The workspace switcher reads organization names from the profile.
+      void queryClient.invalidateQueries({ queryKey: ["profile"] });
       setSavedAt(new Date().toLocaleTimeString());
-    }, 500);
-  };
-
-  const handleReset = () => {
-    setValues(baseline);
-    setErrors({});
-    setSavedAt(null);
-    setSaveError(null);
+    } catch (err) {
+      setSaveError(classifyError(err).description);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
-    <div className="space-y-6">
+    <>
       {readOnly ? (
         <Panel className="border-l-4 border-l-brand-soft">
           <p className="text-sm text-muted-foreground">
-            You have read-only access to organization settings. Ask an organization administrator to make changes.
+            Only the organization owner can change these settings.
           </p>
         </Panel>
       ) : null}
 
       <section aria-labelledby="settings-organization">
-        <SectionHeader title="Organization" description="Identity and locale used across this workspace" />
+        <SectionHeader title="Organization" description="Identity used across this workspace and on reports" />
         <Panel>
           <form
             className="space-y-4"
             onSubmit={(event) => {
               event.preventDefault();
-              handleSave();
+              void handleSave();
             }}
             noValidate
           >
@@ -188,85 +216,14 @@ function GeneralSettings({
                 value={values.country}
                 disabled={readOnly || saving}
                 error={errors.country}
-                hint="Primary country of the organization."
-                options={countries.map((c) => ({ value: c.code, label: c.name }))}
-                onChange={(value) => update("country", value)}
-              />
-
-              <FormSelectField
-                id="organization-timezone"
-                label="Timezone"
-                required
-                value={values.timezone}
-                disabled={readOnly || saving}
-                error={errors.timezone}
-                hint="Used for dates, schedules and report delivery times."
-                options={SUPPORTED_TIMEZONES.map((tz) => ({ value: tz, label: tz.replace(/_/g, " ") }))}
-                onChange={(value) => update("timezone", value)}
+                hint="Used for pricing and as the default when searching for new locations."
+                options={ORGANIZATION_COUNTRIES}
+                onChange={(value) => update("country", value as OrganizationSettings["country"])}
               />
             </FormGrid>
 
             <button type="submit" className="hidden" aria-hidden tabIndex={-1} />
           </form>
-        </Panel>
-      </section>
-
-      <section aria-labelledby="settings-defaults">
-        <SectionHeader
-          title="Defaults"
-          description="Applied to new locations and reports only — existing records keep their current settings"
-        />
-        <Panel>
-          <FormGrid>
-            <FormSelectField
-              id="default-location-country"
-              label="Default country for new locations"
-              required
-              value={values.defaultLocationCountry}
-              disabled={readOnly || saving}
-              error={errors.defaultLocationCountry}
-              hint="Pre-selected when adding a location. Existing locations are unchanged."
-              options={countries.map((c) => ({ value: c.code, label: c.name }))}
-              onChange={(value) => update("defaultLocationCountry", value)}
-            />
-            <FormSelectField
-              id="default-comparison-period"
-              label="Default report comparison period"
-              required
-              value={values.defaultReportComparisonPeriod}
-              disabled={readOnly || saving}
-              error={errors.defaultReportComparisonPeriod}
-              hint="Pre-selected on new reports. Existing and scheduled reports are unchanged."
-              options={REPORT_COMPARISON_PERIODS.map((p) => ({ value: p.value, label: p.label }))}
-              onChange={(value) => update("defaultReportComparisonPeriod", value)}
-            />
-          </FormGrid>
-        </Panel>
-      </section>
-
-      <section aria-labelledby="settings-structure">
-        <SectionHeader
-          title="Account structure"
-          description={
-            accountType === "agency"
-              ? "Agency-level overview. Client-specific configuration lives on each client."
-              : "Locations managed under this business account."
-          }
-        />
-        <Panel>
-          <dl className="grid gap-4 sm:grid-cols-3">
-            <Field icon={Building2} label="Account type" value={accountType === "agency" ? "Agency" : "Business"} />
-            <Field icon={MapPin} label="Locations" value={String(locationCount)} />
-            {accountType === "agency" ? <Field icon={Users} label="Clients" value={String(clientCount)} /> : null}
-          </dl>
-          {accountType === "agency" ? (
-            <p className="mt-4 text-xs text-muted-foreground">
-              Settings for an individual client are managed from that client&rsquo;s screens.{" "}
-              <Link to="/clients" className="font-medium text-foreground underline underline-offset-2">
-                Go to clients
-              </Link>
-            </p>
-          ) : null}
         </Panel>
       </section>
 
@@ -277,11 +234,16 @@ function GeneralSettings({
         savedAt={savedAt}
         error={saveError}
         disabled={readOnly}
-        onSave={handleSave}
-        onDiscard={handleReset}
+        onSave={() => void handleSave()}
+        onDiscard={() => {
+          setValues(saved);
+          setErrors({});
+          setSavedAt(null);
+          setSaveError(null);
+        }}
         savedLabel="Settings saved"
       />
-    </div>
+    </>
   );
 }
 

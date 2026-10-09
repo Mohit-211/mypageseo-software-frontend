@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BadgeCheck, ImageUp } from "lucide-react";
+import { BadgeCheck, LoaderCircle } from "lucide-react";
+import { toast } from "sonner";
 import { AppShell } from "@/components/layout/shared/app-shell";
 import { PageHeader, Panel, SectionHeader, StatusBadge } from "@/components/layout/shared/data-display";
 import { SettingsNav } from "@/components/settings/settings-nav";
@@ -13,10 +14,10 @@ import {
   FormTextField,
   RequiredFieldsNote,
 } from "@/components/layout/shared/form-fields";
-import { getProfile, updateProfile, type Profile } from "@/api";
+import { getProfile, isApiError, resendVerification, updateProfile, type Profile } from "@/api";
+import { formatDate } from "@/lib/datetime";
 import { classifyError } from "@/lib/mypageseo/errors";
 import {
-  LIVE_PROFILE_CAPABILITIES,
   PROFILE_NAME_MAX_LENGTH,
   profileFormsAreEqual,
   profileInitials,
@@ -24,7 +25,6 @@ import {
   toUpdateProfileRequest,
   toUserProfile,
   validateProfile,
-  type ProfileCapabilities,
   type ProfileFormErrors,
   type ProfileFormValues,
   type ProfileResult,
@@ -48,7 +48,7 @@ function ProfileSettingsPage() {
     ? { status: "loading" }
     : query.isError
       ? { status: "error", message: classifyError(query.error).description }
-      : { status: "ready", profile: toUserProfile(query.data), capabilities: LIVE_PROFILE_CAPABILITIES };
+      : { status: "ready", profile: toUserProfile(query.data) };
 
   return (
     <AppShell>
@@ -60,19 +60,13 @@ function ProfileSettingsPage() {
       ) : result.status === "error" ? (
         <ErrorState description={result.message} onRetry={() => void query.refetch()} />
       ) : (
-        <ProfileSections profile={result.profile} capabilities={result.capabilities} />
+        <ProfileSections profile={result.profile} />
       )}
     </AppShell>
   );
 }
 
-function ProfileSections({
-  profile,
-  capabilities,
-}: {
-  profile: UserProfile;
-  capabilities: ProfileCapabilities;
-}) {
+function ProfileSections({ profile }: { profile: UserProfile }) {
   const queryClient = useQueryClient();
   const mutation = useMutation({ mutationFn: updateProfile });
   const [saved, setSaved] = useState<UserProfile>(profile);
@@ -81,8 +75,23 @@ function ProfileSections({
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [resending, setResending] = useState(false);
 
-  const readOnly = !capabilities.canEditProfile;
+  const resend = async () => {
+    setResending(true);
+    try {
+      await resendVerification(saved.email);
+      toast.success("Verification email sent", { description: `Check ${saved.email} for the new link.` });
+    } catch (err) {
+      toast.error(
+        isApiError(err) && err.reason === "rate_limited"
+          ? "Too many requests. Try again in a few minutes."
+          : "The verification email couldn't be sent. Try again.",
+      );
+    } finally {
+      setResending(false);
+    }
+  };
   const baseline = profileToForm(saved);
   const dirty = !profileFormsAreEqual(values, baseline);
   const hasErrors = Object.keys(errors).length > 0;
@@ -95,14 +104,10 @@ function ProfileSections({
   };
 
   const handleSave = () => {
-    if (saving || readOnly) return;
+    if (saving) return;
     const nextErrors = validateProfile(values);
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
-    if (!capabilities.canSaveProfile) {
-      setSaveError("Saving your profile requires the account service, which isn't connected yet.");
-      return;
-    }
     setSaving(true);
     setSaveError(null);
     const body = toUpdateProfileRequest(values);
@@ -135,49 +140,28 @@ function ProfileSections({
 
   return (
     <div className="space-y-6">
-      {readOnly ? (
-        <Panel className="border-l-4 border-l-brand-soft">
-          <p className="text-sm text-muted-foreground">
-            Your profile is read-only for this account. Contact an organization administrator to make changes.
-          </p>
-        </Panel>
-      ) : null}
-
       <section aria-labelledby="profile-identity">
         <SectionHeader title="Your account" description="Personal details shown to your team across Mypageseo" />
         <Panel>
           <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
-            <div className="flex items-center gap-4">
-              {saved.avatarUrl ? (
-                <img
-                  src={saved.avatarUrl}
-                  alt={`${saved.name} profile image`}
-                  className="size-16 rounded-full border border-border object-cover"
-                />
-              ) : (
-                <span
-                  aria-hidden
-                  className="grid size-16 place-items-center rounded-full bg-primary text-lg font-semibold text-primary-foreground"
-                >
-                  {profileInitials(saved.name, saved.email)}
-                </span>
-              )}
-              <div>
-                <Button variant="outline" size="sm" disabled={!capabilities.canUploadAvatar}>
-                  <ImageUp aria-hidden /> Upload image
-                </Button>
-                {!capabilities.canUploadAvatar ? (
-                  <p className="mt-1.5 max-w-56 text-xs text-muted-foreground">
-                    Image upload needs file storage, which isn&rsquo;t connected yet. Your initials are used meanwhile.
-                  </p>
-                ) : null}
-              </div>
-            </div>
+            <span
+              aria-hidden
+              className="grid size-16 shrink-0 place-items-center rounded-full bg-primary text-lg font-semibold text-primary-foreground"
+            >
+              {profileInitials(saved.name, saved.email)}
+            </span>
 
             <div className="flex-1 space-y-1 sm:pl-2">
               <p className="text-sm font-semibold text-foreground">{saved.name}</p>
               <p className="text-sm text-muted-foreground">{saved.email}</p>
-              {saved.jobTitle ? <p className="text-xs text-muted-foreground">{saved.jobTitle}</p> : null}
+              <p className="text-xs text-muted-foreground">
+                {[
+                  saved.createdAt ? `Member since ${formatDate(saved.createdAt)}` : null,
+                  saved.lastLoginAt ? `Last sign-in ${formatDate(saved.lastLoginAt)}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
             </div>
           </div>
         </Panel>
@@ -202,7 +186,7 @@ function ProfileSections({
                 required
                 value={values.name}
                 maxLength={PROFILE_NAME_MAX_LENGTH + 20}
-                disabled={readOnly || saving}
+                disabled={saving}
                 error={errors.name}
                 hint="Shown to your team on the Team screen."
                 onChange={(value) => update("name", value)}
@@ -214,7 +198,7 @@ function ProfileSections({
                 optional
                 type="tel"
                 value={values.phone}
-                disabled={readOnly || saving}
+                disabled={saving}
                 error={errors.phone}
                 hint="Used for account contact only."
                 onChange={(value) => update("phone", value)}
@@ -246,11 +230,12 @@ function ProfileSections({
                 )}
               </p>
               <p className="mt-1.5 text-xs text-muted-foreground">
-                Changing your sign-in email is handled by the authentication service, which isn&rsquo;t connected yet.
+                To change your sign-in email, contact support from the Help page.
               </p>
             </div>
             {saved.emailVerification === "unverified" ? (
-              <Button variant="outline" size="sm" disabled={!capabilities.canResendEmailVerification}>
+              <Button variant="outline" size="sm" disabled={resending} onClick={() => void resend()}>
+                {resending ? <LoaderCircle aria-hidden className="animate-spin" /> : null}
                 Resend verification email
               </Button>
             ) : null}
@@ -266,7 +251,6 @@ function ProfileSections({
         hasErrors={hasErrors}
         savedAt={savedAt}
         error={saveError}
-        disabled={readOnly}
         onSave={handleSave}
         onDiscard={handleDiscard}
         savedLabel="Profile saved"
