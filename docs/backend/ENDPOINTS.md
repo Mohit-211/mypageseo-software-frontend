@@ -263,7 +263,7 @@ Paths are full paths. Auth: `none`, `user` (user access token), `user + org` (ac
 | GET | `/api/v1/locations/:locationId/competitor-suggestions` | user + owner | Top 10 competitors across keywords (Places Enterprise, 24 h cache, daily cap) | 7a | live |
 | GET | `/api/v1/places/autocomplete` | user + org (owner/member) | City / region / ZIP suggestions for the setup center (Autocomplete (New), one session token per picker; rate-limited per user, not charged to the daily Places limit) | 2026-10-01 | live |
 | GET | `/api/v1/places/search` | user + org (owner/member) | Places search (Pro, 10 results, daily cap): a competitor search with `locationId`, or an add-location search without it (Phase 8, `country`) | 7a, changed 8 | live |
-| PUT | `/api/v1/locations/:locationId/center` | user + owner | Manual business center: `{ query }` (1 IDs-only search + 1 Details `location`) or a picked suggestion `{ place_id, session? }` (1 Details Essentials call ending the session; 2026-10-01) | 7a, changed 2026-10-01 | live |
+| PUT | `/api/v1/locations/:locationId/center` | user + owner | Business center: `{ query }` (1 IDs-only search + 1 Details `location`), a picked suggestion `{ place_id, session? }`, or (2026-10-12) `{ use_business_location: true }` (the business's own place, 1 Details `location`) (1 Details Essentials call ending the session; 2026-10-01) | 7a, changed 2026-10-01 | live |
 
 ### Refresh and GBP sync
 
@@ -646,7 +646,7 @@ All three read the latest `done` or `partial` run, or the run given by `runId`.
 | # | Method | Path | Auth | Path / query params | Body | Returns |
 |---|---|---|---|---|---|---|
 | 17 | GET | `/onboarding/state` | user | – | – | `{ gbp: { connected, connections: [{ google_sub, google_email, status }] }, locations: [{ location_id, name, onboarding: { step, started_at, completed_at } }] }` |
-| 19b | PUT | `/locations/:locationId/center` | user, owner | `locationId` | `{ query }` (city or ZIP, 2–100 chars) **or** `{ place_id, session? }` (a picked `/places/autocomplete` suggestion and its session token; 2026-10-01) | `{ lat, lng, center_source: "manual", center_label, api_calls, onboarding_step? }` |
+| 19b | PUT | `/locations/:locationId/center` | user, owner | `locationId` | `{ query }` (city or ZIP, 2–100 chars) **or** `{ place_id, session? }` (a picked `/places/autocomplete` suggestion and its session token; 2026-10-01) **or** `{ use_business_location: true }` (2026-10-12; `center_source: place_details`; **400** `no_place_id`, **404** `no_business_location`) | `{ lat, lng, center_source: "manual", center_label, api_calls, onboarding_step? }` |
 | 20 | GET | `/locations/:locationId/competitor-suggestions` | user, owner | `locationId`; query `refresh` (optional boolean) | – | `{ generated_at, cached, keywords_used, api_calls, suggestions: [{ place_id, name, address, rating, userRatingCount, best_position, keywords, already_selected }], attribution }` |
 | 158 | GET | `/places/autocomplete` | user + org (owner/member) | query `q` (1–100 chars), `session` (required: one token per picker, URL-safe, 8–36 chars, e.g. a UUID), `country` (US\|CA) or `locationId` (its country), else the organization's | – | `{ suggestions: [{ place_id, description, main_text, secondary_text, types }], attribution }`; 120 requests per user per hour (**429** `rate_limited`) |
 | 21 | GET | `/places/search` | user, owner (via `locationId`) | query `q` (required, 2–100 chars), `locationId` (required, 24-hex) | – | `{ results: [{ place_id, name, address }], api_calls, attribution }` |

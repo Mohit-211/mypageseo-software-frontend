@@ -23,7 +23,14 @@ export type PendingGbpPick = {
 export type LocationStatus = "active" | "setup_required" | "gbp_not_connected" | "gbp_disconnected" | "reconnect_required";
 
 /** Where rankings are measured from: the business's own pin (`place`) or a city / ZIP set at setup (`manual`). */
-export type LocationCenter = { source: "place" | "manual" | null; label: string | null; lat: number; lng: number };
+/**
+ * The display source on a location and on every run: `place` (the business's own position,
+ * `label` = its address; also a center picked with "Use the business address") or `manual`
+ * (a city / ZIP). Only the `PUT center` answer carries the stored `place_details`.
+ */
+export type CenterSource = "place" | "manual";
+
+export type LocationCenter = { source: CenterSource | null; label: string | null; lat: number; lng: number };
 
 export type LocationClientRef = { client_id: string; name: string };
 
@@ -181,8 +188,9 @@ export type CreateLocationResult = { location: LocationHeader; api_calls?: numbe
 export type LocationCenterResult = {
   lat: number;
   lng: number;
-  center_source: string;
-  center_label: string;
+  /** The stored source: `manual` (city / ZIP) or `place_details` (the business's own position; no label). Not for display. */
+  center_source: "manual" | "place_details" | string;
+  center_label: string | null;
   onboarding_step?: LocationOnboardingStep;
 };
 

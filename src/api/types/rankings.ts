@@ -1,3 +1,4 @@
+import type { CenterSource } from "./locations";
 import type { Attribution } from "./locations";
 
 /** `self` is the location; `competitor_1`… follow `tracking.competitors`. */
@@ -60,7 +61,7 @@ export type RunMeta = {
   status: "done" | "partial";
   keywords_version: number;
   /** Frozen with the run; `source` and `label` are null on older runs. */
-  center: { lat: number; lng: number; source?: "place" | "manual" | null; label?: string | null };
+  center: { lat: number; lng: number; source?: CenterSource | null; label?: string | null };
   /** `radius_km` (Phase 17) is center to edge; `radius_m` is the search bias around each point. */
   config: {
     grid_size: number;

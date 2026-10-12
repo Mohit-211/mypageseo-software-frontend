@@ -1521,6 +1521,9 @@ Body: `{ "code", "state" }` from the popup callback.
 Body, one of:
 - `{ "place_id": "ChIJ…", "session": "<the picker's session token>" }` (2026-10-01, **recommended**): a suggestion picked from `GET /places/autocomplete`. **1 Place Details call** (Essentials: `location`, `formattedAddress`) that also ends the autocomplete session; `center_label` is Google's address (e.g. "Tampa, FL, USA"). Counts **1** toward the daily Places limit.
 - `{ "query": "Fredericton, NB" }`: a city or ZIP / postal code typed freely, 2–100 characters (the original path, below).
+- `{ "use_business_location": true }` (2026-10-12): the business's **own** Google Maps position, from its `place_id` (**1 Place Details call** for `location`, counted against the daily Places limit). Saved with `center_source: "place_details"` and no label, so the pages say "Measured around: your Google Maps pin, <address>". **400** `no_place_id`; **404** `no_business_location` (Google Maps has no position: pick a city or ZIP).
+
+**Fewer center steps (2026-10-12):** Google often leaves a Business Profile's map pin (`latlng`) empty, even for a storefront with a full address. The Bind / select-profile step now takes the center from the profile's `place_id` itself (1 Place Details call), so `center_needed` is true only when Google Maps can't place the business (a real service-area business). A location already waiting on the center step can use `{ "use_business_location": true }`.
 
 - It is resolved once with **1 Places Text Search (IDs-only, free SKU)** in the location's country (no location bias) and **1 Place Details call for `location` only**.
 - The result is saved as the location's lat/lng with `center_source: "manual"`. Rank runs and competitor suggestions use it. Old cached suggestions are dropped.

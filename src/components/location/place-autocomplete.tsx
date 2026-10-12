@@ -115,7 +115,7 @@ export function PlaceAutocomplete({
             <p className="px-3 py-2.5 text-sm text-muted-foreground">
               {isApiError(suggestions.error) && suggestions.error.reason === "rate_limited"
                 ? "Too many searches for now. Type the full city and state, then save."
-                : "Suggestions aren't available. Type the full city and state, then save."}
+                : "Search is unavailable right now. Type the full city and state, then use what you typed."}
             </p>
           ) : list.length === 0 ? (
             <p className="px-3 py-2.5 text-sm text-muted-foreground">No matches. Try the city with its state, or a ZIP code.</p>

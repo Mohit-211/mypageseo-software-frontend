@@ -87,3 +87,10 @@ After merging a second posts implementation from another branch, the customer ap
 2. The calendar filter is built from `GET /locations`. No change.
 3. The photo gallery pages through `GET …/posts/media?page=&limit=50` with "Load more".
 4. Auto-posts: create sends the browser's zone as `time_zone`. The form offers yours, the location's, or another zone, and edit sends `time_zone` only when it changed. Cards show "09:00 Asia/Kolkata" ("no time zone set" when `time_zone_source` is `default`). 400 `invalid_input` shows the server's message.
+
+## Center step (2026-10-12): applied
+
+- **"Use the business address (…)":** shown above the city / ZIP field when the location has an address and a `place_id`. It sends `PUT …/center { use_business_location: true }` and goes straight on to Keywords (no "is this right?" map, since it's the business's own position). 400 `no_place_id` hides it. 404 `no_business_location` hides it and shows "Google Maps has no position for this business; pick a city or ZIP".
+- **Panel copy:** "We couldn't find this business's position on Google Maps…" when an address exists. "service-area business without a public address" only when there's none.
+- **Search failures:** a network error or 5xx shows "Search is unavailable right now…". "Use what I typed" stays available. The autocomplete dropdown says the same.
+- **Center source (answered):** the UI reads `center.source` (`place` | `manual`) on the location and every run. `place_details` is only read from the `PUT center` answer.

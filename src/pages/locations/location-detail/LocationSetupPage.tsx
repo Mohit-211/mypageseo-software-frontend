@@ -160,7 +160,7 @@ function SetupFlow({ location }: { location: LocationHeader }) {
       </ol>
 
       {stage === "center" ? (
-        <CenterStep locationId={location.location_id} onDone={() => advance("keywords")} />
+        <CenterStep location={location} onDone={() => advance("keywords")} />
       ) : stage === "keywords" ? (
         <KeywordsStep locationId={location.location_id} onDone={() => advance("competitors")} />
       ) : stage === "competitors" ? (
@@ -183,27 +183,47 @@ function SetupFlow({ location }: { location: LocationHeader }) {
   );
 }
 
-function CenterStep({ locationId, onDone }: { locationId: string; onDone: () => void }) {
+function CenterStep({ location, onDone }: { location: LocationHeader; onDone: () => void }) {
+  const locationId = location.location_id;
   const [query, setQuery] = useState("");
+  // Hidden after 400 `no_place_id`; after 404 `no_business_location` the city / ZIP field is the way.
+  const [businessOption, setBusinessOption] = useState(Boolean(location.place_id && location.address));
+  const [noMapPosition, setNoMapPosition] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** What the city / ZIP resolved to, shown for confirmation before continuing. */
   const [resolved, setResolved] = useState<LocationCenterResult | null>(null);
 
-  const saveCenter = async (input: { query: string } | { place_id: string; session: string }) => {
+  const saveCenter = async (input: { query: string } | { place_id: string; session: string } | { use_business_location: true }) => {
     setSaving(true);
     setError(null);
     try {
-      setResolved(await setLocationCenter(locationId, input));
+      const result = await setLocationCenter(locationId, input);
+      // The business's own position needs no confirmation: it's where the business is.
+      if ("use_business_location" in input) onDone();
+      else setResolved(result);
     } catch (err) {
       const status = isApiError(err) ? err.status : 0;
-      setError(
-        status === 404
-          ? "Nothing was found for that city or ZIP. Pick one from the list, or try another."
-          : status === 429
-            ? "The daily search limit is reached. Try again tomorrow."
-            : errorText(err, "The center could not be saved. Try again."),
-      );
+      const reason = isApiError(err) ? err.reason : undefined;
+      if (reason === "no_place_id") {
+        setBusinessOption(false);
+        setError(null);
+      } else if (reason === "no_business_location") {
+        setBusinessOption(false);
+        setNoMapPosition(true);
+        setError("Google Maps has no position for this business; pick a city or ZIP.");
+      } else {
+        setError(
+          status === 404
+            ? "Nothing was found for that city or ZIP. Pick one from the list, or try another."
+            : status === 429
+              ? "The daily search limit is reached. Try again tomorrow."
+              : // A 502 can reach the browser as a network error (no CORS headers through Cloudflare).
+                status === 0 || status >= 500
+                ? "Search is unavailable right now. Try again in a moment, or use what you typed."
+                : errorText(err, "The center could not be saved. Try again."),
+        );
+      }
     } finally {
       setSaving(false);
     }
@@ -228,7 +248,7 @@ function CenterStep({ locationId, onDone }: { locationId: string; onDone: () => 
           </p>
           <PinsMap
             className="h-64 w-full rounded-md"
-            pins={[{ key: "center", lat: resolved.lat, lng: resolved.lng, rank: 1, name: resolved.center_label, kind: "self" }]}
+            pins={[{ key: "center", lat: resolved.lat, lng: resolved.lng, rank: 1, name: resolved.center_label ?? "Center", kind: "self" }]}
           />
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Button variant="outline" onClick={() => setResolved(null)}>Use a different place</Button>
@@ -240,7 +260,23 @@ function CenterStep({ locationId, onDone }: { locationId: string; onDone: () => 
   }
 
   return (
-    <Panel title="Where does this business serve customers?" description="It's a service-area business without a public address, so rankings are measured around the city or ZIP you choose.">
+    <Panel
+      title="Where does this business serve customers?"
+      description={
+        location.address || noMapPosition
+          ? "We couldn't find this business's position on Google Maps, so rankings are measured around the place you choose."
+          : "It's a service-area business without a public address, so rankings are measured around the city or ZIP you choose."
+      }
+    >
+      {businessOption ? (
+        <div className="mb-4 space-y-2 border-b border-border pb-4">
+          <Button variant="outline" className="h-auto w-full justify-start whitespace-normal py-2 text-left sm:w-auto" disabled={saving} onClick={() => void saveCenter({ use_business_location: true })}>
+            {saving ? <LoaderCircle aria-hidden className="animate-spin" /> : <MapPin aria-hidden />}
+            <span>Use the business address ({location.address})</span>
+          </Button>
+          <p className="text-xs text-muted-foreground">Or measure around a city or ZIP instead:</p>
+        </div>
+      ) : null}
       <form
         className="space-y-3"
         onSubmit={(event) => {

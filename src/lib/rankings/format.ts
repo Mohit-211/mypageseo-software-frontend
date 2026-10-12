@@ -1,5 +1,5 @@
 import { formatDate, formatDateTime } from "@/lib/datetime";
-import type { ChangeLabel, RankBucket, RankStatus } from "@/api";
+import type { CenterSource, ChangeLabel, RankBucket, RankStatus } from "@/api";
 
 /**
  * A target's display name: the stored business name (Phase 17), else the location's
@@ -111,7 +111,7 @@ export const BUCKET_MARKER_CLASS: Record<RankBucket, string> = {
  * "Measured around: …" from a center's source (run or location header).
  * Null when the source isn't known (runs before 2026-10-01).
  */
-export function centerDescription(center: { source?: "place" | "manual" | null; label?: string | null } | null | undefined): string | null {
+export function centerDescription(center: { source?: CenterSource | null; label?: string | null } | null | undefined): string | null {
   if (!center?.source) return null;
   if (center.source === "place") return `Measured around: your Google Maps pin${center.label ? `, ${center.label}` : ""}`;
   return `Measured around: ${center.label ?? "the city or ZIP"} (set during setup)`;
