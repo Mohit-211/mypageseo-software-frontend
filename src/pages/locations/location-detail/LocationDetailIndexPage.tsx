@@ -18,6 +18,8 @@ import { useRequiredParams } from "@/hooks/use-required-params";
 import { centerDescription } from "@/lib/rankings/format";
 import { BackgroundActivity } from "@/components/location/background-activity";
 import { ReportMenuButton } from "@/components/report/rank-report-button";
+import { REPORT_CREATE_ERRORS } from "@/lib/reports/report-meta";
+import { citationsUnavailableText, coverageText } from "@/lib/citations/citations";
 
 const description =
   "Everything tracked for this location: rankings, Google Business Profile health, citations, competitors and reports.";
@@ -96,7 +98,12 @@ function LocationOverviewPage() {
       <PageHeader
         title="Location Overview"
         description={description}
-        actions={<ReportMenuButton locationId={data.location_id} />}
+        actions={
+          <ReportMenuButton
+            locationId={data.location_id}
+            unavailable={data.citations?.available === false && data.citations.reason === "no_citations_yet" ? { citation: REPORT_CREATE_ERRORS.no_citations_yet! } : undefined}
+          />
+        }
         meta={centerDescription(data.center) ? <p className="text-xs text-muted-foreground">{centerDescription(data.center)} — rankings are measured from here.</p> : undefined}
       />
 
@@ -296,23 +303,34 @@ function CompetitorsSummary({ data }: { data: LocationOverview }) {
 
 function CitationsSummary({ data }: { data: LocationOverview }) {
   const section = data.citations;
+  const link = (
+    <Link to={`/locations/${data.location_id}/citations`} className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+      Open citations <ArrowRight className="size-3.5" aria-hidden />
+    </Link>
+  );
   if (!section) return null;
   if (!section.available) {
     return (
-      <Summary title="Citations">
-        <Muted>{section.reason === "not_checked_yet" ? "Being checked by our team." : "Our team is setting up your citation tracking."}</Muted>
+      <Summary title="Citation Health">
+        <Muted>{citationsUnavailableText(section.reason)}</Muted>
+        {section.reason === "not_checked_yet" ? link : null}
       </Summary>
     );
   }
-  const checked = Math.round((section.coverage ?? 0) * section.listings);
+  const change = section.score_change;
   return (
-    <Summary title="Citations">
-      <Big>{section.score == null ? "—" : `${section.score}${section.grade ? ` · ${section.grade}` : ""}`}</Big>
+    <Summary title="Citation Health">
+      <Big>
+        {section.score == null ? "—" : section.score}
+        {section.grade ? <span className="ml-2 text-base font-medium text-muted-foreground">{section.grade}</span> : null}
+      </Big>
+      {change ? <TrendIndicator direction={change > 0 ? "up" : "down"} value={`${Math.abs(change)} pts`} positive={change > 0} /> : null}
       <Muted>
-        {checked} of {section.listings} listings checked
-        {section.counts.nap_wrong ? ` · ${section.counts.nap_wrong} with wrong details` : ""}
+        {coverageText(section.coverage, section.listings)}
+        {section.counts.nap_wrong > 0 ? ` · ${section.counts.nap_wrong} wrong NAP` : ""}
+        {section.counts.not_found > 0 ? ` · ${section.counts.not_found} not listed` : ""}
       </Muted>
-      <Link to={`/locations/${data.location_id}/citations`} className="text-xs font-medium text-primary hover:underline">Open citations</Link>
+      {link}
     </Summary>
   );
 }

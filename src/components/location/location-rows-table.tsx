@@ -76,7 +76,7 @@ export function LocationRowsTable({
   return (
     <TableCard>
       <div className="hidden md:block">
-        <TableScroll minWidth={1060} label="Locations">
+        <TableScroll minWidth={1080} label="Locations">
           <TableHead>
             <SortableTh label="Location" value="name" active={sort} order={order} onSort={onSort} className="min-w-[240px]" />
             <SortableTh label="City" value="city" active={sort} order={order} onSort={onSort} />
@@ -136,10 +136,11 @@ export function LocationRowsTable({
             <div className="mt-3 grid grid-cols-3 gap-3 border-y border-border py-3">
               <MobileField label="Avg. rank" value={rankText(location)} />
               <MobileField label="GBP score" value={location.gbp?.score == null ? "—" : `${location.gbp.score}${location.gbp.grade ? ` (${location.gbp.grade})` : ""}`} />
-              <MobileField label="Last refreshed" value={formatDate(location.last_refreshed_at)} />
+              <MobileField label="Citations" value={<CitationsCell location={location} />} />
             </div>
             <div className="mt-3 flex items-center justify-between gap-3">
               <ReviewsCell location={location} />
+              <span className="text-xs text-muted-foreground">Refreshed {formatDate(location.last_refreshed_at)}</span>
               <LocationRowStatusBadge status={location.status} />
             </div>
           </MobileListRow>
@@ -177,17 +178,6 @@ const dash = <span className="text-sm text-muted-foreground">—</span>;
 /** "12.4", "60+" (not in the top 60) or "No data" (searches failed); "—" before the first run. */
 function rankText(location: LocationRow): string {
   return avgRankText(location.rank?.overall_avg_rank, location.rank?.status, location.rank?.display);
-}
-
-function CitationsCell({ location }: { location: LocationRow }) {
-  const citations = location.citations;
-  if (!citations || citations.score == null) return dash;
-  return (
-    <div>
-      <span className="text-sm font-semibold text-foreground">{citations.score}{citations.grade ? ` (${citations.grade})` : ""}</span>
-      {citations.nap_wrong > 0 ? <span className="mt-0.5 block text-xs text-critical">{citations.nap_wrong} wrong NAP</span> : null}
-    </div>
-  );
 }
 
 function RankCell({ location }: { location: LocationRow }) {
@@ -235,6 +225,21 @@ function ReviewsCell({ location }: { location: LocationRow }) {
       <Star className="size-3.5 fill-warning text-warning" aria-hidden />
       <span className="font-medium">{rating.toFixed(1)}</span>
       {count != null ? <span className="text-xs text-muted-foreground">({count.toLocaleString()})</span> : null}
+    </span>
+  );
+}
+
+function CitationsCell({ location }: { location: LocationRow }) {
+  const citations = location.citations;
+  if (citations?.score == null) return dash;
+  return (
+    <span className="text-sm font-medium text-foreground">
+      {citations.score}
+      <span className="text-xs font-normal text-muted-foreground">/100</span>
+      {citations.grade ? <span className="ml-1.5 text-xs text-muted-foreground">{citations.grade}</span> : null}
+      {citations.nap_wrong > 0 ? (
+        <span className="mt-0.5 block text-xs font-normal text-warning-foreground">{citations.nap_wrong} wrong NAP</span>
+      ) : null}
     </span>
   );
 }

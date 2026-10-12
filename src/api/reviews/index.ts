@@ -18,13 +18,24 @@ export async function refreshReviews(locationId: string): Promise<{ new_reviews:
   return unwrapData(await api.post(`${base(locationId)}/refresh`));
 }
 
-/** AI reply drafts for eligible 4–5 star reviews (1–20 ids); others come back in `skipped`. */
+/** AI reply drafts for unreplied, non-suspicious reviews of any rating (1–20 ids); others come back in `skipped`. */
 export async function generateReplyDrafts(
   locationId: string,
   reviewIds: string[],
   regenerate = false,
 ): Promise<{ drafts: Review[]; generated: number; reused: number; skipped: { review_id: string; reason: string }[]; tokens_spent: number }> {
   return unwrapData(await api.post(`${base(locationId)}/drafts`, { review_ids: reviewIds, regenerate }));
+}
+
+/**
+ * "Draft all unreplied": up to 50 per call, oldest first (10–15 s). Call again while `remaining > 0`.
+ * 402 `insufficient_tokens` { cost, balance, reviews } comes before anything is spent.
+ */
+export async function draftAllReviews(
+  locationId: string,
+  regenerate = false,
+): Promise<{ drafted: number; remaining: number; tokens_spent: number; drafts: Review[] }> {
+  return unwrapData(await api.post(`${base(locationId)}/drafts/all`, { regenerate }, { timeoutMs: 90_000 }));
 }
 
 /** Saves a reply the user wrote or edited (any rating). */
@@ -34,17 +45,6 @@ export async function saveReplyDraft(locationId: string, reviewId: string, text:
 
 export async function deleteReplyDraft(locationId: string, reviewId: string): Promise<Review> {
   return unwrapData(await api.delete(`${one(locationId, reviewId)}/draft`));
-}
-
-/**
- * "Draft all unreplied" (Phase 9.1): up to 50 per call, oldest first; call again while `remaining > 0`.
- * 402 `insufficient_tokens { cost, balance, reviews }` is checked before anything is spent.
- */
-export async function draftAllReplies(
-  locationId: string,
-  regenerate = false,
-): Promise<{ drafted: number; remaining: number; tokens_spent: number; drafts: Review[] }> {
-  return unwrapData(await api.post(`${base(locationId)}/drafts/all`, { regenerate }, { timeoutMs: 60_000 }));
 }
 
 /** Publishes each review's draft on Google. No AI. */

@@ -71,7 +71,6 @@ export const router = createBrowserRouter([
                 ],
               },
               { path: ":locationId/citations", lazy: () => import("@/pages/locations/location-detail/citations/CitationsIndexPage").then(page) },
-              { path: ":locationId/citations/:citationId", lazy: () => import("@/pages/locations/location-detail/citations/CitationDetailPage").then(page) },
               { path: ":locationId/competitors", lazy: () => import("@/pages/locations/location-detail/competitors/CompetitorsIndexPage").then(page) },
               { path: ":locationId/competitors/:competitorId", lazy: () => import("@/pages/locations/location-detail/competitors/CompetitorDetailPage").then(page) },
             ],
@@ -90,6 +89,7 @@ export const router = createBrowserRouter([
           { path: "gbp/reviews", element: <Navigate to="/reputation/reviews" replace /> },
           { path: "gbp/posts", lazy: () => import("@/pages/gbp/GbpPostsPage").then(page) },
           // AI posts are part of each location's Posts page (editor AI and auto-posts).
+          { path: "gbp/ai-posts", element: <Navigate to="/gbp/posts" replace /> },
           { path: "gbp/ai-posts/*", element: <Navigate to="/gbp/posts" replace /> },
           { path: "gbp/review-management", element: <Navigate to="/reputation/review-management" replace /> },
           { path: "gbp/review-management/automation", element: <Navigate to="/reputation/review-management/automation" replace /> },

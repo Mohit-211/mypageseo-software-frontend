@@ -1,19 +1,20 @@
-import type { ComponentProps } from "react";
 import { useEffect, useState } from "react";
 import { useCanEdit } from "@/hooks/use-access";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { LoaderCircle, MessageSquareText, RefreshCw, Search, Send, Sparkles, X } from "lucide-react";
+import { AlertTriangle, LoaderCircle, MessageSquareText, RefreshCw, Search, Send, Sparkles, X } from "lucide-react";
 import {
   analyzeReviews,
-  draftAllReplies,
+  draftAllReviews,
   generateReplyDrafts,
+  getReviews,
   refreshReviews,
   sendReplies,
   apiErrorData,
   isApiError,
   type ReplyState,
+  type Review,
   type ReviewsQuery,
   type ReviewsSummary,
 } from "@/api";
@@ -25,6 +26,16 @@ import { ReviewCard } from "@/components/reputation/review-card";
 import { BackgroundActivity } from "@/components/location/background-activity";
 import { ReportButton } from "@/components/report/rank-report-button";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useGbpContext } from "@/lib/gbp/gbp-context";
@@ -58,11 +69,11 @@ function useDebounced<T>(value: T, ms = 350): T {
 
 /** Reviews: one page to read, reply, check flags and draft removal requests. AI only on request. */
 function ReviewsPage() {
+  const canEdit = useCanEdit();
   const { location } = useGbpContext();
   const locationId = location.location_id;
   const summary = useReviewsSummary(locationId);
   const { connect } = useGbpConnect();
-  const canEdit = useCanEdit();
 
   const header = (
     <PageHeader
@@ -108,7 +119,7 @@ function ReviewsPage() {
       {header}
       <BackgroundActivity locationId={locationId} className="mb-4" />
       <Stats summary={summary.data} />
-      <DraftAllPanel locationId={locationId} summary={summary.data} />
+      {canEdit ? <BulkReplies locationId={locationId} summary={summary.data} /> : null}
       <ReviewsList locationId={locationId} summary={summary.data} />
     </>
   );
@@ -121,6 +132,11 @@ function RefreshMeta({ summary }: { summary: ReviewsSummary }) {
       {summary.ai.configured ? ` · ${summary.ai.token_balance} tokens for AI` : ""}
     </p>
   );
+}
+
+/** Hidden for a read-only client_user. */
+function RefreshReviewsButton(props: { locationId: string; summary: ReviewsSummary }) {
+  return useCanEdit() ? <RefreshReviewsButtonEditor {...props} /> : null;
 }
 
 function RefreshReviewsButtonEditor({ locationId, summary }: { locationId: string; summary: ReviewsSummary }) {
@@ -160,10 +176,6 @@ function RefreshReviewsButtonEditor({ locationId, summary }: { locationId: strin
   );
 }
 
-function RefreshReviewsButton(props: ComponentProps<typeof RefreshReviewsButtonEditor>) {
-  return useCanEdit() ? <RefreshReviewsButtonEditor {...props} /> : null;
-}
-
 function Stats({ summary }: { summary: ReviewsSummary }) {
   const stats = summary.stats;
   if (!stats) return null;
@@ -180,61 +192,148 @@ function Stats({ summary }: { summary: ReviewsSummary }) {
   );
 }
 
+/** Reviews per `POST reviews/send` call. */
+const SEND_BATCH = 100;
+
+type SendFailure = { review_id: string; reviewer: string; reason: string };
+
+const SEND_REASON: Record<string, string> = {
+  no_draft: "No draft",
+  already_replied: "Already replied",
+  google_error: "Google refused it",
+};
+
 /**
- * "Draft all unreplied" (Phase 9.1): drafts every unreplied, non-suspicious review, 50 per click.
- * Nothing is sent: the user checks the drafts and sends them.
+ * "Draft all unreplied" (50 per call, then "Continue (N left)") and "Send all drafts"
+ * (every unreplied review with a draft, in batches). Sending is always the user's click.
  */
-function DraftAllPanelEditor({ locationId, summary }: { locationId: string; summary: ReviewsSummary }) {
+function BulkReplies({ locationId, summary }: { locationId: string; summary: ReviewsSummary }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"draft" | "send" | null>(null);
   const [remaining, setRemaining] = useState<number | null>(null);
+  const [confirmSend, setConfirmSend] = useState(false);
+  const [progress, setProgress] = useState<string | null>(null);
+  const [failures, setFailures] = useState<SendFailure[]>([]);
   const ai = summary.ai;
-  if (!ai.configured || ai.draftable === undefined) return null;
-  const left = remaining ?? ai.draftable;
-  const max = ai.draft_all_max ?? 50;
+  const aiUsable = ai.configured && !ai.paused_today;
+  const draftable = remaining ?? ai.draftable ?? 0;
+  const drafts = summary.stats?.drafts_pending ?? 0;
 
-  const run = async () => {
-    setBusy(true);
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: reviewsKey(locationId) });
+    void queryClient.invalidateQueries({ queryKey: ["billing"] });
+  };
+
+  const draftAll = async () => {
+    setBusy("draft");
     try {
-      const result = await draftAllReplies(locationId);
+      const result = await draftAllReviews(locationId);
       setRemaining(result.remaining);
-      toast.success(
-        `${result.drafted} repl${result.drafted === 1 ? "y" : "ies"} drafted${result.tokens_spent ? ` · ${result.tokens_spent} token${result.tokens_spent === 1 ? "" : "s"}` : ""}.`,
-        { description: "Check the drafts, then select and send them." },
-      );
+      toast.success(`${result.drafted} repl${result.drafted === 1 ? "y" : "ies"} drafted · ${result.tokens_spent} token${result.tokens_spent === 1 ? "" : "s"}`, {
+        description: result.remaining > 0 ? `${result.remaining} still to draft.` : "Check the drafts, then send them.",
+      });
     } catch (err) {
-      const { message, buyTokens } = reviewErrorMessage(err, "The drafts couldn't be made. Try again.");
+      const { message, buyTokens } = reviewErrorMessage(err, "The replies couldn't be drafted.");
       toast.error(message, buyTokens ? { action: { label: "Buy tokens", onClick: () => navigate("/settings/billing") } } : undefined);
     } finally {
-      setBusy(false);
-      void queryClient.invalidateQueries({ queryKey: reviewsKey(locationId) });
-      void queryClient.invalidateQueries({ queryKey: ["billing"] });
+      setBusy(null);
+      refresh();
     }
   };
 
-  return (
-    <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-3 shadow-card sm:flex-row sm:items-center">
-      <p className="text-sm text-muted-foreground sm:flex-1">
-        {left === 0
-          ? "Every unreplied review has a draft or a reply."
-          : `${left} unreplied review${left === 1 ? "" : "s"} without a draft. AI drafts up to ${max} per click; you check and send them yourself. Suspicious reviews are skipped.`}
-      </p>
-      <Button size="sm" disabled={busy || left === 0 || ai.paused_today} onClick={() => void run()}>
-        {busy ? <LoaderCircle aria-hidden className="animate-spin" /> : <Sparkles aria-hidden />}
-        {busy
-          ? `Drafting up to ${Math.min(left, max)}…`
-          : remaining !== null && remaining > 0
-            ? `Continue (${remaining} left)`
-            : `Draft ${left} repl${left === 1 ? "y" : "ies"}${ai.draft_all_cost != null && remaining === null ? ` · ${ai.draft_all_cost} token${ai.draft_all_cost === 1 ? "" : "s"}` : ""}`}
-      </Button>
-      {ai.paused_today ? <span className="text-xs text-muted-foreground">AI is paused for today.</span> : null}
-    </div>
-  );
-}
+  const sendAll = async () => {
+    setConfirmSend(false);
+    setBusy("send");
+    setFailures([]);
+    try {
+      // Every unreplied review with a draft, 100 per page.
+      const pending: Review[] = [];
+      for (let page = 1; ; page += 1) {
+        const list = await getReviews(locationId, { has_draft: true, replied: false, page, limit: 100 });
+        pending.push(...list.reviews);
+        if (pending.length >= list.total || list.reviews.length === 0) break;
+      }
+      let sent = 0;
+      const failed: SendFailure[] = [];
+      for (let index = 0; index < pending.length; index += SEND_BATCH) {
+        setProgress(`Sending ${Math.min(index + SEND_BATCH, pending.length)} of ${pending.length}…`);
+        const batch = pending.slice(index, index + SEND_BATCH);
+        const result = await sendReplies(locationId, batch.map((review) => review.review_id));
+        sent += result.sent;
+        for (const row of result.results) {
+          if (row.status === "sent") continue;
+          const review = batch.find((item) => item.review_id === row.review_id);
+          failed.push({
+            review_id: row.review_id,
+            reviewer: review?.reviewer?.display_name ?? "A reviewer",
+            reason: (row.reason && SEND_REASON[row.reason]) ?? row.reason ?? row.status,
+          });
+        }
+      }
+      setFailures(failed);
+      if (failed.length) toast.error(`${sent} sent, ${failed.length} not sent. See the list below.`);
+      else toast.success(`${sent} repl${sent === 1 ? "y" : "ies"} published on Google.`);
+    } catch (err) {
+      toast.error(reviewErrorMessage(err, "The replies couldn't be sent.").message);
+    } finally {
+      setBusy(null);
+      setProgress(null);
+      refresh();
+    }
+  };
 
-function DraftAllPanel(props: ComponentProps<typeof DraftAllPanelEditor>) {
-  return useCanEdit() ? <DraftAllPanelEditor {...props} /> : null;
+  if (!aiUsable && drafts === 0) return null;
+
+  return (
+    <section aria-label="Reply in bulk" className="mb-4 space-y-2 rounded-lg border border-border bg-surface p-3 shadow-card">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="mr-auto text-sm text-muted-foreground">
+          AI drafts a reply for every unreplied review except those with suspicious indicators. Nothing is sent until you send it.
+        </span>
+        {aiUsable ? (
+          <Button size="sm" disabled={busy !== null || draftable === 0} onClick={() => void draftAll()}>
+            {busy === "draft" ? <LoaderCircle aria-hidden className="animate-spin" /> : <Sparkles aria-hidden />}
+            {remaining !== null && remaining > 0
+              ? `Continue (${remaining} left)`
+              : draftable === 0
+                ? "No replies to draft"
+                : `Draft ${draftable} repl${draftable === 1 ? "y" : "ies"}${ai.draft_all_cost != null ? ` · ${ai.draft_all_cost} token${ai.draft_all_cost === 1 ? "" : "s"}` : ""}`}
+          </Button>
+        ) : null}
+        <Button size="sm" variant="outline" disabled={busy !== null || drafts === 0} onClick={() => setConfirmSend(true)}>
+          {busy === "send" ? <LoaderCircle aria-hidden className="animate-spin" /> : <Send aria-hidden />}
+          Send all {drafts} draft{drafts === 1 ? "" : "s"}
+        </Button>
+      </div>
+      {busy === "draft" ? <p className="text-xs text-muted-foreground">Drafting up to {ai.draft_all_max ?? 50} replies. This takes about 15 seconds.</p> : null}
+      {progress ? <p className="text-xs text-muted-foreground">{progress}</p> : null}
+      {ai.paused_today ? <p className="text-xs text-muted-foreground">AI is paused for today.</p> : null}
+      {failures.length > 0 ? (
+        <div role="alert" className="rounded-md border border-critical/25 bg-critical-surface/40 p-2.5 text-sm text-critical">
+          <p className="flex items-center gap-1.5 font-medium"><AlertTriangle className="size-4" aria-hidden /> Not sent</p>
+          <ul className="mt-1 space-y-0.5">
+            {failures.map((failure) => <li key={failure.review_id}>{failure.reviewer}: {failure.reason}</li>)}
+          </ul>
+        </div>
+      ) : null}
+
+      <AlertDialog open={confirmSend} onOpenChange={setConfirmSend}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Publish {drafts} repl{drafts === 1 ? "y" : "ies"} on Google?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Every unreplied review with a draft gets its reply published, as written. Check the drafts first: filter by "Draft waiting".
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void sendAll()}>Publish replies</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </section>
+  );
 }
 
 function ReviewsList({ locationId, summary }: { locationId: string; summary: ReviewsSummary }) {
@@ -359,7 +458,7 @@ function ReviewsList({ locationId, summary }: { locationId: string; summary: Rev
               <Button
                 size="sm"
                 disabled={busy !== null || eligibleForDrafts === 0}
-                title={eligibleForDrafts === 0 ? "AI drafts are for unreplied reviews that aren't flagged suspicious" : undefined}
+                title={eligibleForDrafts === 0 ? "AI drafts are for reviews without a reply that aren't flagged as suspicious" : undefined}
                 onClick={() =>
                   void bulk("drafts", async () => {
                     const result = await generateReplyDrafts(locationId, ids);

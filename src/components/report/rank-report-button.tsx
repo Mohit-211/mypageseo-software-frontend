@@ -66,8 +66,17 @@ function ReportButtonEditor({
   );
 }
 
-/** "Report" with a menu of every report type, for pages that cover the whole location. */
-function ReportMenuButtonEditor({ locationId }: { locationId: string }) {
+/**
+ * "Report" with a menu of every report type, for pages that cover the whole location.
+ * `unavailable` disables a type with the reason shown in its place (e.g. no citation list yet).
+ */
+function ReportMenuButtonEditor({
+  locationId,
+  unavailable,
+}: {
+  locationId: string;
+  unavailable?: Partial<Record<ReportType, string>> | undefined;
+}) {
   const [type, setType] = useState<ReportType | null>(null);
   const chosen = REPORT_TYPES.find((entry) => entry.value === type);
   return (
@@ -80,12 +89,20 @@ function ReportMenuButtonEditor({ locationId }: { locationId: string }) {
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-72">
           <DropdownMenuLabel>Create a PDF report</DropdownMenuLabel>
-          {REPORT_TYPES.map((entry) => (
-            <DropdownMenuItem key={entry.value} onSelect={() => setType(entry.value)} className="flex-col items-start gap-0.5">
-              <span className="font-medium">{entry.label}</span>
-              <span className="text-xs text-muted-foreground">{entry.description}</span>
-            </DropdownMenuItem>
-          ))}
+          {REPORT_TYPES.map((entry) => {
+            const reason = unavailable?.[entry.value];
+            return (
+              <DropdownMenuItem
+                key={entry.value}
+                disabled={Boolean(reason)}
+                onSelect={() => setType(entry.value)}
+                className="flex-col items-start gap-0.5"
+              >
+                <span className="font-medium">{entry.label}</span>
+                <span className="text-xs text-muted-foreground">{reason ?? entry.description}</span>
+              </DropdownMenuItem>
+            );
+          })}
         </DropdownMenuContent>
       </DropdownMenu>
       {type && chosen ? <ReportDialog locationId={locationId} type={type} subtitle={chosen.description} onClose={() => setType(null)} /> : null}

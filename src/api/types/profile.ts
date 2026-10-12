@@ -12,13 +12,12 @@ export type Profile = {
   user_type: UserType;
   role_id?: number;
   mobile?: string | null;
-  job_title?: string | null;
-  time_zone?: string | null;
-  timezone?: string | null;
-  avatar?: string | null;
-  profile_image?: string | null;
+  /** Null until the email is verified. */
+  email_verified_at?: string | null;
   email_verified?: boolean;
   is_email_verified?: boolean;
+  last_login_at?: string | null;
+  created_at?: string | null;
   /** Every organization the user belongs to. */
   organizations?: { organization_id: string; name: string; type: "business" | "agency"; role: string }[];
   /** The organization requests act on (the `X-Organization-Id` header, else the default). */

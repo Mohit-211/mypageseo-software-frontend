@@ -1,4 +1,5 @@
 import type { RankStatus } from "./rankings";
+import type { CitationCounts, CitationHealthSummary } from "./citations";
 /** Google's attribution for Places content: show `text` near business names, ratings and reviews. */
 export type Attribution = { provider: string; text: string };
 
@@ -42,8 +43,8 @@ export type LocationRow = {
   rank: { overall_avg_rank: number | null; change: number | null; status?: RankStatus | null; display?: string | null } | null;
   gbp: { score: number | null; grade: string | null; partial: boolean } | null;
   reviews: { rating: number | null; count: number | null } | null;
-  /** Null until the team has checked the listings. */
-  citations?: { score: number | null; grade: string | null; nap_wrong: number } | null;
+  /** Citation Health; null until the MyPageSEO team has checked a listing. */
+  citations?: CitationHealthSummary | null;
   last_refreshed_at: string | null;
   next_refresh_at: string | null;
 };
@@ -147,7 +148,7 @@ export type LocationOverview = LocationHeader & {
       }
     | Unavailable;
   reviews: { available: true; rating: number | null; count: number | null; unreplied: number | null } | Unavailable;
-  /** Phase 16; `no_citations_yet` / `not_checked_yet` when unavailable. */
+  /** `no_citations_yet` (no list) or `not_checked_yet` (a list, nothing checked) when unavailable. */
   citations?:
     | {
         available: true;
@@ -156,7 +157,7 @@ export type LocationOverview = LocationHeader & {
         score_change: number | null;
         coverage: number | null;
         listings: number;
-        counts: Record<string, number>;
+        counts: CitationCounts;
         last_checked_at: string | null;
       }
     | Unavailable;
@@ -388,7 +389,7 @@ export type BillingSummary = {
     monthly_grant?: number;
     last_grant_at?: string | null;
     next_grant_at?: string | null;
-    /** Token cost of each AI action, keyed by action. */
+    /** Tokens per AI action, e.g. `post_draft` (1) and `post_image` (3). */
     ai_costs?: Record<string, number>;
   };
   billing_details?: BillingDetails | null;

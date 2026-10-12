@@ -16,6 +16,7 @@ import type {
 } from "@/api";
 import { formatDate, formatShortDate } from "@/lib/datetime";
 import { locationSetupPath } from "@/lib/locations/location-actions";
+import { citationsUnavailableText, coverageText } from "@/lib/citations/citations";
 
 export type MetricPoint = {
   label: string;
@@ -77,6 +78,8 @@ export type BusinessDashboard = {
   reviewRating: MetricPoint;
   reviewCount: number | null;
   citationHealth: MetricPoint;
+  /** "5 of 6 checked", or why there's no score yet. */
+  citationCaption: string;
   rankMovement: { improved: number; declined: number; unchanged: number; tracked: number | null };
   rankSeries: RankSeriesPoint[];
   gbpFactors: GbpFactor[];
@@ -96,6 +99,8 @@ export type PortfolioRow = {
   visibility: number | null;
   visibilityChange: number | null;
   gbpHealth: number | null;
+  citationScore: number | null;
+  citationNapWrong: number;
   unansweredReviews: number | null;
   openIssues: number;
 };
@@ -109,6 +114,7 @@ export type AgencyDashboard = {
   locationCount: number;
   averageVisibility: MetricPoint;
   averageGbpHealth: MetricPoint;
+  averageCitationScore: number | null;
   attention: {
     decliningLocations: number;
     unansweredReviews: number | null;
@@ -295,6 +301,11 @@ export function toBusinessDashboard(
     },
     reviewCount: reviews.available ? reviews.count : ("public_review_count" in reviews ? (reviews.public_review_count ?? null) : null),
     citationHealth: { label: "Citation Health", value: citations?.available ? citations.score : null, change: citations?.available ? (citations.score_change ?? null) : null },
+    citationCaption: !citations
+      ? "Directory accuracy"
+      : citations.available
+        ? coverageText(citations.coverage, citations.listings)
+        : citationsUnavailableText(citations.reason),
     rankMovement: {
       improved: (movement?.improved ?? 0) + (movement?.entered_top_60 ?? 0),
       declined: (movement?.declined ?? 0) + (movement?.dropped_out_of_top_60 ?? 0),
@@ -325,6 +336,7 @@ export function toAgencyDashboard(live: LiveAgency): AgencyDashboard {
     locationCount: live.locations_count,
     averageVisibility: { label: "Avg. top-3 rate", value: pct(live.portfolio.avg_top3_rate), change: pct(live.portfolio.avg_top3_rate_change) },
     averageGbpHealth: { label: "Avg. GBP Health", value: live.portfolio.avg_gbp_score, change: live.portfolio.avg_gbp_score_change },
+    averageCitationScore: live.portfolio.avg_citation_score ?? null,
     attention: {
       decliningLocations: live.declines.length,
       unansweredReviews: live.reviews?.available ? (live.reviews.awaiting_attention ?? unanswered) : unanswered,
@@ -343,6 +355,8 @@ export function toAgencyDashboard(live: LiveAgency): AgencyDashboard {
       visibility: pct(row.visibility?.top3_rate),
       visibilityChange: pct(row.visibility?.top3_rate_change),
       gbpHealth: row.gbp?.score ?? null,
+      citationScore: row.citations?.score ?? null,
+      citationNapWrong: row.citations?.nap_wrong ?? 0,
       unansweredReviews: row.reviews ? row.reviews.awaiting_attention : null,
       openIssues: issuesByLocation.get(row.location_id) ?? 0,
     })),
