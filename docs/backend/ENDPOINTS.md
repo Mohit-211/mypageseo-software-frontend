@@ -69,9 +69,11 @@ Reads, billing, support and GBP connect / bind stay open.
 
 ## Summary (2026-10-12)
 
-**308 endpoints:** 307 live, 1 dev-only.
-- **By origin:** 276 rebuilt or new, 32 legacy.
-- **By auth:** 148 user, 116 platform admin (each with a permission), 44 none.
+**309 endpoints:** 308 live, 1 dev-only.
+- **By origin:** 277 rebuilt or new, 32 legacy.
+- **By auth:** 149 user, 116 platform admin (each with a permission), 44 none.
+
+**Posts follow-ups (2026-10-12):** `POST /locations/:locationId/posts/validate` (#225, the editor's live check); `GET …/posts/media` is paged; auto-post series take `time_zone` (the user's).
 
 **Phase 21 (team assignments, 2026-10-12):** `GET/PUT /admin/admins/:adminId/locations` (`admins.manage`): the customer locations a MyPageSEO employee works on in the citation admin (a hard limit). Agency members limited to clients use the existing team routes with `client_ids`. Shapes: API.md "Members limited to clients" and "Staff assigned to locations".
 
@@ -306,11 +308,12 @@ Reads for every member (client_user: its clients' locations); changes need owner
 |---|---|---|---|---|---|
 | GET | `/api/v1/locations/:locationId/posts` | user + owner | Posts of the location (filters: status list, type, source, date range; pages), each with `issues` (what blocks publishing) and `warnings` | 9 | live |
 | POST | `/api/v1/locations/:locationId/posts` | user + owner | Create a post: a draft (may be incomplete), or `action: schedule \| publish` (through approval when required) | 9 | live |
+| POST | `/api/v1/locations/:locationId/posts/validate` | user + owner | The editor's live check: a post's `issues` and `warnings` without saving it (no Google call, no tokens) | 2026-10-12 | live |
 | GET | `/api/v1/locations/:locationId/posts/summary` | user + owner | Counts by status, last / next post, posting settings, connection (GBP, v4, photos publishable), and what the caller may do (needs approval, can approve) | 9 | live |
 | GET | `/api/v1/locations/:locationId/posts/calendar` | user + owner | Dated posts (published / scheduled) between `from` and `to` (≤ 93 days) | 9 | live |
 | POST | `/api/v1/locations/:locationId/posts/refresh` | user + owner | Refresh posts: read states back from Google and import posts made on Google (free; once per 15 min) | 9 | live |
 | PUT | `/api/v1/locations/:locationId/posts/settings` | user + owner | Posting settings: approval `off \| team \| client`, default button, language (owner only) | 9 | live |
-| GET | `/api/v1/locations/:locationId/posts/media` | user + owner | The location's post photos (newest 50) | 9 | live |
+| GET | `/api/v1/locations/:locationId/posts/media` | user + owner | The location's post photos, newest first (2026-10-12: `page`, `limit`) | 9 | live |
 | POST | `/api/v1/locations/:locationId/posts/media` | user + owner | Upload a post photo (multipart `file`, JPEG / PNG ≤ 5 MB, ≥ 250×250; stored as a 4:3 JPEG without metadata) | 9 | live |
 | DELETE | `/api/v1/locations/:locationId/posts/media/:mediaId` | user + owner | Delete a photo (409 while an unpublished post uses it) | 9 | live |
 | GET | `/api/v1/locations/:locationId/posts/:postId` | user + owner | One post | 9 | live |
@@ -936,7 +939,7 @@ Money is in the organization's currency (US → USD, CA → CAD). Errors carry `
 | 194 | GET | `/locations/:locationId/posts/calendar` | user, owner | query `from`, `to` (ISO, ≤ 93 days) | `{ from, to, items: [{ post_id, location_id, type, status, source, date, summary (≤ 140), event, recurrence }] }`; **400** `range_too_long`, `invalid_range` |
 | 195 | POST | `/locations/:locationId/posts/refresh` | user, owner (write) | – | `{ updated, imported, missing, refreshed_at, next_allowed_at }`; **429** `refresh_too_soon` + `next_allowed_at`; **400** `gbp_not_connected`, `v4_access_pending`; **502** with Google's reason |
 | 196 | PUT | `/locations/:locationId/posts/settings` | user, owner (owner role) | `{ approval?: off\|team\|client, default_cta?: { type, url } \| null, language_code? }` | `{ settings }`; **403** `owner_only`; **400** `no_client` (client approval needs a client) |
-| 197 | GET | `/locations/:locationId/posts/media` | user, owner | – | `{ media: [{ media_id, kind: upload\|ai, url, width, height, bytes, created_at }] }` |
+| 197 | GET | `/locations/:locationId/posts/media` | user, owner | query `page` (1), `limit` (≤ 100, 50) | `{ media: [{ media_id, kind: upload\|ai, url, width, height, bytes, created_at }], page, limit, total }` |
 | 198 | POST | `/locations/:locationId/posts/media` | user, owner (write) | multipart `file` | **201** media; **400** `media_type`, `media_too_small`, `media_too_large`, `media_too_plain`, `media_unreadable`, `invalid_upload` |
 | 199 | DELETE | `/locations/:locationId/posts/media/:mediaId` | user, owner (write) | – | `{ media_id, deleted: true }`; **409** `media_in_use`; **404** `media_not_found` |
 | 200 | GET | `/locations/:locationId/posts/:postId` | user, owner | – | post; **404** `post_not_found` |
@@ -954,7 +957,7 @@ Money is in the organization's currency (US → USD, CA → CAD). Errors carry `
 | 214 | POST | `/locations/:locationId/posts/ai-image` | user, owner (write) | `{ post_id? \| prompt_hint?: 3–500, style? }` (style keys in API.md) | **201** `{ media: { media_id, kind: "ai", url, width, height, … }, style, tokens_spent }`; errors as #213; **404** `post_not_found`; **400** `subject_required` |
 | 215 | POST | `/locations/:locationId/posts/:postId/ai-regenerate` | user, owner (write) | `{ text?: true, image?: false, topic?, tone? }` | `{ post, tokens_spent }`; **409** `invalid_status` (only draft, scheduled, waiting or failed posts); errors as #213 |
 | 216 | GET | `/locations/:locationId/post-series` | user, owner | – | `{ series: [series], limit: 3 }`; series shape in API.md |
-| 217 | POST | `/locations/:locationId/post-series` | user, owner (write) | `{ name, cadence: { kind: weekly, days_of_week } \| { kind: every_n_days, n: 1–30 } \| { kind: monthly, day_of_month: 1–28 }, time_of_day: "HH:mm", starts_on, ends_on?, topics: [1–20], tone?, cta?, include_image? (true), language_code?, instructions? (≤ 500), lead_hours? (12–168, 48) }` | **201** series; **400** `gbp_not_connected`, `ends_before_start`, `no_days`; **409** `too_many_series` |
+| 217 | POST | `/locations/:locationId/post-series` | user, owner (write) | `{ name, cadence: { kind: weekly, days_of_week } \| { kind: every_n_days, n: 1–30 } \| { kind: monthly, day_of_month: 1–28 }, time_of_day: "HH:mm", time_zone? (IANA; 2026-10-12: the user's zone, null = the location's), starts_on, ends_on?, topics: [1–20], tone?, cta?, include_image? (true), language_code?, instructions? (≤ 500), lead_hours? (12–168, 48) }` | **201** series; **400** `gbp_not_connected`, `ends_before_start`, `no_days`; **409** `too_many_series` |
 | 218 | GET | `/locations/:locationId/post-series/:seriesId` | user, owner | – | series; **404** `series_not_found` |
 | 219 | PATCH | `/locations/:locationId/post-series/:seriesId` | user, owner (write) | any field of #217 | series |
 | 220 | DELETE | `/locations/:locationId/post-series/:seriesId` | user, owner (write) | query `keep_scheduled` (false) | `{ series_id, deleted: true, posts_unscheduled }` |
@@ -962,6 +965,7 @@ Money is in the organization's currency (US → USD, CA → CAD). Errors carry `
 | 222 | POST | `/locations/:locationId/post-series/:seriesId/resume` | user, owner (write) | – | series; **409** `too_many_series` |
 | 223 | GET | `/locations/:locationId/post-series/:seriesId/preview` | user, owner | query `count` (1–20, 5) | `{ time_zone, slots: [{ slot_at, topic, generates_at }] }` |
 | 224 | POST | `/locations/:locationId/post-series/:seriesId/generate-next` | user, owner (write) | – | **201** `{ series, post }`; **409** `no_slots`; **402** / **503** / **502** with the AI reason |
+| 225 | POST | `/locations/:locationId/posts/validate` | user, owner (write) | post fields as #192 (`type` required) + `scheduled_at?` | `{ issues: [{ field, code, message }], warnings: [{ code, message }], complete }`; nothing saved |
 
 ## Removed endpoints
 

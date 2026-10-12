@@ -1,4 +1,5 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSyncExternalStore } from "react";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   apiErrorData,
   getPostMedia,
@@ -8,7 +9,6 @@ import {
   getPostsSummary,
   isApiError,
   type CtaType,
-  type PostMedia,
   type PostStatus,
   type PostsQuery,
   type PostTone,
@@ -39,13 +39,13 @@ export function usePostSeries(locationId: string) {
   return useQuery({ queryKey: [...postsKey(locationId), "series"], queryFn: ({ signal }) => getPostSeries(locationId, signal), retry: false });
 }
 
+/** The location's photos, newest first, a page at a time ("Load more"). */
 export function usePostMedia(locationId: string, enabled: boolean) {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: [...postsKey(locationId), "media"],
-    queryFn: async ({ signal }): Promise<PostMedia[]> => {
-      const result = await getPostMedia(locationId, signal);
-      return Array.isArray(result) ? result : result.media;
-    },
+    queryFn: ({ pageParam, signal }) => getPostMedia(locationId, pageParam, 50, signal),
+    initialPageParam: 1,
+    getNextPageParam: (last) => (last.page * last.limit < last.total ? last.page + 1 : undefined),
     enabled,
     retry: false,
   });
@@ -157,12 +157,60 @@ export function seriesErrorText(code: string): string {
   return SERIES_ERRORS[code] ?? "A post couldn't be made";
 }
 
+/** What a failed or rejected post's `error.code` means for the customer. */
+export const POST_FAILURE_COPY: Record<string, string> = {
+  google_unavailable: "Google didn't answer. Retry in a few minutes.",
+  google_rejected: "Google's review rejected this post. Edit it and publish again.",
+  reconnect_required: "Google access needs to be restored before this post can publish.",
+  gbp_not_connected: "The Business Profile isn't connected.",
+  gbp_unbound: "The Business Profile was unbound from this location.",
+  v4_access_pending: "Waiting for Google to grant posting access.",
+  media_url_not_public: "Google couldn't fetch the photo (this server isn't reachable from Google).",
+  media_unreachable: "Google couldn't fetch the photo. Retry, or choose another photo.",
+  media_missing: "The photo is missing. Upload it again.",
+  publish_interrupted: "Publishing was interrupted. Retry.",
+  location_removed: "The location was removed.",
+  post_incomplete: "The post isn't complete. Edit it, then publish.",
+};
+
+/** A post's failure in words; Google's own wording when it refused the request. */
+export function postFailureText(error: { code: string; message: string } | null): string | null {
+  if (!error) return null;
+  if (error.code === "google_rejected_request") return `Google refused the post: ${error.message}`;
+  return POST_FAILURE_COPY[error.code] ?? error.message;
+}
+
+/*
+ * AI availability: after a 503 `ai_not_configured` the AI buttons are hidden for the rest of
+ * the session (the note: "hide the AI buttons"), rather than failing on every click.
+ */
+let aiUnavailable = false;
+const aiListeners = new Set<() => void>();
+
+function markAiUnavailable() {
+  if (aiUnavailable) return;
+  aiUnavailable = true;
+  for (const listener of aiListeners) listener();
+}
+
+/** False once the server said AI isn't set up. */
+export function useAiAvailable(): boolean {
+  return !useSyncExternalStore(
+    (listener) => {
+      aiListeners.add(listener);
+      return () => aiListeners.delete(listener);
+    },
+    () => aiUnavailable,
+  );
+}
+
 /**
  * Message for a failed posts call, from `data.reason`. `buyTokens` is set when
  * the user should be offered token packs; `reload` when the post changed meanwhile.
  */
 export function postErrorText(err: unknown, fallback: string): { message: string; buyTokens?: boolean; reload?: boolean } {
   if (!isApiError(err)) return { message: fallback };
+  if (err.reason === "ai_not_configured") markAiUnavailable();
   const data = apiErrorData(err);
   const reason = err.reason ?? "";
   if (UPLOAD_ERRORS[reason]) return { message: UPLOAD_ERRORS[reason] };
@@ -170,7 +218,7 @@ export function postErrorText(err: unknown, fallback: string): { message: string
     case "insufficient_tokens":
       return { message: `Not enough tokens: this costs ${String(data.cost ?? "?")}, your balance is ${String(data.balance ?? "?")}.`, buyTokens: true };
     case "ai_not_configured":
-      return { message: "AI isn't set up on the server yet." };
+      return { message: "AI isn't available yet, so the AI buttons are hidden." };
     case "ai_budget_reached":
       return { message: "AI is paused for today. Try again tomorrow." };
     case "ai_failed":
@@ -196,6 +244,8 @@ export function postErrorText(err: unknown, fallback: string): { message: string
       return { message: "You can't approve posts for this location." };
     case "too_many_series":
       return { message: "A location can have up to 3 active auto-post series." };
+    case "invalid_input":
+      return { message: err.message || "Something in the form isn't valid (for example an unknown time zone)." };
     case "ends_before_start":
       return { message: "The end date must be after the start date." };
     case "read_only":
@@ -203,6 +253,8 @@ export function postErrorText(err: unknown, fallback: string): { message: string
     case "subscription_required":
       return { message: "Your account is read-only until you subscribe." };
     default:
+      // A published post is patched on Google first: 502 carries Google's reason and nothing changed.
+      if (err.status === 502) return { message: err.message ? `Google refused the change: ${err.message}` : "Google refused the change. Try again later." };
       return { message: err.message || fallback };
   }
 }

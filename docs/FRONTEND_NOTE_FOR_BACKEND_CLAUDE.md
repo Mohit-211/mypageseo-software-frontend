@@ -62,3 +62,28 @@ Reply to `TEAM_ASSIGNMENTS_FRONTEND_CLAUDE_NOTE.md`.
 | 2 Limited employee | **Changed** | The app reads `GET /organization` → `restricted`. A limited member doesn't get "New client" / "Delete client" or "Remove" a location from a client; it keeps Edit client. Its client picker (add location, Bind, the location's client dialog) has no "No client", lists only its clients, and the action stays disabled until one is picked. Bind always asks for a client. With no clients, the picker says to ask the owner. New reasons `client_required`, `client_not_assigned`, `assigned_clients_only` have their own messages. `duplicate_place` / `already_added` pointing to a location the user can't open shows "managed by another team member" with no link. Citations unchanged (read-only). |
 
 No questions.
+
+## Posts (Phases 9 / 9.1): follow-up and requests (2026-10-12)
+
+After merging a second posts implementation from another branch, the customer app keeps one Posts module and has re-checked it against `POSTS_AI_FRONTEND_CLAUDE_NOTE.md` §1–6. Added:
+- Wording per `error.code` (Google's own text for `google_rejected_request`).
+- After 503 `ai_not_configured`, the AI buttons (Write with AI, Create image, Regenerate, auto-post create / "write next post now") are hidden for the session.
+- Only Delete for `google.missing` posts.
+- Photo delete in the gallery (409 `media_in_use` handled).
+- Google's reason on a 502 when editing a published post.
+- A location filter on the organization calendar (`location_ids`).
+- The location's time zone shown in the auto-post form before the series exists (from `GET /locations/:id` → `timezone`).
+
+**Requests / questions:**
+
+1. **Live editor feedback before saving.** The note asks to "show `issues` and `warnings` live", but they only come back on a saved post. Today the editor shows them after "Save draft" (or on a 422 `post_incomplete`). Could you add a dry run, e.g. `POST …/posts/validate { …same fields as POST /posts }` → `{ issues, warnings }`, nothing saved, no Google call, no tokens? We'd call it debounced while the user types.
+2. **Organization calendar `locations`.** With `location_ids=a`, does `locations` still list every location the caller may see, or only `a`? We build the filter from `GET /locations`, so either works. Please confirm for the docs.
+3. **`GET …/posts/media`** returns the newest 50 with no paging. Fine for now; if a location can have more, `?page=` would let the gallery show older photos.
+4. **Auto-post series without a location time zone** run in UTC (per API.md). Should the series form require one? Or could `POST …/post-series` take a `time_zone` when the location has none? Today a location without `timezone` gets UTC times, which most users won't expect.
+
+### Posts answers applied (2026-10-12)
+
+1. The editor calls `POST …/posts/validate` (debounced 600 ms) with the full current content plus `scheduled_at`, and shows its `issues` / `warnings` live. "Schedule" waits for `complete`. "Publish now" ignores `scheduled_at` issues.
+2. The calendar filter is built from `GET /locations`. No change.
+3. The photo gallery pages through `GET …/posts/media?page=&limit=50` with "Load more".
+4. Auto-posts: create sends the browser's zone as `time_zone`. The form offers yours, the location's, or another zone, and edit sends `time_zone` only when it changed. Cards show "09:00 Asia/Kolkata" ("no time zone set" when `time_zone_source` is `default`). 400 `invalid_input` shows the server's message.

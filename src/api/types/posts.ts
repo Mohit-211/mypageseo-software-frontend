@@ -167,13 +167,17 @@ export type PostSeriesInput = {
   language_code?: string;
   instructions: string | null;
   lead_hours?: number;
+  /** IANA zone for `time_of_day` (the user's own, 2026-10-12); null falls back to the location's, then UTC. 400 for an unknown zone. */
+  time_zone?: string | null;
 };
 
 export type PostSeries = PostSeriesInput & {
   series_id: string;
   location_id: string;
   active: boolean;
+  /** The zone in use, and where it came from. */
   time_zone: string;
+  time_zone_source?: "series" | "location" | "default";
   posts_generated: number;
   next_slots: string[];
   last_error: { code: string; message: string; slot_at: string; at: string } | null;

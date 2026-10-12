@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { ImagePlus, LoaderCircle, Sparkles, Trash2, Upload, X } from "lucide-react";
@@ -6,6 +7,8 @@ import {
   aiDraftPost,
   aiPostImage,
   createPost,
+  deletePostMedia,
+  validatePost,
   runPostAction,
   schedulePost,
   updatePost,
@@ -37,7 +40,10 @@ import {
   TONE_LABEL,
   WEEKDAYS,
   postErrorText,
+  postFailureText,
+  postsKey,
   tokens,
+  useAiAvailable,
   useAiCosts,
   useInvalidatePosts,
   usePostMedia,
@@ -172,13 +178,28 @@ export function PostEditor({
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
   });
   const [busy, setBusy] = useState<string | null>(null);
-  const [issues, setIssues] = useState<PostIssue[]>(post?.issues ?? []);
-  const [warnings, setWarnings] = useState(post?.warnings ?? []);
+  const [savedIssues, setIssues] = useState<PostIssue[]>(post?.issues ?? []);
+  const [savedWarnings, setWarnings] = useState(post?.warnings ?? []);
   const [imageIdea, setImageIdea] = useState("");
   const set = <K extends keyof Form>(key: K, value: Form[K]) => setForm((current) => ({ ...current, [key]: value }));
 
   const onGoogle = saved?.status === "published" || saved?.status === "rejected";
   const needsApproval = summary.you.needs_approval;
+  // Live check while typing (`POST posts/validate`): the full current content, nothing saved.
+  const draftInput = { ...toInput(form), type: form.type, ...(!onGoogle && scheduleAt ? { scheduled_at: new Date(scheduleAt).toISOString() } : {}) };
+  const debouncedInput = useDebounced(JSON.stringify(draftInput), 600);
+  const validation = useQuery({
+    queryKey: [...postsKey(locationId), "validate", debouncedInput],
+    queryFn: ({ signal }) => validatePost(locationId, JSON.parse(debouncedInput) as typeof draftInput, signal),
+    placeholderData: (previous) => previous,
+    staleTime: 60_000,
+    retry: false,
+  });
+  const issues = validation.data?.issues ?? savedIssues;
+  const warnings = validation.data?.warnings ?? savedWarnings;
+  // A schedule-time problem blocks Schedule, not Publish now.
+  const incomplete = validation.data ? !validation.data.complete : false;
+  const blocksPublish = issues.some((issue) => issue.field !== "scheduled_at");
   const issueFor = (field: string) => issues.filter((issue) => issue.field === field || issue.field.startsWith(`${field}.`));
 
   const fail = (err: unknown, fallback: string) => {
@@ -209,7 +230,7 @@ export function PostEditor({
       invalidate();
       toast.success(done(result));
       if (result && (result.status === "failed" || result.status === "rejected")) {
-        toast.error(result.error?.message ?? "Google didn't accept the post.", { description: "The post is kept; fix it and try again." });
+        toast.error(postFailureText(result.error) ?? "Google didn't accept the post.", { description: "The post is kept; fix it and try again." });
       }
       if (key !== "save" || !result || result.issues.length === 0) onClose();
     } catch (err) {
@@ -403,11 +424,20 @@ export function PostEditor({
             </Button>
             {!onGoogle ? (
               <>
-                <Button variant="outline" disabled={busy !== null || !scheduleAt} onClick={() => void doSchedule()}>
+                <Button
+                  variant="outline"
+                  disabled={busy !== null || !scheduleAt || incomplete}
+                  title={incomplete ? "Fix the issues listed above first" : undefined}
+                  onClick={() => void doSchedule()}
+                >
                   {busy === "schedule" ? <LoaderCircle aria-hidden className="animate-spin" /> : null}
                   {needsApproval ? "Send for approval" : "Schedule"}
                 </Button>
-                <Button disabled={busy !== null || !summary.connection.gbp_connected} onClick={() => void doPublish()}>
+                <Button
+                  disabled={busy !== null || !summary.connection.gbp_connected || (validation.data !== undefined && blocksPublish)}
+                  title={validation.data !== undefined && blocksPublish ? "Fix the issues listed above first" : undefined}
+                  onClick={() => void doPublish()}
+                >
                   {busy === "publish" ? <LoaderCircle aria-hidden className="animate-spin" /> : null}
                   {needsApproval ? "Send for approval now" : "Publish now"}
                 </Button>
@@ -520,6 +550,8 @@ function AiWriter({ locationId, type, onPick }: { locationId: string; type: Post
   const [variants, setVariants] = useState("2");
   const [busy, setBusy] = useState(false);
   const [drafts, setDrafts] = useState<AiPostDraft[]>([]);
+  const aiAvailable = useAiAvailable();
+  if (!aiAvailable) return null;
 
   const write = async () => {
     setBusy(true);
@@ -603,11 +635,28 @@ function PhotoField({
   const fileInput = useRef<HTMLInputElement>(null);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const gallery = usePostMedia(locationId, galleryOpen);
+  const photos = gallery.data?.pages.flatMap((page) => page.media) ?? [];
   const [uploading, setUploading] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [hint, setHint] = useState("");
   const [style, setStyle] = useState<AiImageStyle | "rotate">("rotate");
   const [generating, setGenerating] = useState(false);
+  const [removing, setRemoving] = useState<string | null>(null);
+  const aiAvailable = useAiAvailable();
+
+  /** 409 `media_in_use` while a post that isn't published yet uses the photo. */
+  const removePhoto = async (item: PostMedia) => {
+    setRemoving(item.media_id);
+    try {
+      await deletePostMedia(locationId, item.media_id);
+      if (media?.media_id === item.media_id) onChange(null);
+      invalidate();
+    } catch (err) {
+      toast.error(postErrorText(err, "The photo couldn't be deleted.").message);
+    } finally {
+      setRemoving(null);
+    }
+  };
 
   const upload = async (file: File) => {
     setUploading(true);
@@ -668,12 +717,14 @@ function PhotoField({
         <Button type="button" size="sm" variant="outline" onClick={() => setGalleryOpen((value) => !value)}>
           <ImagePlus aria-hidden /> From gallery
         </Button>
-        <Button type="button" size="sm" variant="outline" onClick={() => { setAiOpen((value) => !value); setHint((current) => current || imageIdea); }}>
-          <Sparkles aria-hidden /> Create image ({tokens(costs.image)})
-        </Button>
+        {aiAvailable ? (
+          <Button type="button" size="sm" variant="outline" onClick={() => { setAiOpen((value) => !value); setHint((current) => current || imageIdea); }}>
+            <Sparkles aria-hidden /> Create image ({tokens(costs.image)})
+          </Button>
+        ) : null}
       </div>
-      <p className="text-xs text-muted-foreground">JPEG or PNG, at least 250×250, up to 5 MB. Photos are cropped to 4:3.</p>
-      {aiOpen ? (
+      <p className="text-xs text-muted-foreground">JPEG or PNG, at least 250×250, up to 5 MB. Photos are cropped to 4:3. Photos no post uses are deleted after 30 days.</p>
+      {aiOpen && aiAvailable ? (
         <div className="space-y-2 rounded-md border border-primary/25 bg-brand-tint/40 p-3">
           <Input placeholder="Describe the picture, e.g. fresh loaves on a wooden table" value={hint} onChange={(event) => setHint(event.target.value)} />
           <div className="flex flex-wrap items-center gap-2">
@@ -695,24 +746,52 @@ function PhotoField({
       {galleryOpen ? (
         gallery.isPending ? (
           <LoaderCircle aria-label="Loading photos" className="size-4 animate-spin text-muted-foreground" />
-        ) : !gallery.data?.length ? (
+        ) : !photos.length ? (
           <p className="text-xs text-muted-foreground">No photos uploaded for this location yet.</p>
         ) : (
+          <>
           <ul className="grid grid-cols-3 gap-2 sm:grid-cols-5">
-            {gallery.data.map((item) => (
-              <li key={item.media_id}>
+            {photos.map((item) => (
+              <li key={item.media_id} className="relative">
                 <button
                   type="button"
-                  className={cn("block overflow-hidden rounded-md border-2", media?.media_id === item.media_id ? "border-primary" : "border-transparent")}
+                  className={cn("block w-full overflow-hidden rounded-md border-2", media?.media_id === item.media_id ? "border-primary" : "border-transparent")}
                   onClick={() => { onChange(item); setGalleryOpen(false); }}
                 >
                   <img src={item.url} alt="" className="aspect-[4/3] w-full object-cover" />
                 </button>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="secondary"
+                  className="absolute right-1 top-1 size-6"
+                  aria-label="Delete photo"
+                  disabled={removing !== null}
+                  onClick={() => void removePhoto(item)}
+                >
+                  {removing === item.media_id ? <LoaderCircle aria-hidden className="size-3 animate-spin" /> : <X aria-hidden className="size-3" />}
+                </Button>
               </li>
             ))}
           </ul>
+          {gallery.hasNextPage ? (
+            <Button type="button" size="sm" variant="ghost" disabled={gallery.isFetchingNextPage} onClick={() => void gallery.fetchNextPage()}>
+              {gallery.isFetchingNextPage ? <LoaderCircle aria-hidden className="animate-spin" /> : null} Load more
+            </Button>
+          ) : null}
+          </>
         )
       ) : null}
     </Field>
   );
+}
+
+/** The value once it has stopped changing for `ms`. */
+function useDebounced<T>(value: T, ms: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), ms);
+    return () => window.clearTimeout(timer);
+  }, [value, ms]);
+  return debounced;
 }

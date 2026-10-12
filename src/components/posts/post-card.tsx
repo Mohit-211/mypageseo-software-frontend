@@ -20,7 +20,17 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Textarea } from "@/components/ui/textarea";
 import { useCanEdit } from "@/hooks/use-access";
 import { formatDateTime } from "@/lib/datetime";
-import { CTA_LABEL, STATUS_LABEL, STATUS_TONE, postErrorText, tokens, useAiCosts, useInvalidatePosts } from "@/lib/posts/use-posts";
+import {
+  CTA_LABEL,
+  STATUS_LABEL,
+  STATUS_TONE,
+  postErrorText,
+  postFailureText,
+  tokens,
+  useAiAvailable,
+  useAiCosts,
+  useInvalidatePosts,
+} from "@/lib/posts/use-posts";
 
 const TYPE_LABEL = { standard: "Update", event: "Event", offer: "Offer" } as const;
 
@@ -45,6 +55,7 @@ export function PostCard({
   const navigate = useNavigate();
   const canEdit = useCanEdit() && post.can_edit;
   const costs = useAiCosts();
+  const aiAvailable = useAiAvailable();
   const invalidate = useInvalidatePosts(locationId);
   const [busy, setBusy] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -59,7 +70,7 @@ export function PostCard({
       const result = (await action()) as Post | { post?: Post } | undefined;
       const updated = result && "status" in result ? result : result && "post" in result ? result.post : undefined;
       if (updated && (updated.status === "failed" || updated.status === "rejected")) {
-        toast.error(updated.error?.message ?? "Google didn't accept the post.", { description: "The post is kept; fix it and try again." });
+        toast.error(postFailureText(updated.error) ?? "Google didn't accept the post.", { description: "The post is kept; fix it and try again." });
       } else {
         toast.success(success);
       }
@@ -96,7 +107,8 @@ export function PostCard({
         <p className="line-clamp-4 whitespace-pre-line text-sm text-foreground">{post.summary || <span className="text-muted-foreground">No text yet</span>}</p>
         {post.cta ? <p className="text-xs text-muted-foreground">Button: {CTA_LABEL[post.cta.type]}</p> : null}
         {post.offer?.coupon_code ? <p className="text-xs text-muted-foreground">Coupon: {post.offer.coupon_code}</p> : null}
-        {post.error ? <p role="alert" className="text-sm text-critical">{post.error.message}</p> : null}
+        {post.error ? <p role="alert" className="text-sm text-critical">{postFailureText(post.error)}</p> : null}
+        {missing ? <p className="text-xs text-muted-foreground">This post was deleted on Google. It can only be deleted here.</p> : null}
         {post.issues.length > 0 && post.status === "draft" ? (
           <p className="text-xs text-warning-foreground">Not ready to publish: {post.issues.map((issue) => issue.message).join(" ")}</p>
         ) : null}
@@ -130,7 +142,7 @@ export function PostCard({
               <Pencil aria-hidden /> Edit
             </Button>
           ) : null}
-          {canEdit && post.status === "failed" ? (
+          {canEdit && post.status === "failed" && !missing ? (
             <Button size="sm" disabled={busy !== null} onClick={action("retry", "Published on Google.")}>
               {busy === "retry" ? <LoaderCircle aria-hidden className="animate-spin" /> : <RotateCw aria-hidden />} Retry
             </Button>
@@ -148,19 +160,19 @@ export function PostCard({
                     <Send aria-hidden /> {summary.you.needs_approval ? "Send for approval now" : "Publish now"}
                   </DropdownMenuItem>
                 ) : null}
-                {post.status === "scheduled" || post.status === "pending_approval" ? (
+                {!missing && (post.status === "scheduled" || post.status === "pending_approval") ? (
                   <DropdownMenuItem onSelect={action("unschedule", "Moved back to Drafts.")}>
                     <Undo2 aria-hidden /> {post.status === "scheduled" ? "Unschedule" : "Withdraw"}
                   </DropdownMenuItem>
                 ) : null}
-                {notOnGoogle && !missing ? (
+                {notOnGoogle && !missing && aiAvailable ? (
                   <DropdownMenuItem
                     onSelect={() => void run("regenerate", () => aiRegeneratePost(locationId, post.post_id, { text: true }), "New text written.")}
                   >
                     <Sparkles aria-hidden /> Regenerate text ({tokens(costs.draft)})
                   </DropdownMenuItem>
                 ) : null}
-                {notOnGoogle && !missing ? (
+                {notOnGoogle && !missing && aiAvailable ? (
                   <DropdownMenuItem
                     onSelect={() => void run("regenerate", () => aiRegeneratePost(locationId, post.post_id, { text: false, image: true }), "New image created.")}
                   >

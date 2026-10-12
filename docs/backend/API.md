@@ -3219,7 +3219,7 @@ Use `you.needs_approval` to label the buttons "Send for approval" instead of "Pu
 
 - List query: `status=draft,scheduled`, `type`, `source`, `from`, `to` (ISO; matches the published or scheduled time), `page`, `limit` (≤ 100) → `{ posts: [post], page, limit, total }`, most recently changed first.
 - Calendar: `from`, `to` (ISO, at most 93 days) → `{ from, to, items: [{ post_id, location_id, type, status, source, date, summary, event, recurrence }] }`. `date` is `published_at`, else `scheduled_at`; undated drafts are not on the calendar.
-- `GET /api/v1/posts/calendar?from=&to=&location_ids=a,b` (organization-wide; an agency sees every location it may see) adds `location_name` to each item and `locations: [{ location_id, name }]`.
+- `GET /api/v1/posts/calendar?from=&to=&location_ids=a,b` (organization-wide; an agency sees every location it may see) adds `location_name` to each item and `locations: [{ location_id, name }]`. `locations` lists the locations the answer covers: with `location_ids`, only those (the ones the caller may see); without, every location the caller may see. Build a location filter from `GET /locations`.
 
 ### `POST /posts`
 
@@ -3260,13 +3260,27 @@ Owner setting `PUT /posts/settings { "approval": "off" | "team" | "client", "def
 - `POST :postId/approve { "note": "…" }` → the post publishes at its `scheduled_at`, or now when it had none or the time has passed. `POST :postId/reject { "note": "Change the wording" }` → back to `draft` with `approval.decision: "rejected"`. Someone else gets **403** `not_an_approver`.
 - No email notifications yet (Phase 15); `stats.pending_approval` and the dashboard action `posts:approval` show waiting posts.
 
+### `POST /posts/validate` (2026-10-12): the editor's live check
+
+The same body as `POST /posts` (`type` required; any other post field) plus an optional `scheduled_at`; no `action`. Call it debounced while the user types.
+
+```json
+{ "issues": [ { "field": "event", "code": "event_required", "message": "…" } ], "warnings": [ { "code": "phone_in_text", "message": "…" } ], "complete": false }
+```
+
+- `issues` are what would block scheduling or publishing (the same list a saved post carries), plus `scheduled_at` problems (too soon or too far) and `media_ids` that aren't this location's photos (`media_not_found`).
+- `warnings` are hints; `complete` = no issues.
+- Nothing is saved, Google isn't called and no tokens are spent.
+- The location's posting defaults (language, default button) apply as on create.
+- For an existing post, send its full current content.
+
 ### Photos
 
 - `POST /posts/media` (multipart, field `file`): JPEG or PNG, ≤ 5 MB, at least 250×250. It is cropped to 4:3 (at most 1200×900, never enlarged) and saved as a JPEG without metadata.
 - → **201** `{ media_id, kind: "upload", url, width, height, bytes, created_at }`.
 - Errors: **400** `media_type`, `media_too_small`, `media_too_large`, `media_too_plain` (too little detail: under 10 KB), `media_unreadable`, `invalid_upload`.
 - Put the `media_id` in a post's `media_ids`.
-- `GET /posts/media` lists the location's photos (newest 50).
+- `GET /posts/media?page=&limit=` lists the location's photos, newest first: `{ media, page, limit, total }` (2026-10-12; 50 per page by default, ≤ 100).
 - `DELETE /posts/media/:mediaId` (**409** `media_in_use` while an unpublished post uses it).
 - Photos no post uses are deleted after 30 days.
 - `url` is public (`/m/<token>.jpg`, no login) because Google fetches it.
@@ -3309,7 +3323,7 @@ POST /api/v1/locations/:locationId/post-series
 ```
 
 - **Cadence:** `{ kind: "weekly", days_of_week: [...] }`, `{ kind: "every_n_days", n: 1–30 }` (counted from `starts_on`) or `{ kind: "monthly", day_of_month: 1–28 }`.
-- **Time:** `time_of_day` is in the location's time zone (`time_zone`; UTC when unknown).
+- **Time (changed 2026-10-12, Mohit):** `time_of_day` is in the **user's own time zone**. Send `time_zone` (IANA, e.g. `Intl.DateTimeFormat().resolvedOptions().timeZone`) on create, and on `PATCH` when the user changes it; `null` clears it. Without one the series uses the location's time zone, else UTC. Each series answers `time_zone` (the zone in use) and `time_zone_source`: `series` (sent by the app), `location` or `default` (UTC). An unknown zone → **400** `invalid_input`.
 - **Topics:** used in turn.
 - **Button:** `cta` is the post's button; when null the AI may suggest "Call now".
 - **Limits:** at most 3 active series per location. A GBP binding is required (**400** `gbp_not_connected`).

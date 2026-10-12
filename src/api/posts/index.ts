@@ -8,6 +8,7 @@ import type {
   PostCreateInput,
   PostCta,
   PostInput,
+  PostIssue,
   PostMedia,
   PostSeries,
   PostSeriesInput,
@@ -119,8 +120,26 @@ export async function uploadPostMedia(locationId: string, file: File): Promise<P
   return unwrapData(await api.post(`${posts(locationId)}/media`, body, { timeoutMs: 60_000 }));
 }
 
-export async function getPostMedia(locationId: string, signal?: AbortSignal): Promise<{ media: PostMedia[] } | PostMedia[]> {
-  return unwrapData(await api.get(`${posts(locationId)}/media`, withSignal(signal)));
+/** Newest first, 50 per page by default (≤ 100). */
+export async function getPostMedia(
+  locationId: string,
+  page = 1,
+  limit = 50,
+  signal?: AbortSignal,
+): Promise<{ media: PostMedia[]; page: number; limit: number; total: number }> {
+  return unwrapData(await api.get(`${posts(locationId)}/media`, { query: { page, limit }, ...withSignal(signal) }));
+}
+
+/**
+ * The editor's live check: the same body as create (no `action`) plus an optional `scheduled_at`.
+ * Nothing saved, no Google call, no tokens. For an existing post, send its full current content.
+ */
+export async function validatePost(
+  locationId: string,
+  input: PostInput & { type: PostType; scheduled_at?: string },
+  signal?: AbortSignal,
+): Promise<{ issues: PostIssue[]; warnings: { code: string; message: string }[]; complete: boolean }> {
+  return unwrapData(await api.post(`${posts(locationId)}/validate`, input, withSignal(signal)));
 }
 
 export async function deletePostMedia(locationId: string, mediaId: string): Promise<unknown> {

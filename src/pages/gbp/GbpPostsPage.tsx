@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowRight, MapPin } from "lucide-react";
@@ -8,6 +9,7 @@ import { EmptyState, ErrorState, PageSkeleton } from "@/components/layout/shared
 import { PostsCalendar } from "@/components/posts/posts-calendar";
 import { useMonth } from "@/lib/posts/calendar";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
 import { postErrorText } from "@/lib/posts/use-posts";
 
@@ -16,9 +18,10 @@ function GbpPostsPage() {
   const workspace = useWorkspace();
   const navigate = useNavigate();
   const { month, shift, from, to } = useMonth();
+  const [locationId, setLocationId] = useState("all");
   const calendar = useQuery({
-    queryKey: ["posts", "calendar", workspace.organization?.id ?? null, from, to],
-    queryFn: ({ signal }) => getOrganizationPostsCalendar(from, to, undefined, signal),
+    queryKey: ["posts", "calendar", workspace.organization?.id ?? null, from, to, locationId],
+    queryFn: ({ signal }) => getOrganizationPostsCalendar(from, to, locationId === "all" ? undefined : [locationId], signal),
     enabled: workspace.status === "ready",
     retry: false,
   });
@@ -52,7 +55,21 @@ function GbpPostsPage() {
               ))}
             </ul>
           </Panel>
-          <Panel title="Calendar" description="Every location's dated posts. Drafts aren't on the calendar.">
+          <Panel
+            title="Calendar"
+            description="Every location's dated posts. Drafts aren't on the calendar."
+            actions={
+              <Select value={locationId} onValueChange={setLocationId}>
+                <SelectTrigger className="w-56 bg-background" aria-label="Location"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All locations</SelectItem>
+                  {workspace.locations.map((location) => (
+                    <SelectItem key={location.id} value={location.id}>{location.businessName}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            }
+          >
             {calendar.isError ? (
               <ErrorState description={postErrorText(calendar.error, "The calendar couldn't be loaded.").message} onRetry={() => void calendar.refetch()} />
             ) : (

@@ -139,7 +139,7 @@ function LocationGbpPostsPage() {
       {tab === "calendar" ? (
         <LocationCalendar locationId={locationId} onOpen={setEditing} />
       ) : tab === "auto" ? (
-        <AutoPosts locationId={locationId} gbpConnected={data.connection.gbp_connected} onOpenPost={setEditing} />
+        <AutoPosts locationId={locationId} timeZone={location.timezone} gbpConnected={data.connection.gbp_connected} onOpenPost={setEditing} />
       ) : (
         <PostList key={tab} locationId={locationId} status={POST_TABS.find((entry) => entry.id === tab)?.status ?? "draft"} summary={data} onEdit={setEditing} onNew={canEdit ? () => setEditing("new") : undefined} />
       )}

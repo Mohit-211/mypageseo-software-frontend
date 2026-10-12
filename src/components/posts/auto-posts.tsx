@@ -37,6 +37,7 @@ import {
   postsKey,
   seriesErrorText,
   tokens,
+  useAiAvailable,
   useAiCosts,
   useInvalidatePosts,
   usePostSeries,
@@ -55,8 +56,20 @@ function cadenceText(cadence: SeriesCadence): string {
  * Auto-posts (AI series): the server writes each post about 48 h ahead and publishes it
  * on time unless someone changes it. Creating a series is consent to its token spend.
  */
-export function AutoPosts({ locationId, gbpConnected, onOpenPost }: { locationId: string; gbpConnected: boolean; onOpenPost: (post: Post) => void }) {
+export function AutoPosts({
+  locationId,
+  timeZone,
+  gbpConnected,
+  onOpenPost,
+}: {
+  locationId: string;
+  /** The location's IANA time zone (series times are in it); null when unknown (the server then uses UTC). */
+  timeZone: string | null;
+  gbpConnected: boolean;
+  onOpenPost: (post: Post) => void;
+}) {
   const canEdit = useCanEdit();
+  const aiAvailable = useAiAvailable();
   const list = usePostSeries(locationId);
   const [editing, setEditing] = useState<PostSeries | "new" | null>(null);
 
@@ -71,12 +84,17 @@ export function AutoPosts({ locationId, gbpConnected, onOpenPost }: { locationId
         <p className="text-sm text-muted-foreground">
           AI writes each post about 2 days before its time. It publishes automatically unless you edit, unschedule or delete it. Up to {limit} active series.
         </p>
-        {canEdit ? (
+        {canEdit && aiAvailable ? (
           <Button size="sm" disabled={!gbpConnected || active >= limit} title={!gbpConnected ? "Connect the location to Google first" : undefined} onClick={() => setEditing("new")}>
             <Plus aria-hidden /> New auto-post series
           </Button>
         ) : null}
       </div>
+      {!aiAvailable ? (
+        <p className="rounded-md border border-warning/40 bg-warning-surface/40 px-3 py-2 text-sm text-warning-foreground">
+          AI isn't available yet, so auto-posts can't be set up. Existing series keep their schedule but can't write new posts until it is.
+        </p>
+      ) : null}
       {series.length === 0 ? (
         <EmptyState
           icon={Sparkles}
@@ -86,7 +104,7 @@ export function AutoPosts({ locationId, gbpConnected, onOpenPost }: { locationId
       ) : (
         series.map((entry) => <SeriesCard key={entry.series_id} locationId={locationId} series={entry} onEdit={() => setEditing(entry)} onOpenPost={onOpenPost} />)
       )}
-      {editing ? <SeriesDialog locationId={locationId} series={editing === "new" ? null : editing} onClose={() => setEditing(null)} /> : null}
+      {editing ? <SeriesDialog locationId={locationId} timeZone={timeZone} series={editing === "new" ? null : editing} onClose={() => setEditing(null)} /> : null}
     </div>
   );
 }
@@ -95,6 +113,7 @@ function SeriesCard({ locationId, series, onEdit, onOpenPost }: { locationId: st
   const navigate = useNavigate();
   const canEdit = useCanEdit();
   const costs = useAiCosts();
+  const aiAvailable = useAiAvailable();
   const invalidate = useInvalidatePosts(locationId);
   const [busy, setBusy] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -124,7 +143,7 @@ function SeriesCard({ locationId, series, onEdit, onOpenPost }: { locationId: st
   return (
     <Panel
       title={series.name}
-      description={`${cadenceText(series.cadence)} at ${series.time_of_day} (${series.time_zone}) · ${TONE_LABEL[series.tone]} · ${series.include_image ? "with image" : "text only"} · ${tokens(perPost)} per post`}
+      description={`${cadenceText(series.cadence)} at ${series.time_of_day} ${series.time_zone}${series.time_zone_source === "default" ? " (no time zone set)" : ""} · ${TONE_LABEL[series.tone]} · ${series.include_image ? "with image" : "text only"} · ${tokens(perPost)} per post`}
       actions={<StatusBadge tone={series.active ? "success" : "neutral"}>{series.active ? "Active" : "Paused"}</StatusBadge>}
     >
       <div className="space-y-3 text-sm">
@@ -179,7 +198,7 @@ function SeriesCard({ locationId, series, onEdit, onOpenPost }: { locationId: st
             >
               {series.active ? <Pause aria-hidden /> : <Play aria-hidden />} {series.active ? "Pause" : "Resume"}
             </Button>
-            {series.active ? (
+            {series.active && aiAvailable ? (
               <Button
                 size="sm"
                 variant="outline"
@@ -233,7 +252,15 @@ function DeleteSeriesDialog({ name, onClose, onDelete }: { name: string; onClose
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-function SeriesDialog({ locationId, series, onClose }: { locationId: string; series: PostSeries | null; onClose: () => void }) {
+function browserTimeZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
+}
+
+function SeriesDialog({ locationId, timeZone, series, onClose }: { locationId: string; timeZone: string | null; series: PostSeries | null; onClose: () => void }) {
   const navigate = useNavigate();
   const costs = useAiCosts();
   const invalidate = useInvalidatePosts(locationId);
@@ -243,6 +270,11 @@ function SeriesDialog({ locationId, series, onClose }: { locationId: string; ser
   const [everyN, setEveryN] = useState(series?.cadence.kind === "every_n_days" ? String(series.cadence.n) : "3");
   const [dayOfMonth, setDayOfMonth] = useState(series?.cadence.kind === "monthly" ? String(series.cadence.day_of_month) : "1");
   const [time, setTime] = useState(series?.time_of_day ?? "09:00");
+  // Mohit (2026-10-12): series times are in the user's own zone unless they pick another.
+  const userZone = browserTimeZone();
+  const [zone, setZone] = useState(series ? series.time_zone : userZone);
+  const zoneOptions = Array.from(new Set([userZone, ...(timeZone ? [timeZone] : []), ...(series ? [series.time_zone] : [])]));
+  const [customZone, setCustomZone] = useState(false);
   const [startsOn, setStartsOn] = useState(series?.starts_on ?? today());
   const [endsOn, setEndsOn] = useState(series?.ends_on ?? "");
   const [topics, setTopics] = useState((series?.topics ?? []).join("\n"));
@@ -271,6 +303,8 @@ function SeriesDialog({ locationId, series, onClose }: { locationId: string; ser
       cta: cta === "none" ? null : { type: cta, url: cta === "CALL" ? null : ctaUrl.trim() || null },
       include_image: includeImage,
       instructions: instructions.trim() || null,
+      // Sent on create, and on edit only when it changed.
+      ...(!series || zone !== series.time_zone ? { time_zone: zone.trim() } : {}),
     };
     try {
       if (series) await updatePostSeries(locationId, series.series_id, input);
@@ -286,7 +320,7 @@ function SeriesDialog({ locationId, series, onClose }: { locationId: string; ser
     }
   };
 
-  const valid = name.trim() && topicList.length > 0 && time && startsOn && (kind !== "weekly" || days.length > 0);
+  const valid = name.trim() && topicList.length > 0 && time && zone.trim() && startsOn && (kind !== "weekly" || days.length > 0);
 
   return (
     <Dialog open onOpenChange={(open) => (open || saving ? undefined : onClose())}>
@@ -330,7 +364,25 @@ function SeriesDialog({ locationId, series, onClose }: { locationId: string; ser
                 })}
               </div>
             ) : null}
-            <p className="text-xs text-muted-foreground">Times are in the location's time zone{series ? ` (${series.time_zone})` : ""}.</p>
+            <div className="flex flex-wrap items-center gap-2 pt-1 text-sm">
+              <span className="text-muted-foreground">Time zone</span>
+              {customZone ? (
+                <Input className="w-56" placeholder="e.g. America/Toronto" value={zone} onChange={(event) => setZone(event.target.value)} />
+              ) : (
+                <Select value={zone} onValueChange={(value) => (value === "__other__" ? setCustomZone(true) : setZone(value))}>
+                  <SelectTrigger className="w-64 bg-background" aria-label="Time zone"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {zoneOptions.map((option) => (
+                      <SelectItem key={option} value={option}>
+                        {option}
+                        {option === userZone ? " (yours)" : option === timeZone ? " (the location's)" : ""}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value="__other__">Another time zone…</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5"><Label>Starts</Label><Input type="date" value={startsOn} onChange={(event) => setStartsOn(event.target.value)} /></div>
