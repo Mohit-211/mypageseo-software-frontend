@@ -89,9 +89,8 @@ export const router = createBrowserRouter([
           // Reviews moved to Reputation; the old addresses still work.
           { path: "gbp/reviews", element: <Navigate to="/reputation/reviews" replace /> },
           { path: "gbp/posts", lazy: () => import("@/pages/gbp/GbpPostsPage").then(page) },
-          { path: "gbp/ai-posts", lazy: () => import("@/pages/gbp/GbpAiPostsPage").then(page) },
-          { path: "gbp/ai-posts/create", lazy: () => import("@/pages/gbp/GbpAiPostCreatePage").then(page) },
-          { path: "gbp/ai-posts/:postId", lazy: () => import("@/pages/gbp/GbpAiPostDetailPage").then(page) },
+          // AI posts are part of each location's Posts page (editor AI and auto-posts).
+          { path: "gbp/ai-posts/*", element: <Navigate to="/gbp/posts" replace /> },
           { path: "gbp/review-management", element: <Navigate to="/reputation/review-management" replace /> },
           { path: "gbp/review-management/automation", element: <Navigate to="/reputation/review-management/automation" replace /> },
           { path: "reputation", Component: ReputationReviewsRedirectPage },
@@ -138,6 +137,8 @@ export const router = createBrowserRouter([
           },
           { path: "notifications", lazy: () => import("@/pages/notifications/NotificationsPage").then(page) },
           { path: "help", lazy: () => import("@/pages/help/HelpPage").then(page) },
+          { path: "support", lazy: () => import("@/pages/support/SupportPage").then(page) },
+          { path: "support/:ticketId", lazy: () => import("@/pages/support/SupportTicketPage").then(page) },
           { path: "onboarding", lazy: () => import("@/pages/onboarding/OnboardingIndexPage").then(page) },
           { path: "onboarding/business", lazy: () => import("@/pages/onboarding/OnboardingBusinessPage").then(page) },
           { path: "onboarding/agency", lazy: () => import("@/pages/onboarding/OnboardingAgencyPage").then(page) },

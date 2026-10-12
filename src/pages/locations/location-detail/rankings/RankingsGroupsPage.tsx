@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useCanEdit } from "@/hooks/use-access";
 import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -39,6 +40,7 @@ function RankingsGroupsPage() {
   const queryClient = useQueryClient();
   const groups = useKeywordGroups(locationId);
   const tracking = useTracking(locationId);
+  const canEdit = useCanEdit();
   const [editing, setEditing] = useState<KeywordGroup | "new" | null>(null);
   const [deleting, setDeleting] = useState<KeywordGroup | null>(null);
 
@@ -66,7 +68,7 @@ function RankingsGroupsPage() {
         actions={
           <>
             <EditKeywordsButton locationId={locationId} />
-            <Button size="sm" onClick={() => setEditing("new")} disabled={tracked.length === 0 || list.length >= limit}>
+            <Button size="sm" className={canEdit ? undefined : "hidden"} onClick={() => setEditing("new")} disabled={tracked.length === 0 || list.length >= limit}>
               <FolderPlus aria-hidden /> New group
             </Button>
           </>
@@ -81,7 +83,7 @@ function RankingsGroupsPage() {
           icon={FolderPlus}
           title="No keyword groups yet"
           description={tracked.length === 0 ? "Add keywords first, then group them." : "Create a group, then filter the Rank Tracker, Keywords and grid by it."}
-          action={tracked.length > 0 ? <Button size="sm" onClick={() => setEditing("new")}><FolderPlus aria-hidden /> New group</Button> : undefined}
+          action={tracked.length > 0 && canEdit ? <Button size="sm" onClick={() => setEditing("new")}><FolderPlus aria-hidden /> New group</Button> : undefined}
         />
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
@@ -92,12 +94,14 @@ function RankingsGroupsPage() {
               description={`${group.keywords.length} keyword${group.keywords.length === 1 ? "" : "s"}`}
               actions={
                 <>
+                  {canEdit ? <>
                   <Button variant="ghost" size="icon" className="size-8" aria-label={`Edit ${group.name}`} onClick={() => setEditing(group)}>
                     <Pencil aria-hidden />
                   </Button>
                   <Button variant="ghost" size="icon" className="size-8 text-critical" aria-label={`Delete ${group.name}`} onClick={() => setDeleting(group)}>
                     <Trash2 aria-hidden />
                   </Button>
+                  </> : null}
                 </>
               }
             >

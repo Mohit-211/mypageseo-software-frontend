@@ -77,6 +77,7 @@ export function PaypalReturnNotice() {
       }
 
       void queryClient.invalidateQueries({ queryKey: ["billing"] });
+      void queryClient.invalidateQueries({ queryKey: ["organization", "usage"] });
       const action = takePendingLocationAction();
       if (!action) {
         setNotice({ tone: "success", title: "Payment received" });

@@ -1,10 +1,13 @@
+import type { ComponentProps } from "react";
 import { useEffect, useState } from "react";
+import { useCanEdit } from "@/hooks/use-access";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { LoaderCircle, MessageSquareText, RefreshCw, Search, Send, Sparkles, X } from "lucide-react";
 import {
   analyzeReviews,
+  draftAllReplies,
   generateReplyDrafts,
   refreshReviews,
   sendReplies,
@@ -59,6 +62,7 @@ function ReviewsPage() {
   const locationId = location.location_id;
   const summary = useReviewsSummary(locationId);
   const { connect } = useGbpConnect();
+  const canEdit = useCanEdit();
 
   const header = (
     <PageHeader
@@ -90,7 +94,7 @@ function ReviewsPage() {
           icon={MessageSquareText}
           title="Connect the Google Business Profile"
           description="Reviews come from the location's Google Business Profile."
-          action={<Button size="sm" onClick={() => connect()}>Connect Google</Button>}
+          action={canEdit ? <Button size="sm" onClick={() => connect()}>Connect Google</Button> : undefined}
         />
       </>
     );
@@ -104,6 +108,7 @@ function ReviewsPage() {
       {header}
       <BackgroundActivity locationId={locationId} className="mb-4" />
       <Stats summary={summary.data} />
+      <DraftAllPanel locationId={locationId} summary={summary.data} />
       <ReviewsList locationId={locationId} summary={summary.data} />
     </>
   );
@@ -118,7 +123,7 @@ function RefreshMeta({ summary }: { summary: ReviewsSummary }) {
   );
 }
 
-function RefreshReviewsButton({ locationId, summary }: { locationId: string; summary: ReviewsSummary }) {
+function RefreshReviewsButtonEditor({ locationId, summary }: { locationId: string; summary: ReviewsSummary }) {
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -155,6 +160,10 @@ function RefreshReviewsButton({ locationId, summary }: { locationId: string; sum
   );
 }
 
+function RefreshReviewsButton(props: ComponentProps<typeof RefreshReviewsButtonEditor>) {
+  return useCanEdit() ? <RefreshReviewsButtonEditor {...props} /> : null;
+}
+
 function Stats({ summary }: { summary: ReviewsSummary }) {
   const stats = summary.stats;
   if (!stats) return null;
@@ -171,11 +180,69 @@ function Stats({ summary }: { summary: ReviewsSummary }) {
   );
 }
 
+/**
+ * "Draft all unreplied" (Phase 9.1): drafts every unreplied, non-suspicious review, 50 per click.
+ * Nothing is sent: the user checks the drafts and sends them.
+ */
+function DraftAllPanelEditor({ locationId, summary }: { locationId: string; summary: ReviewsSummary }) {
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const [busy, setBusy] = useState(false);
+  const [remaining, setRemaining] = useState<number | null>(null);
+  const ai = summary.ai;
+  if (!ai.configured || ai.draftable === undefined) return null;
+  const left = remaining ?? ai.draftable;
+  const max = ai.draft_all_max ?? 50;
+
+  const run = async () => {
+    setBusy(true);
+    try {
+      const result = await draftAllReplies(locationId);
+      setRemaining(result.remaining);
+      toast.success(
+        `${result.drafted} repl${result.drafted === 1 ? "y" : "ies"} drafted${result.tokens_spent ? ` · ${result.tokens_spent} token${result.tokens_spent === 1 ? "" : "s"}` : ""}.`,
+        { description: "Check the drafts, then select and send them." },
+      );
+    } catch (err) {
+      const { message, buyTokens } = reviewErrorMessage(err, "The drafts couldn't be made. Try again.");
+      toast.error(message, buyTokens ? { action: { label: "Buy tokens", onClick: () => navigate("/settings/billing") } } : undefined);
+    } finally {
+      setBusy(false);
+      void queryClient.invalidateQueries({ queryKey: reviewsKey(locationId) });
+      void queryClient.invalidateQueries({ queryKey: ["billing"] });
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-3 shadow-card sm:flex-row sm:items-center">
+      <p className="text-sm text-muted-foreground sm:flex-1">
+        {left === 0
+          ? "Every unreplied review has a draft or a reply."
+          : `${left} unreplied review${left === 1 ? "" : "s"} without a draft. AI drafts up to ${max} per click; you check and send them yourself. Suspicious reviews are skipped.`}
+      </p>
+      <Button size="sm" disabled={busy || left === 0 || ai.paused_today} onClick={() => void run()}>
+        {busy ? <LoaderCircle aria-hidden className="animate-spin" /> : <Sparkles aria-hidden />}
+        {busy
+          ? `Drafting up to ${Math.min(left, max)}…`
+          : remaining !== null && remaining > 0
+            ? `Continue (${remaining} left)`
+            : `Draft ${left} repl${left === 1 ? "y" : "ies"}${ai.draft_all_cost != null && remaining === null ? ` · ${ai.draft_all_cost} token${ai.draft_all_cost === 1 ? "" : "s"}` : ""}`}
+      </Button>
+      {ai.paused_today ? <span className="text-xs text-muted-foreground">AI is paused for today.</span> : null}
+    </div>
+  );
+}
+
+function DraftAllPanel(props: ComponentProps<typeof DraftAllPanelEditor>) {
+  return useCanEdit() ? <DraftAllPanelEditor {...props} /> : null;
+}
+
 function ReviewsList({ locationId, summary }: { locationId: string; summary: ReviewsSummary }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [page, setPage] = useState(1);
+  const canEdit = useCanEdit();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<string | null>(null);
   const search = useDebounced(filters.search.trim());
@@ -284,7 +351,7 @@ function ReviewsList({ locationId, summary }: { locationId: string; summary: Rev
         {filtered ? <Button variant="ghost" size="sm" onClick={() => update(EMPTY_FILTERS)}><X aria-hidden /> Clear</Button> : null}
       </div>
 
-      {chosen.length > 0 ? (
+      {chosen.length > 0 && canEdit ? (
         <div className="sticky top-16 z-10 flex flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-brand-tint px-3 py-2 shadow-card">
           <span className="text-sm font-medium text-foreground">{chosen.length} selected</span>
           {aiUsable ? (
@@ -292,7 +359,7 @@ function ReviewsList({ locationId, summary }: { locationId: string; summary: Rev
               <Button
                 size="sm"
                 disabled={busy !== null || eligibleForDrafts === 0}
-                title={eligibleForDrafts === 0 ? "AI drafts are only for 4–5 star reviews without a reply" : undefined}
+                title={eligibleForDrafts === 0 ? "AI drafts are for unreplied reviews that aren't flagged suspicious" : undefined}
                 onClick={() =>
                   void bulk("drafts", async () => {
                     const result = await generateReplyDrafts(locationId, ids);

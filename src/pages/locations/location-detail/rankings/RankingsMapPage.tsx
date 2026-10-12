@@ -1,4 +1,5 @@
 import { useSearchParams } from "react-router-dom";
+import { TrackCompetitorButton } from "@/components/ranking/track-competitor-button";
 import type { MapRankingResponse, TrackerPointLabel } from "@/api";
 import { Panel, StatusBadge } from "@/components/layout/shared/data-display";
 import { PageSkeleton } from "@/components/layout/shared/feedback/states";
@@ -65,7 +66,7 @@ function LocationMapRankingsPage() {
         locationId={location.location_id}
         view="map"
         title="Map Rankings"
-        description="The top 20 Google Maps results at a search point, with your business and tracked competitors marked."
+        description="Who ranks at one search point: Google's named top 20 there, with your business and tracked competitors marked."
         run={map.data?.run}
       />
       {map.isPending ? (
@@ -82,6 +83,7 @@ function LocationMapRankingsPage() {
       ) : (
         <MapContent
           data={map.data}
+          locationId={location.location_id}
           selfName={location.name}
           keyword={params.get("keyword")}
           point={point}
@@ -95,6 +97,7 @@ function LocationMapRankingsPage() {
 
 function MapContent({
   data,
+  locationId,
   selfName,
   keyword,
   point,
@@ -102,6 +105,7 @@ function MapContent({
   onPoint,
 }: {
   data: MapRankingResponse;
+  locationId: string;
   selfName: string;
   keyword: string | null;
   point: TrackerPointLabel;
@@ -110,7 +114,9 @@ function MapContent({
 }) {
   const selected = data.keywords.find((entry) => entry.keyword === keyword) ?? data.keywords[0];
   if (!selected) return <Panel><p className="text-sm text-muted-foreground">This run has no keywords.</p></Panel>;
-  const selfRank = selected.results.find((result) => result.is_self)?.rank ?? null;
+  const selfRank = selected.self ? selected.self.list_rank : (selected.results.find((result) => result.is_self)?.rank ?? null);
+  const trackerCell = selected.self?.tracker_cell ?? null;
+  const pointText = selected.scope?.description ?? `${POINT_LABEL[selected.point] ?? selected.point}`;
   // Runs before map pins (Phase 17) have no coordinates: no map for those.
   const pins: MapPin[] = selected.results.flatMap((result) =>
     result.lat != null && result.lng != null
@@ -161,9 +167,26 @@ function MapContent({
       ) : null}
 
       <Panel
-        title={`${selected.keyword} · ${POINT_LABEL[selected.point] ?? selected.point}`}
-        description={selfRank ? `${selfName} is #${selfRank} here.` : `${selfName} isn't in the top 20 here.`}
+        title={`Who ranks at this point · ${selected.keyword}`}
+        description={pointText}
       >
+        <dl className="-mx-4 -mt-1 mb-4 grid gap-3 border-b border-border px-4 pb-4 text-sm sm:grid-cols-2">
+          <div>
+            <dt className="text-xs text-muted-foreground">Position in this list</dt>
+            <dd className="font-semibold text-foreground">{selfRank ? `#${selfRank}` : "Not in the top 20 here"}</dd>
+          </div>
+          {trackerCell ? (
+            <div>
+              <dt className="text-xs text-muted-foreground">Rank Tracker at this point</dt>
+              <dd className="font-semibold text-foreground">{trackerCell.status === "error" ? "–" : trackerCell.display}</dd>
+            </div>
+          ) : null}
+          {trackerCell ? (
+            <p className="text-xs text-muted-foreground sm:col-span-2">
+              Two separate Google searches made minutes apart; positions can differ by a place or two.
+            </p>
+          ) : null}
+        </dl>
         <ol className="-m-4 divide-y divide-border">
           {selected.results.map((result) => (
             <li
@@ -181,7 +204,9 @@ function MapContent({
                 <StatusBadge tone="brand">You</StatusBadge>
               ) : result.target_key ? (
                 <StatusBadge tone="info">{targetLabel(result.target_key, selfName, data.targets?.find((t) => t.key === result.target_key)?.name)}</StatusBadge>
-              ) : null}
+              ) : (
+                <TrackCompetitorButton locationId={locationId} placeId={result.place_id} name={result.name} />
+              )}
             </li>
           ))}
         </ol>

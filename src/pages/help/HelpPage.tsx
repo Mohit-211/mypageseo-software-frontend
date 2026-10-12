@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, Mail, Search } from "lucide-react";
+import { ArrowRight, Mail, Search, LifeBuoy } from "lucide-react";
 import { AppShell } from "@/components/layout/shared/app-shell";
 import { PageHeader, Panel, SectionHeader } from "@/components/layout/shared/data-display";
 import { EmptyState, ErrorState } from "@/components/layout/shared/feedback/states";
@@ -135,37 +135,22 @@ function HelpPage() {
           </div>
 
           <aside className="space-y-5 lg:sticky lg:top-4 lg:self-start">
-            <Panel title="Contact support" description="How to reach the Mypageseo team.">
-              {help.support.email ? (
-                <div className="space-y-3">
-                  <p className="text-sm text-muted-foreground">
-                    Email support with your organization name, the location involved and the screen
-                    you were on. That is usually enough to resolve an issue in one reply.
-                  </p>
-                  {help.support.responseTime ? (
-                    <p className="text-xs text-muted-foreground">{help.support.responseTime}</p>
-                  ) : null}
+            <Panel title="Contact support" description="Ask the MyPageSEO team.">
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  Open a support ticket with the location involved and the screen you were on. The team replies on the ticket and by email.
+                </p>
+                <div className="flex flex-wrap gap-2">
                   <Button size="sm" asChild>
-                    <a href={`mailto:${help.support.email}`}>
-                      <Mail className="size-3.5" /> Email support
-                    </a>
+                    <Link to="/support"><LifeBuoy className="size-3.5" /> Support tickets</Link>
                   </Button>
+                  {help.support.email ? (
+                    <Button size="sm" variant="outline" asChild>
+                      <a href={`mailto:${help.support.email}`}><Mail className="size-3.5" /> Email</a>
+                    </Button>
+                  ) : null}
                 </div>
-              ) : (
-                <div className="space-y-3">
-                  <p className="text-sm text-muted-foreground">
-                    No support address is configured for this workspace yet, so support cannot be
-                    contacted from this screen.
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    When you do report a problem, include your organization name, the location, the
-                    screen you were on and what you expected to happen.
-                  </p>
-                  <Button size="sm" disabled>
-                    <Mail className="size-3.5" /> Email support
-                  </Button>
-                </div>
-              )}
+              </div>
             </Panel>
 
             <Panel title="Quick links" description="Jump to the settings people ask about most.">

@@ -1,10 +1,12 @@
+import type { ComponentProps } from "react";
+import { useCanEdit } from "@/hooks/use-access";
 import { Link2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useGbpConnect } from "@/lib/gbp/use-gbp-connect";
 import { cn } from "@/lib/utils";
 
 /** Opens the Google Business Profile connect modal (connect an account, then pick locations). */
-export function ConnectGbpButton({
+function ConnectGbpButtonEditor({
   label = "Connect Google",
   size = "sm",
   variant = "default",
@@ -27,4 +29,9 @@ export function ConnectGbpButton({
       </Button>
     </div>
   );
+}
+
+/** Hidden for a read-only client_user. */
+export function ConnectGbpButton(props: ComponentProps<typeof ConnectGbpButtonEditor>) {
+  return useCanEdit() ? <ConnectGbpButtonEditor {...props} /> : null;
 }

@@ -42,6 +42,7 @@ function RankingsGridPage() {
         title="Local Search Grid"
         description="Where the business ranks across the area: each square is one search point (north at the top)."
         run={grid.data?.run}
+        scope={grid.data?.scope?.description}
         groupFilter
       />
       {grid.isPending ? (
@@ -97,7 +98,7 @@ function GridContent({
   const mapPoints = selected.points.flatMap((point) => {
     const cell = point.byTarget[targetKey];
     if (!cell) return [];
-    const text = cell.status === "error" ? "—" : cell.status === "not_found" ? "60+" : cell.display;
+    const text = cell.status === "error" ? "–" : cell.status === "not_found" ? "60+" : cell.display;
     return [{ key: `${point.row}:${point.col}`, lat: point.lat, lng: point.lng, text, bucket: cell.bucket, title: `${text} · ${BUCKET_LABEL[cell.bucket]}` }];
   });
 
@@ -171,7 +172,7 @@ function GridContent({
         </Panel>
         <Panel title="Summary">
           <dl className="space-y-2 text-sm">
-            <div className="flex justify-between"><dt className="text-muted-foreground"><TermWithTip term="Average rank">{GLOSSARY.avgRank}</TermWithTip></dt><dd><AvgRank value={summary?.avgRank} /></dd></div>
+            <div className="flex justify-between"><dt className="text-muted-foreground"><TermWithTip term={`Average rank (${data.grid.size}×${data.grid.size} grid)`}>{GLOSSARY.avgRank}</TermWithTip></dt><dd><AvgRank value={summary?.avgRank} status={summary?.status} display={summary?.display} statusText={data.status_text} /></dd></div>
             <div className="flex justify-between"><dt className="text-muted-foreground"><TermWithTip term="Found in top 60">{GLOSSARY.found}</TermWithTip></dt><dd className="tabular">{formatRate(summary?.foundRate)}</dd></div>
             <div className="flex justify-between"><dt className="text-muted-foreground"><TermWithTip term="In the top 3">{GLOSSARY.top3}</TermWithTip></dt><dd className="tabular">{formatRate(summary?.top3Rate)}</dd></div>
           </dl>

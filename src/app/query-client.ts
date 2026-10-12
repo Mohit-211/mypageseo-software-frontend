@@ -1,3 +1,18 @@
-import { QueryClient } from "@tanstack/react-query";
+import { MutationCache, QueryCache, QueryClient } from "@tanstack/react-query";
+import { getSelectedOrganizationId, isApiError, setSelectedOrganizationId } from "@/api";
+import { noteAccountError } from "@/lib/billing/account-restriction";
 
-export const queryClient = new QueryClient();
+function onError(error: unknown) {
+  noteAccountError(error);
+  // 403 `not_a_member`: the stored organization isn't the user's any more; fall back to the default one.
+  if (isApiError(error) && error.reason === "not_a_member" && getSelectedOrganizationId()) {
+    setSelectedOrganizationId(null);
+    void queryClient.invalidateQueries();
+  }
+}
+
+/** Every failed call is checked for an account restriction (suspended / read-only) for the shell banner. */
+export const queryClient: QueryClient = new QueryClient({
+  queryCache: new QueryCache({ onError }),
+  mutationCache: new MutationCache({ onError }),
+});

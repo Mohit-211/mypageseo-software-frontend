@@ -10,3 +10,8 @@ export async function getOnboardingState(signal?: AbortSignal): Promise<Onboardi
 export async function completeOnboarding(locationId: string): Promise<OnboardingCompleteResult> {
   return unwrapData(await api.post(ENDPOINTS.onboarding.complete, { location_id: locationId }));
 }
+
+/** Skips an optional organization step (owner/member). */
+export async function skipOnboardingStep(step: "google" | "reporting_brand"): Promise<OnboardingStateResponse> {
+  return unwrapData(await api.post(ENDPOINTS.onboarding.skip, { step }));
+}

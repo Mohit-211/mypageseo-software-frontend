@@ -1,7 +1,11 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import { Copy, Download, LoaderCircle, Mail, Share2 } from "lucide-react";
-import { downloadReportPdf, emailReport, isApiError, shareReport } from "@/api";
+import { useNavigate } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Archive, Copy, Download, LoaderCircle, Mail, Share2 } from "lucide-react";
+import { archiveReport, downloadReportPdf, emailReport, getReportShares, isApiError, revokeReportShare, shareReport } from "@/api";
+import { ConfirmDialog } from "@/components/layout/shared/form-fields";
+import { useCanEdit } from "@/hooks/use-access";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -18,6 +22,11 @@ import { formatRunDate } from "@/lib/rankings/format";
 
 /** Download PDF, share link and email for a ready report. */
 export function ReportActions({ reportId, size = "sm" }: { reportId: string; size?: "sm" | "default" }) {
+  const canEdit = useCanEdit();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [archiving, setArchiving] = useState(false);
+  const [confirmArchive, setConfirmArchive] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [emailOpen, setEmailOpen] = useState(false);
@@ -51,8 +60,34 @@ export function ReportActions({ reportId, size = "sm" }: { reportId: string; siz
       <Button size={size} disabled={downloading} onClick={() => void download()}>
         {downloading ? <LoaderCircle aria-hidden className="animate-spin" /> : <Download aria-hidden />} Download PDF
       </Button>
-      <Button size={size} variant="outline" onClick={() => setShareOpen(true)}><Share2 aria-hidden /> Share link</Button>
-      <Button size={size} variant="outline" onClick={() => setEmailOpen(true)}><Mail aria-hidden /> Email</Button>
+      {canEdit ? (
+        <>
+          <Button size={size} variant="outline" onClick={() => setShareOpen(true)}><Share2 aria-hidden /> Share link</Button>
+          <Button size={size} variant="outline" onClick={() => setEmailOpen(true)}><Mail aria-hidden /> Email</Button>
+          <Button size={size} variant="ghost" disabled={archiving} onClick={() => setConfirmArchive(true)}>
+            {archiving ? <LoaderCircle aria-hidden className="animate-spin" /> : <Archive aria-hidden />} Archive
+          </Button>
+        </>
+      ) : null}
+      <ConfirmDialog
+        open={confirmArchive}
+        onOpenChange={setConfirmArchive}
+        title="Archive this report?"
+        description="It leaves the library (find it under the Archived filter). Its share links stop working."
+        confirmLabel="Archive"
+        onConfirm={() => {
+          setConfirmArchive(false);
+          setArchiving(true);
+          void archiveReport(reportId)
+            .then(() => {
+              void queryClient.invalidateQueries({ queryKey: ["reports"] });
+              toast.success("Report archived.");
+              navigate("/reports");
+            })
+            .catch(() => toast.error("The report couldn't be archived. Try again."))
+            .finally(() => setArchiving(false));
+        }}
+      />
       {shareOpen ? <ShareDialog reportId={reportId} onClose={() => setShareOpen(false)} /> : null}
       {emailOpen ? <EmailDialog reportId={reportId} onClose={() => setEmailOpen(false)} /> : null}
     </div>
@@ -60,6 +95,8 @@ export function ReportActions({ reportId, size = "sm" }: { reportId: string; siz
 }
 
 function ShareDialog({ reportId, onClose }: { reportId: string; onClose: () => void }) {
+  const shares = useQuery({ queryKey: ["reports", reportId, "shares"], queryFn: ({ signal }) => getReportShares(reportId, signal), retry: false });
+  const [revoking, setRevoking] = useState<string | null>(null);
   const [days, setDays] = useState("30");
   const [creating, setCreating] = useState(false);
   const [link, setLink] = useState<{ url: string; expires_at: string | null } | null>(null);
@@ -75,6 +112,7 @@ function ShareDialog({ reportId, onClose }: { reportId: string; onClose: () => v
     setError(null);
     try {
       setLink(await shareReport(reportId, value));
+      void shares.refetch();
     } catch {
       setError("The link couldn't be created. Try again.");
     } finally {
@@ -87,7 +125,7 @@ function ShareDialog({ reportId, onClose }: { reportId: string; onClose: () => v
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Share link</DialogTitle>
-          <DialogDescription>Anyone with the link can view the report and download its PDF. The link is shown only once.</DialogDescription>
+          <DialogDescription>Anyone with the link can view the report and download its PDF. Copy it now: the link is shown only once.</DialogDescription>
         </DialogHeader>
         {link ? (
           <div className="space-y-2">
@@ -110,6 +148,40 @@ function ShareDialog({ reportId, onClose }: { reportId: string; onClose: () => v
             {error ? <p role="alert" className="text-sm text-critical">{error}</p> : null}
           </div>
         )}
+        {shares.data && shares.data.length > 0 ? (
+          <div className="space-y-1.5 border-t border-border pt-3">
+            <p className="text-xs font-semibold text-muted-foreground">Existing links</p>
+            <ul className="space-y-1.5">
+              {shares.data.map((share) => (
+                <li key={share.share_id} className="flex items-center justify-between gap-2 text-xs">
+                  <span className={share.active ? "text-foreground" : "text-muted-foreground line-through"}>
+                    {share.purpose === "email_link" ? "Email link" : "Share link"} · created {formatRunDate(share.created_at)}
+                    {share.expires_at ? ` · expires ${formatRunDate(share.expires_at)}` : ""} · {share.views} view{share.views === 1 ? "" : "s"}
+                  </span>
+                  {share.active ? (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-critical"
+                      disabled={revoking !== null}
+                      onClick={() => {
+                        setRevoking(share.share_id);
+                        void revokeReportShare(reportId, share.share_id)
+                          .then(() => shares.refetch())
+                          .catch(() => toast.error("The link couldn't be revoked."))
+                          .finally(() => setRevoking(null));
+                      }}
+                    >
+                      {revoking === share.share_id ? <LoaderCircle aria-hidden className="animate-spin" /> : null} Revoke
+                    </Button>
+                  ) : (
+                    <span className="text-muted-foreground">{share.revoked_at ? "Revoked" : "Expired"}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>{link ? "Done" : "Cancel"}</Button>
           {!link ? (

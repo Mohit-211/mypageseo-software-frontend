@@ -1,3 +1,5 @@
+import type { ComponentProps } from "react";
+import { useCanEdit } from "@/hooks/use-access";
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -44,7 +46,7 @@ export function GroupFilter({ locationId }: { locationId: string }) {
 }
 
 /** "Edit keywords": the tracked keywords (`PUT tracking { keywords }`), used from the next run. */
-export function EditKeywordsButton({ locationId }: { locationId: string }) {
+function EditKeywordsButtonEditor({ locationId }: { locationId: string }) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -167,4 +169,9 @@ function EditKeywordsDialog({ locationId, onClose }: { locationId: string; onClo
       </DialogContent>
     </Dialog>
   );
+}
+
+/** Hidden for a read-only client_user. */
+export function EditKeywordsButton(props: ComponentProps<typeof EditKeywordsButtonEditor>) {
+  return useCanEdit() ? <EditKeywordsButtonEditor {...props} /> : null;
 }

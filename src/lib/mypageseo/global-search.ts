@@ -1,17 +1,8 @@
 /**
- * Global search index for the application header.
- *
- * The search backend is not connected to this frontend, so the index is built
- * from the same records every screen renders: workspace locations and clients
- * plus the canonical demo keyword, competitor, citation and report data. When
- * real reads land, replace `buildSearchIndex` with the backend search response;
- * the result shape and the screens consuming it stay the same.
+ * Global search index for the application header: the workspace's locations,
+ * clients and pages. There's no search endpoint on the backend.
  */
 
-import { withDemoFallback } from "./demo/demo-mode";
-import { DEMO_CLIENTS, DEMO_LOCATIONS, demoCompetitors, demoKeywords } from "./demo/entities";
-import { demoCitations } from "./demo/citations";
-import { demoReportRows } from "./demo/reports";
 import { primaryNavigation, type AccountType } from "./navigation";
 
 export type SearchGroupId =
@@ -66,43 +57,18 @@ export type SearchScope = {
   accountType: AccountType;
   /** Agency only: limits results to one client when a client is selected. */
   activeClientId: string | null;
+  /** The workspace's real locations and clients (`GET locations`, `GET clients`). */
+  locations: { id: string; clientId?: string | undefined; businessName: string; area: string }[];
+  clients: { id: string; name: string }[];
 };
 
-const BUSINESS_CLIENT_ID = "cl_riverside";
-
-function scopedLocations(scope: SearchScope) {
-  if (scope.accountType === "business") {
-    return DEMO_LOCATIONS.filter((l) => l.clientId === BUSINESS_CLIENT_ID);
-  }
-  if (scope.activeClientId) {
-    return DEMO_LOCATIONS.filter((l) => l.clientId === scope.activeClientId);
-  }
-  return DEMO_LOCATIONS;
-}
-
-function clientName(clientId: string): string {
-  return DEMO_CLIENTS.find((c) => c.id === clientId)?.name ?? clientId;
-}
-
-let cache: { key: string; entries: SearchResult[] } | null = null;
-
 /**
- * Everything the signed-in account is allowed to search, flattened once.
- *
- * `real` is the seam for the search backend: when it returns results they are
- * authoritative and the demo index below is never built.
+ * Everything the signed-in account can jump to: its locations, its clients (agency)
+ * and the app's pages. There is no search endpoint, so nothing else is indexed.
  */
-export function buildSearchIndex(scope: SearchScope, real?: SearchResult[] | null): SearchResult[] {
-  if (real) return real;
-  return withDemoFallback(real, () => demoSearchIndex(scope));
-}
-
-function demoSearchIndex(scope: SearchScope): SearchResult[] {
-  const key = `${scope.accountType}:${scope.activeClientId ?? "all"}`;
-  if (cache?.key === key) return cache.entries;
-
-  const locations = scopedLocations(scope);
-  const allowed = new Set(locations.map((l) => l.id));
+export function buildSearchIndex(scope: SearchScope): SearchResult[] {
+  const clientName = (id: string | undefined) => (id ? (scope.clients.find((client) => client.id === id)?.name ?? null) : null);
+  const locations = scope.activeClientId ? scope.locations.filter((location) => location.clientId === scope.activeClientId) : scope.locations;
   const entries: SearchResult[] = [];
 
   for (const location of locations) {
@@ -115,83 +81,19 @@ function demoSearchIndex(scope: SearchScope): SearchResult[] {
       meta: owner,
       target: { kind: "location", locationId: location.id },
       locationId: location.id,
-      haystack: `${location.street} ${location.postalCode} ${location.primaryCategory} ${owner ?? ""}`,
-    });
-
-    for (const keyword of demoKeywords(location.id)) {
-      entries.push({
-        id: `kw:${keyword.id}`,
-        group: "keywords",
-        title: keyword.keyword,
-        context: location.businessName,
-        meta:
-          keyword.currentPosition === null ? "Not in top 60" : `Rank ${keyword.currentPosition}`,
-        target: { kind: "keywords", locationId: location.id },
-        locationId: location.id,
-        haystack: `${keyword.group} ${location.area}`,
-      });
-    }
-
-    for (const competitor of demoCompetitors(location.id)) {
-      entries.push({
-        id: `cmp:${competitor.id}`,
-        group: "competitors",
-        title: competitor.name,
-        context: location.businessName,
-        meta: `Avg. rank ${competitor.averageRank}`,
-        target: {
-          kind: "competitor",
-          locationId: location.id,
-          competitorId: competitor.id,
-        },
-        locationId: location.id,
-        haystack: `${competitor.primaryCategory} ${competitor.website}`,
-      });
-    }
-
-    for (const citation of demoCitations(location.id)) {
-      entries.push({
-        id: `cit:${citation.id}`,
-        group: "citations",
-        title: citation.directory,
-        context: location.businessName,
-        meta: citation.state.replace(/_/g, " "),
-        target: {
-          kind: "citation",
-          locationId: location.id,
-          citationId: citation.id,
-        },
-        locationId: location.id,
-        haystack: `${citation.directoryType ?? ""} citation listing`,
-      });
-    }
-  }
-
-  for (const report of demoReportRows()) {
-    if (report.locationId && !allowed.has(report.locationId)) continue;
-    entries.push({
-      id: `rpt:${report.id}`,
-      group: "reports",
-      title: report.name,
-      context: report.locationName,
-      meta: report.state,
-      target: { kind: "report", reportId: report.id },
-      locationId: report.locationId,
-      haystack: `${report.clientName ?? ""} ${report.period ?? ""} ${report.type}`,
+      haystack: owner ?? "",
     });
   }
 
   if (scope.accountType === "agency") {
-    const visible = scope.activeClientId
-      ? DEMO_CLIENTS.filter((c) => c.id === scope.activeClientId)
-      : DEMO_CLIENTS;
+    const visible = scope.activeClientId ? scope.clients.filter((client) => client.id === scope.activeClientId) : scope.clients;
     for (const client of visible) {
-      const count = DEMO_LOCATIONS.filter((l) => l.clientId === client.id).length;
+      const count = scope.locations.filter((location) => location.clientId === client.id).length;
       entries.push({
         id: `cli:${client.id}`,
         group: "clients",
         title: client.name,
-        context: client.industry,
+        context: null,
         meta: `${count} location${count === 1 ? "" : "s"}`,
         target: { kind: "client", clientId: client.id },
         locationId: null,
@@ -226,7 +128,6 @@ function demoSearchIndex(scope: SearchScope): SearchResult[] {
     }
   }
 
-  cache = { key, entries };
   return entries;
 }
 

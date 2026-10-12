@@ -36,13 +36,34 @@ export async function deleteReplyDraft(locationId: string, reviewId: string): Pr
   return unwrapData(await api.delete(`${one(locationId, reviewId)}/draft`));
 }
 
+/**
+ * "Draft all unreplied" (Phase 9.1): up to 50 per call, oldest first; call again while `remaining > 0`.
+ * 402 `insufficient_tokens { cost, balance, reviews }` is checked before anything is spent.
+ */
+export async function draftAllReplies(
+  locationId: string,
+  regenerate = false,
+): Promise<{ drafted: number; remaining: number; tokens_spent: number; drafts: Review[] }> {
+  return unwrapData(await api.post(`${base(locationId)}/drafts/all`, { regenerate }, { timeoutMs: 60_000 }));
+}
+
 /** Publishes each review's draft on Google. No AI. */
 export async function sendReplies(
   locationId: string,
   reviewIds: string[],
 ): Promise<{ results: { review_id: string; status: "sent" | "failed" | "skipped"; reason: string | null }[]; sent: number; failed: number }> {
-  return unwrapData(await api.post(`${base(locationId)}/send`, { review_ids: reviewIds }));
+  // Up to 100 ids per call.
+  const totals = { results: [] as { review_id: string; status: "sent" | "failed" | "skipped"; reason: string | null }[], sent: 0, failed: 0 };
+  for (let i = 0; i < reviewIds.length; i += SEND_BATCH) {
+    const part = unwrapData<typeof totals>(await api.post(`${base(locationId)}/send`, { review_ids: reviewIds.slice(i, i + SEND_BATCH) }));
+    totals.results.push(...part.results);
+    totals.sent += part.sent;
+    totals.failed += part.failed;
+  }
+  return totals;
 }
+
+const SEND_BATCH = 100;
 
 /** Removes a published reply from Google. 400 `no_reply`. */
 export async function deleteReply(locationId: string, reviewId: string): Promise<Review> {

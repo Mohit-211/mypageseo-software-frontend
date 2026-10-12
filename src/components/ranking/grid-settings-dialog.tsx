@@ -1,3 +1,5 @@
+import type { ComponentProps } from "react";
+import { useCanEdit } from "@/hooks/use-access";
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -28,7 +30,7 @@ const MAX_RADIUS_KM = 15;
 const PRESETS_KM = [2, 5, 8, 15];
 
 /** "Grid settings": how many points and how far out the rankings are measured. */
-export function GridSettingsButton({ locationId }: { locationId: string }) {
+function GridSettingsButtonEditor({ locationId }: { locationId: string }) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -209,4 +211,9 @@ function GridSettingsDialog({ locationId, onClose }: { locationId: string; onClo
       </DialogContent>
     </Dialog>
   );
+}
+
+/** Hidden for a read-only client_user. */
+export function GridSettingsButton(props: ComponentProps<typeof GridSettingsButtonEditor>) {
+  return useCanEdit() ? <GridSettingsButtonEditor {...props} /> : null;
 }

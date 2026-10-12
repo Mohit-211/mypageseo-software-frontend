@@ -65,6 +65,8 @@ export const ENDPOINTS = {
     detail: (reportId: string) => `reports/${encodeURIComponent(reportId)}`,
     pdf: (reportId: string) => `reports/${encodeURIComponent(reportId)}/pdf`,
     share: (reportId: string) => `reports/${encodeURIComponent(reportId)}/share`,
+    shares: (reportId: string) => `reports/${encodeURIComponent(reportId)}/shares`,
+    shareLink: (reportId: string, shareId: string) => `reports/${encodeURIComponent(reportId)}/shares/${encodeURIComponent(shareId)}`,
     email: (reportId: string) => `reports/${encodeURIComponent(reportId)}/email`,
   },
   places: {
@@ -74,9 +76,14 @@ export const ENDPOINTS = {
   onboarding: {
     state: "onboarding/state",
     complete: "onboarding/complete",
+    skip: "onboarding/skip",
   },
   clients: {
     list: "clients",
+  },
+  reportSchedules: {
+    list: "report-schedules",
+    detail: (scheduleId: string) => `report-schedules/${encodeURIComponent(scheduleId)}`,
   },
   billing: {
     summary: "billing",
@@ -86,10 +93,12 @@ export const ENDPOINTS = {
     locationSlots: "billing/location-slots",
     sync: "billing/sync",
     captureOrder: (orderId: string) => `billing/orders/${encodeURIComponent(orderId)}/capture`,
-  },
-  location: {
-    countries: "countries",
-    statesByCountry: (countryId: string) => `countries/states/${encodeURIComponent(countryId)}`,
-    citiesByState: (stateId: string) => `countries/cities/${encodeURIComponent(stateId)}`,
+    checkout: "billing/checkout",
+    cancel: "billing/cancel",
+    details: "billing/details",
+    locationSlotsQuote: "billing/location-slots/quote",
+    couponValidate: "billing/coupon/validate",
+    invoices: "billing/invoices",
+    invoicePdf: (invoiceId: string) => `billing/invoices/${encodeURIComponent(invoiceId)}/pdf`,
   },
 } as const;

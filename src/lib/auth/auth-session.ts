@@ -9,6 +9,7 @@
  */
 import { useEffect, useSyncExternalStore } from "react";
 import { refreshToken } from "@/api/auth/refresh-token";
+import { isOnboardingPending } from "@/api/onboarding-storage";
 import {
   clearAccessToken,
   getAccessToken,
@@ -18,7 +19,6 @@ import {
   isTokenExpired,
   subscribeToAccessToken,
 } from "@/api/token-storage";
-import { getOnboardingSession } from "./onboarding-state";
 
 /** Browsers fire a setTimeout longer than this (~24.8 days) immediately. */
 const MAX_TIMEOUT_MS = 2_147_483_647;
@@ -64,8 +64,7 @@ export type AuthRedirectState = { from?: string };
  * so both land on the same place.
  */
 export function getPostLoginPath(state: unknown): string {
-  const onboarding = getOnboardingSession();
-  if (onboarding && !onboarding.finishedAt) return "/onboarding";
+  if (isOnboardingPending()) return "/onboarding";
   const from = (state as AuthRedirectState | null)?.from;
   // Only same-app paths; never bounce back to an auth page.
   if (typeof from === "string" && from.startsWith("/") && !from.startsWith("//")) {

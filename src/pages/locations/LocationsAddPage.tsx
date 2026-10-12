@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { clientErrorText, useClientRequired } from "@/lib/clients/clients";
 import { Link, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -61,6 +62,7 @@ function PlacesSearchAdd() {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [selected, setSelected] = useState<PlaceSearchResult | null>(null);
   const [clientId, setClientId] = useState<string | null>(null);
+  const clientRequired = useClientRequired();
   const [adding, setAdding] = useState(false);
   const gate = useLocationBillingGate();
 
@@ -100,11 +102,14 @@ function PlacesSearchAdd() {
       if (gate.handle(err, action)) return;
       if (isApiError(err) && err.reason === "duplicate_place") {
         const existing = apiErrorData(err).location_id;
-        toast.error(`${action.title} is already one of your locations.`, {
-          ...(typeof existing === "string"
-            ? { action: { label: "Open", onClick: () => navigate(`/locations/${existing}`) } }
-            : {}),
-        });
+        // A member limited to its clients may get a location it can't open (another client's): no link then.
+        const visible = typeof existing === "string" && workspace.locations.some((location) => location.id === existing);
+        toast.error(
+          visible ? `${action.title} is already one of your locations.` : "This business is already in your organization (managed by another team member).",
+          visible ? { action: { label: "Open", onClick: () => navigate(`/locations/${existing}`) } } : undefined,
+        );
+      } else if (isApiError(err) && ["client_required", "client_not_assigned"].includes(err.reason ?? "")) {
+        toast.error(clientErrorText(err, `${action.title} could not be added.`));
       } else {
         toast.error(isApiError(err) && err.message ? err.message : `${action.title} could not be added. Try again.`);
       }
@@ -158,9 +163,13 @@ function PlacesSearchAdd() {
                       {added ? (
                         <div className="flex items-center justify-between gap-3 p-3">
                           <PlaceText result={result} />
-                          <Button asChild variant="ghost" size="sm">
-                            <Link to={`/locations/${added}`}>Already added</Link>
-                          </Button>
+                          {workspace.locations.some((location) => location.id === added) ? (
+                            <Button asChild variant="ghost" size="sm">
+                              <Link to={`/locations/${added}`}>Already added</Link>
+                            </Button>
+                          ) : (
+                            <span className="text-right text-xs text-muted-foreground">Managed by another team member</span>
+                          )}
                         </div>
                       ) : (
                         <button
@@ -184,14 +193,14 @@ function PlacesSearchAdd() {
 
         {selected ? (
           <div className="space-y-4 border-t border-border pt-4">
-            {agency && clients.length > 0 ? (
+            {agency && (clients.length > 0 || clientRequired) ? (
               <div className="max-w-sm">
                 <ClientSelect id="add-client" clients={clients} value={clientId} onChange={setClientId} />
               </div>
             ) : null}
             <div className="flex justify-end">
               <Button
-                disabled={adding}
+                disabled={adding || (clientRequired && !clientId)}
                 onClick={() =>
                   void add({ kind: "add", placeId: selected.place_id, title: selected.name, ...(clientId ? { clientId } : {}) })
                 }

@@ -21,9 +21,33 @@ export type RankCell = {
 
 export type ChangeLabel = "improved" | "declined" | "unchanged" | "entered_top_60" | "dropped_out_of_top_60";
 
+/**
+ * What an average is (2026-10-08): `ok` a real average, `not_found` "60+" (Google answered but the
+ * business wasn't in the top 60), `no_data` every search failed ("No data", never 60+). Null = no run yet.
+ */
+export type RankStatus = "ok" | "not_found" | "no_data";
+
+/** `status_text`: the label and tooltip for each status, for headings and tooltips. */
+export type RankStatusText = Partial<Record<RankStatus, { label: string; tooltip: string }>>;
+
+/** What a page measured; `description` is the subtitle (e.g. "7×7 grid (49 points) within 8 km of …"). */
+export type RankScope = {
+  kind: "tracker" | "grid" | "point";
+  description: string;
+  points?: number;
+  offset_km?: number;
+  size?: number;
+  radius_km?: number;
+  point?: TrackerPointLabel;
+  list_depth?: number;
+};
+
 /** Per keyword per target. `change` is previous − current (positive = improved); null when not comparable. */
 export type RankSummary = {
   avgRank: number | null;
+  status?: RankStatus | null;
+  /** `"12.4"`, `"60+"` or `"No data"`. */
+  display?: string | null;
   foundRate: number | null;
   top3Rate: number | null;
   change?: number | null;
@@ -51,6 +75,8 @@ export type RunMeta = {
 /** `change` covers only the keywords both runs measured (`comparable_keywords` of `keywords_total`). */
 export type OverallRank = {
   overallAvgRank: number | null;
+  status?: RankStatus | null;
+  display?: string | null;
   change: number | null;
   comparable_keywords?: number;
   keywords_total?: number;
@@ -78,7 +104,16 @@ export type RankTrackerResponse = {
   }[];
   overall: Record<TargetKey, OverallRank>;
   /** The overall average of `self` over the last 12 done/partial runs, oldest first. */
-  trend: { run_id: string; run_at: string; overallAvgRank: number | null; keywords_version: number }[];
+  trend: {
+    run_id: string;
+    run_at: string;
+    overallAvgRank: number | null;
+    keywords_version: number;
+    status?: RankStatus | null;
+    display?: string | null;
+  }[];
+  scope?: RankScope;
+  status_text?: RankStatusText;
   /** The `?group=` filter in effect, or null. */
   group?: { group_id: string; name: string } | null;
   groups?: GroupSummary[];
@@ -92,6 +127,8 @@ export type GridResponse = {
   targets: RankTarget[];
   grid: { size: number; spacing_km: number };
   keywords: { keyword: string; summary: Record<TargetKey, RankSummary>; points: GridPoint[] }[];
+  scope?: RankScope;
+  status_text?: RankStatusText;
 };
 
 export type MapRankingResult = {
@@ -113,7 +150,14 @@ export type MapRankingResponse = {
   names_stored: boolean;
   point: TrackerPointLabel | "all";
   points_available: TrackerPointLabel[];
-  keywords: { keyword: string; point: TrackerPointLabel; results: MapRankingResult[] }[];
+  keywords: {
+    keyword: string;
+    point: TrackerPointLabel;
+    results: MapRankingResult[];
+    scope?: RankScope;
+    /** The client's two numbers at this point: its place in this named list, and the Rank Tracker cell. */
+    self?: { in_list: boolean; list_rank: number | null; list_depth: number; tracker_cell: RankCell | null };
+  }[];
   attribution?: Attribution;
 };
 

@@ -23,6 +23,8 @@ export function GlobalSearch() {
 	const {
 		organization,
 		activeClient,
+		locations,
+		clients,
 		setActiveClientId,
 		setActiveLocationId,
 	} = useWorkspace();
@@ -43,8 +45,10 @@ export function GlobalSearch() {
 			buildSearchIndex({
 				accountType,
 				activeClientId: activeClient?.id ?? null,
+				locations,
+				clients,
 			}),
-		[accountType, activeClient?.id],
+		[accountType, activeClient?.id, locations, clients],
 	);
 
 	const groups: SearchGroup[] = useMemo(

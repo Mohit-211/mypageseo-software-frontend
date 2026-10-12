@@ -13,6 +13,7 @@ import {
 } from "@/api";
 import type { AccountType } from "./navigation";
 import { WorkspaceContext } from "./workspace-context";
+import { resetAccountRestriction } from "@/lib/billing/account-restriction";
 
 export type Organization = {
   id: string;
@@ -139,6 +140,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (selectedOrgId && profile.data && !selectedIsMember) {
       setSelectedOrganizationId(null);
+      resetAccountRestriction();
       void queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] !== "profile" });
     }
   }, [selectedOrgId, selectedIsMember, profile.data, queryClient]);
@@ -195,6 +197,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         if (id === organization?.id) return;
         setSelectedOrganizationId(id);
         setSelectedOrgId(id);
+        resetAccountRestriction();
         setActiveClientId(null);
         setActiveLocationId(null);
         // Everything cached belongs to the previous organization.

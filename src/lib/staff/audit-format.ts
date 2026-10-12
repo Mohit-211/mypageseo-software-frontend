@@ -75,4 +75,10 @@ export function auditErrorText(error: unknown): string {
 
 export const pct = (rate: number | null | undefined) => (rate == null ? "—" : `${Math.round(rate * 100)}%`);
 
+/** Average rank over the grid (30+ counted as 31). */
+export const avgRankText = (avg: number | null | undefined) => (avg == null ? "—" : avg.toFixed(1));
+
+/** An area position: null means the business wasn't in any top 30. */
+export const areaRankText = (rank: number | null | undefined) => (rank == null ? "30+" : `#${rank}`);
+
 export const auditQueryKey = (auditId: string) => ["staff", "audit", auditId] as const;

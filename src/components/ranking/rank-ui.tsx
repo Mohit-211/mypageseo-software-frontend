@@ -1,9 +1,20 @@
+import type { ComponentProps } from "react";
+import { useCanEdit } from "@/hooks/use-access";
 import { useEffect, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ArrowLeft, LoaderCircle, RefreshCw } from "lucide-react";
-import { apiErrorData, isApiError, refreshLocation, type ChangeLabel, type OverallRank, type RankCell } from "@/api";
+import {
+  apiErrorData,
+  isApiError,
+  refreshLocation,
+  type ChangeLabel,
+  type OverallRank,
+  type RankCell,
+  type RankStatus,
+  type RankStatusText,
+} from "@/api";
 import { PageHeader, TrendIndicator } from "@/components/layout/shared/data-display";
 import { RankingsNavigation, type RankingView } from "@/components/location/location-workspace";
 import { EmptyState, ErrorState } from "@/components/layout/shared/feedback/states";
@@ -14,9 +25,10 @@ import {
   BUCKET_LABEL,
   CHANGE_LABEL_TEXT,
   RANKINGS_SOURCE_NOTE,
+  RANK_STATUS_TEXT,
+  avgRankText,
   centerDescription,
   comparableNote,
-  formatAvgRank,
   formatDistance,
   formatRunDate,
 } from "@/lib/rankings/format";
@@ -41,6 +53,7 @@ import { useNow } from "@/hooks/use-now";
 
 
 function cellTitle(cell: RankCell) {
+  if (cell.status === "error") return "We couldn't get results from Google for this point";
   const parts = [BUCKET_LABEL[cell.bucket] ?? cell.bucket];
   if (cell.samples && cell.samples.length > 1) {
     const samples = cell.samples.map((value) => (value == null ? "failed" : value === 61 ? "60+" : String(value)));
@@ -52,7 +65,7 @@ function cellTitle(cell: RankCell) {
 /** One rank, coloured by bucket. A failed search shows "—", never "60+". */
 export function RankCellView({ cell, className }: { cell: RankCell | undefined; className?: string }) {
   if (!cell) return <span className={cn("text-xs text-muted-foreground", className)}>—</span>;
-  const text = cell.status === "error" ? "—" : cell.status === "not_found" ? "60+" : cell.display;
+  const text = cell.status === "error" ? "–" : cell.status === "not_found" ? "60+" : cell.display;
   return (
     <span
       title={cellTitle(cell)}
@@ -113,8 +126,28 @@ export function OverallChange({ overall }: { overall: OverallRank | undefined })
   );
 }
 
-export function AvgRank({ value }: { value: number | null | undefined }) {
-  return <span className="font-semibold tabular text-foreground">{formatAvgRank(value)}</span>;
+/** An average rank with its status: "60+" (not in the top 60) and "No data" (searches failed) read differently. */
+export function AvgRank({
+  value,
+  status,
+  display,
+  statusText,
+}: {
+  value: number | null | undefined;
+  status?: RankStatus | null | undefined;
+  display?: string | null | undefined;
+  statusText?: RankStatusText | undefined;
+}) {
+  const text = avgRankText(value, status, display);
+  const tip = status ? (statusText?.[status] ?? RANK_STATUS_TEXT[status]).tooltip : value == null ? "Not measured yet" : undefined;
+  return (
+    <span
+      title={tip}
+      className={cn("font-semibold tabular", status === "no_data" ? "text-xs font-medium text-muted-foreground" : "text-foreground")}
+    >
+      {text}
+    </span>
+  );
 }
 
 /**
@@ -259,7 +292,7 @@ export function RunPicker({
           return (
             <SelectItem key={run.run_id} value={run.run_id} disabled={!usable}>
               {formatRunDate(run.run_at, true)}
-              {usable ? ` · avg ${formatAvgRank(run.overall.self?.overallAvgRank)}` : ` · ${run.status}`}
+              {usable ? ` · avg ${avgRankText(run.overall.self?.overallAvgRank, run.overall.self?.status, run.overall.self?.display)}` : ` · ${run.status}`}
               {run.status === "partial" ? " (partial)" : ""}
             </SelectItem>
           );
@@ -270,7 +303,7 @@ export function RunPicker({
 }
 
 /** Manual rankings refresh: costs tokens, at most once per 24 h; the monthly refresh is free. */
-export function RefreshRankingsButton({ locationId }: { locationId: string }) {
+function RefreshRankingsButtonEditor({ locationId }: { locationId: string }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const state = useRefreshState(locationId);
@@ -330,6 +363,7 @@ export function RankingsPageHeader({
   title,
   description,
   run,
+  scope,
   actions,
   groupFilter = false,
 }: {
@@ -338,6 +372,8 @@ export function RankingsPageHeader({
   title: string;
   description: string;
   run?: RunMeta | undefined;
+  /** What this page measured (`scope.description`), shown under the title. */
+  scope?: string | null | undefined;
   actions?: ReactNode;
   /** Show the keyword-group filter (Rank Tracker, Keywords, grid). */
   groupFilter?: boolean;
@@ -358,11 +394,11 @@ export function RankingsPageHeader({
             {run ? (
               <p>
                 Run of {formatRunDate(run.run_at, true)}
-                {run.status === "partial" ? " · partial: some searches failed" : ""} · {run.config.grid_size}×{run.config.grid_size} grid
+                {run.status === "partial" ? " · partial: some searches failed; those points show “–”" : ""} · {run.config.grid_size}×{run.config.grid_size} grid
                 {radius ? `, ${formatDistance(radius)} from center to edge` : `, points ${run.config.spacing_km} km apart`}
               </p>
             ) : null}
-            {measuredAround ? <p className="font-medium text-foreground">{measuredAround}</p> : null}
+            {scope ? <p className="font-medium text-foreground">Measured: {scope}</p> : measuredAround ? <p className="font-medium text-foreground">{measuredAround}</p> : null}
             <p className="flex items-center gap-1">
               {RANKINGS_SOURCE_NOTE}
               <InfoTip label="Where are rankings measured from?">{GLOSSARY.businessCenter}</InfoTip>
@@ -383,4 +419,9 @@ export function RankingsPageHeader({
       <BackgroundActivity locationId={locationId} className="mb-4" />
     </>
   );
+}
+
+/** Hidden for a read-only client_user. */
+export function RefreshRankingsButton(props: ComponentProps<typeof RefreshRankingsButtonEditor>) {
+  return useCanEdit() ? <RefreshRankingsButtonEditor {...props} /> : null;
 }

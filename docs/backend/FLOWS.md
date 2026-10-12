@@ -87,3 +87,15 @@ A client user is **read-only** and sees only its clients: another client's locat
 **Manual refresh costs tokens:** `POST /locations/:id/refresh` → **402** `{ reason: "insufficient_tokens", balance, cost }`; token packs: `GET /billing/token-packs`, `POST /billing/tokens/checkout`.
 
 **Subscribe for the right number up front (13c):** a trial user who wants two or more locations sends that `quantity` at checkout, so steps 5–8 (a paid slot) are only for locations added later.
+
+## 5. Agency: an employee limited to one client (Phase 21)
+
+| # | Who | Call | Send | Get |
+|---|---|---|---|---|
+| 1 | owner | `POST /organization/invitations` | `{ email, role: "member", client_ids: ["<client A>"] }` | **201**; the employee accepts as in flow 3 |
+| 1b | owner | (an existing member) `PATCH /organization/members/:userId` | `{ role: "member", client_ids: ["<client A>"] }` (`[]` = every client again) | `{ user_id, role, client_ids, restricted: true }` |
+| 2 | employee | `GET /organization` | | `{ role: "member", restricted: true, client_ids: [A] }`: hide "New client", "Delete client" and "Unassign" |
+| 3 | employee | `GET /locations`, `/clients`, `/reports`, `/report-schedules`, `/dashboard` | | client A's only |
+| 4 | employee | `PUT /locations/:id/tracking`, `POST /locations/:id/refresh`, `POST /reports`, posts, reviews | | works on client A's locations (another client's location: **404**) |
+| 5 | employee | `POST /locations` | `{ place_id, client_id: "<client A>" }` | **201**; without `client_id` **400** `client_required`; client B **403** `client_not_assigned` |
+

@@ -1,15 +1,8 @@
-import { useParams } from "react-router-dom";
-import { RequireAccess } from "@/components/mypageseo/access";
-import { ReportPreviewPage } from "@/components/white-label/client-report-preview/report-preview-page";
+import { Navigate } from "react-router-dom";
 
-/** Full-screen client report preview. Rendered without the app shell, like the client sees it. */
+/** The branding preview is on the White-label page itself. */
 function WhiteLabelPreviewPage() {
-  const { reportId } = useParams();
-  return (
-    <RequireAccess permission="white_label.manage">
-      <ReportPreviewPage key={reportId ?? "default"} reportId={reportId ?? null} />
-    </RequireAccess>
-  );
+  return <Navigate to="/settings/white-label" replace />;
 }
 
 export default WhiteLabelPreviewPage;

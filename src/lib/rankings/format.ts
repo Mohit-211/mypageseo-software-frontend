@@ -1,5 +1,5 @@
 import { formatDate, formatDateTime } from "@/lib/datetime";
-import type { ChangeLabel, RankBucket } from "@/api";
+import type { ChangeLabel, RankBucket, RankStatus } from "@/api";
 
 /**
  * A target's display name: the stored business name (Phase 17), else the location's
@@ -40,6 +40,24 @@ export function formatDuration(ms: number): string {
 
 export function formatAvgRank(value: number | null | undefined): string {
   return value == null ? "—" : value.toFixed(1);
+}
+
+/** Default wording per average status, used when the response has no `status_text`. */
+export const RANK_STATUS_TEXT: Record<RankStatus, { label: string; tooltip: string }> = {
+  ok: { label: "Average rank", tooltip: "The average Google Maps position over the points searched; positions below 60 count as 61." },
+  not_found: { label: "Not in the top 60", tooltip: "Google answered every search, but the business wasn't in the first 60 results at any point." },
+  no_data: { label: "No data", tooltip: "We couldn't get results from Google for these searches. It's measured again at the next refresh." },
+};
+
+/**
+ * An average's text from its `status` / `display` (2026-10-08): "12.4", "60+" or "No data".
+ * `no_data` is never shown as 60+. Older responses without a status fall back to the number.
+ */
+export function avgRankText(value: number | null | undefined, status?: RankStatus | null, display?: string | null): string {
+  if (display) return display;
+  if (status === "no_data") return "No data";
+  if (status === "not_found") return "60+";
+  return formatAvgRank(value);
 }
 
 /** 0–1 → "40%". */

@@ -2,6 +2,7 @@ import { ApiError } from "../client";
 import { setAuthTokens } from "../token-storage";
 import { setSelectedOrganizationId } from "../organization-storage";
 import type { AuthTokens } from "../types/auth";
+import { setOnboardingPending } from "../onboarding-storage";
 
 /**
  * Stores a session's token pair. `remember` keeps it across browser restarts;
@@ -20,4 +21,6 @@ export function storeSessionTokens(tokens: AuthTokens | undefined, remember: boo
 export function startSession(tokens: AuthTokens | undefined, remember: boolean, details?: unknown) {
   storeSessionTokens(tokens, remember, details);
   setSelectedOrganizationId(null);
+  const onboarding = (details as { onboarding?: { completed?: boolean } | null } | undefined)?.onboarding;
+  setOnboardingPending(onboarding ? onboarding.completed === false : false);
 }

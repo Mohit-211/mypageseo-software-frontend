@@ -1,3 +1,5 @@
+import type { ComponentProps } from "react";
+import { useCanEdit } from "@/hooks/use-access";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -31,7 +33,7 @@ export function RankReportButton({ locationId, runId, runAt }: { locationId: str
 }
 
 /** "Report" on a page: makes that report type's PDF for the location, then download / share / email in place. */
-export function ReportButton({
+function ReportButtonEditor({
   locationId,
   type,
   runId,
@@ -65,7 +67,7 @@ export function ReportButton({
 }
 
 /** "Report" with a menu of every report type, for pages that cover the whole location. */
-export function ReportMenuButton({ locationId }: { locationId: string }) {
+function ReportMenuButtonEditor({ locationId }: { locationId: string }) {
   const [type, setType] = useState<ReportType | null>(null);
   const chosen = REPORT_TYPES.find((entry) => entry.value === type);
   return (
@@ -162,4 +164,14 @@ function ReportDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+/** Hidden for a read-only client_user. */
+export function ReportButton(props: ComponentProps<typeof ReportButtonEditor>) {
+  return useCanEdit() ? <ReportButtonEditor {...props} /> : null;
+}
+
+/** Hidden for a read-only client_user. */
+export function ReportMenuButton(props: ComponentProps<typeof ReportMenuButtonEditor>) {
+  return useCanEdit() ? <ReportMenuButtonEditor {...props} /> : null;
 }

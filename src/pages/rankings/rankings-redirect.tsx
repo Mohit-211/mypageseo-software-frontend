@@ -10,7 +10,7 @@ import { useWorkspace } from "@/lib/mypageseo/workspace";
  * The sidebar's Rankings entries open the selected location's ranking pages
  * (the header's location, else the first one), so there is one set of ranking screens.
  */
-export function RankingsRedirect({ view }: { view: "" | "tracker" | "keywords" | "groups" | "map" | "grid" }) {
+export function RankingsRedirect({ view }: { view: "" | "tracker" | "keywords" | "groups" | "map" | "grid" | "competitors" }) {
   return <LocationSectionRedirect section="rankings" view={view} title="Rankings" description="Google Maps rankings for each of your locations." />;
 }
 

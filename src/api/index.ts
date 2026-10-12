@@ -3,6 +3,7 @@ export type { ApiFieldErrors, HttpMethod, QueryParams, RequestOptions } from "./
 export { API_BASE_URL } from "./config";
 export { ENDPOINTS } from "./endpoints";
 export { getSelectedOrganizationId, setSelectedOrganizationId } from "./organization-storage";
+export { isOnboardingPending, setOnboardingPending } from "./onboarding-storage";
 export {
   getAccessToken,
   getValidAccessToken,
@@ -18,7 +19,6 @@ export {
 } from "./token-storage";
 export * from "./auth";
 export * from "./gbp";
-export * from "./location";
 export * from "./locations";
 export * from "./billing";
 export * from "./clients";
@@ -29,13 +29,18 @@ export * from "./reviews";
 export * from "./dashboard";
 export * from "./profile";
 export * from "./staff";
+export * from "./posts";
+export * from "./citations";
+export * from "./organization";
+export * from "./support";
 export type * from "./types/auth";
 export type * from "./types/gbp";
 export type * from "./types/gbp-report";
 export type * from "./types/reviews";
 export type * from "./types/dashboard";
-export type * from "./types/location";
 export type * from "./types/locations";
 export type * from "./types/rankings";
 export type * from "./types/profile";
 export type * from "./types/staff";
+export type * from "./types/posts";
+export type * from "./types/citations";

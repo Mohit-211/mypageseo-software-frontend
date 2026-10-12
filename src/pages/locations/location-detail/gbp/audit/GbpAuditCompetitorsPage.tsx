@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { TrackCompetitorButton } from "@/components/ranking/track-competitor-button";
 import { ArrowRight, Check, Lightbulb, Minus, Star } from "lucide-react";
 import type { CompetitorRow, CompetitorsSection, GbpReport } from "@/api";
 import { Panel, StatusBadge } from "@/components/layout/shared/data-display";
@@ -13,8 +14,14 @@ import { formatRunDate } from "@/lib/rankings/format";
 
 const SOURCE_LABEL: Record<string, string> = {
   self: "You",
-  tracking: "Tracked competitor",
-  map_list: "Nearby on Google Maps",
+  tracking: "Your competitor",
+  area: "Top in your area",
+  map_list: "Nearby business",
+};
+
+const SOURCE_TIP: Record<string, string> = {
+  area: "Among the businesses ranking highest across your whole grid in the latest ranking run",
+  map_list: "Near the top of Google's list at your address (reports from older runs)",
 };
 
 /** Public comparison with nearby businesses (public data only; ranks are in Rankings). */
@@ -46,13 +53,13 @@ function GbpAuditCompetitorsPage() {
       ) : report.isError ? (
         <GbpReportError error={report.error} onRetry={() => void report.refetch()} gbpConnected={location.gbp_connected} />
       ) : (
-        <CompetitorsContent report={report.data} />
+        <CompetitorsContent report={report.data} locationId={location.location_id} />
       )}
     </>
   );
 }
 
-function CompetitorsContent({ report }: { report: GbpReport }) {
+function CompetitorsContent({ report, locationId }: { report: GbpReport; locationId: string }) {
   const section = report.competitors;
   if (!section.available) return <Panel><SectionUnavailable section={section} compact /></Panel>;
   return (
@@ -62,7 +69,7 @@ function CompetitorsContent({ report }: { report: GbpReport }) {
           Business details couldn't be refreshed this time; the last known details are shown.
         </p>
       ) : null}
-      <ComparisonTable section={section} />
+      <ComparisonTable section={section} locationId={locationId} />
       <div className="grid gap-6 xl:grid-cols-2">
         <Insights section={section} />
         <RecentReviews rows={section.rows} />
@@ -77,7 +84,7 @@ function Present({ value }: { value: boolean | null }) {
   return value ? <Check aria-label="Yes" className="mx-auto size-4 text-success" /> : <Minus aria-label="No" className="mx-auto size-4 text-muted-foreground" />;
 }
 
-function ComparisonTable({ section }: { section: CompetitorsSection }) {
+function ComparisonTable({ section, locationId }: { section: CompetitorsSection; locationId: string }) {
   const rows = [...section.rows].sort((a, b) => Number(b.is_self) - Number(a.is_self));
   return (
     <Panel
@@ -108,7 +115,7 @@ function ComparisonTable({ section }: { section: CompetitorsSection }) {
           </thead>
           <tbody className="divide-y divide-border">
             {rows.map((row) => (
-              <CompetitorTableRow key={row.place_id} row={row} />
+              <CompetitorTableRow key={row.place_id} row={row} locationId={locationId} />
             ))}
           </tbody>
         </table>
@@ -117,14 +124,17 @@ function ComparisonTable({ section }: { section: CompetitorsSection }) {
   );
 }
 
-function CompetitorTableRow({ row }: { row: CompetitorRow }) {
+function CompetitorTableRow({ row, locationId }: { row: CompetitorRow; locationId: string }) {
   const closed = row.public_score?.flag;
   return (
     <tr className={row.is_self ? "bg-brand-tint/50" : undefined}>
       <td className="px-4 py-3">
         <span className="block font-medium text-foreground">{row.name ?? "Unnamed business"}</span>
         <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-          {SOURCE_LABEL[row.source] ?? row.source}
+          <span title={SOURCE_TIP[row.source]}>{SOURCE_LABEL[row.source] ?? row.source}</span>
+          {row.source === "area" || row.source === "map_list" ? (
+            <TrackCompetitorButton locationId={locationId} placeId={row.place_id} name={row.name} />
+          ) : null}
           {closed ? <StatusBadge tone="critical">{closed === "closed_permanently" ? "Closed" : "Temporarily closed"}</StatusBadge> : null}
           {row.stale ? <StatusBadge tone="warning">Details may be outdated</StatusBadge> : null}
         </span>

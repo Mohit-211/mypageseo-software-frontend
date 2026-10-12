@@ -1,393 +1,180 @@
-import { useMemo } from "react";
-import { RequireAccess } from "@/components/mypageseo/access";
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import { z } from "zod";
-import { Search } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { Building2, LoaderCircle, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { createClient, deleteClient, getClients, updateClient, type ClientRecord } from "@/api";
+import { RequireAccess } from "@/components/mypageseo/access";
 import { AppShell } from "@/components/layout/shared/app-shell";
-import { PageHeader, Panel, StatusBadge, type StatusTone } from "@/components/layout/shared/data-display";
+import { PageHeader, StatusBadge } from "@/components/layout/shared/data-display";
+import { ConfirmDialog } from "@/components/layout/shared/form-fields";
 import { EmptyState, ErrorState, TableSkeleton } from "@/components/layout/shared/feedback/states";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  CLIENTS_PAGE_SIZE,
-  CLIENT_STATUS_LABEL,
-  buildManagedClients,
-  getClientCapabilities,
-  type ClientAccountStatus,
-  type ManagedClient,
-} from "@/lib/mypageseo/clients-data";
-import { useWorkspace } from "@/lib/mypageseo/workspace";
-import { PlanLimitNotice } from "@/components/mypageseo/plan";
-import { usePlanLimit } from "@/hooks/use-plan";
-import { planLimitMessage } from "@/lib/mypageseo/plan";
-import { useTypedSearch } from "@/hooks/use-typed-search";
+import { Label } from "@/components/ui/label";
+import { useAccess } from "@/hooks/use-access";
+import { CLIENTS_KEY, clientErrorText } from "@/lib/clients/clients";
 
-const description =
-  "Manage the client accounts in this agency, the locations assigned to each client and the local SEO work running across the portfolio.";
-
-const searchSchema = z.object({
-  q: z.string().optional(),
-  status: z.string().optional(),
-  sort: z.string().optional(),
-  order: z.string().optional(),
-  page: z.coerce.number().optional(),
-});
-
-type ClientsSearch = z.infer<typeof searchSchema>;
-type SortKey = "name" | "locations" | "visibility" | "gbp" | "status";
-
-const statusTone: Record<ClientAccountStatus, StatusTone> = {
-  active: "success",
-  setup_required: "warning",
-  disconnected: "critical",
-};
-
+/** Clients are an optional grouping of an agency's locations; no feature depends on them. */
 const ClientsIndexPage = () => (
-    // <RequireAccess permission="clients.view">
-    <RequireAccess permission="clients.view">
-
-      <ClientsPage />
-    </RequireAccess>
-  );
+  <RequireAccess permission="clients.view">
+    <ClientsPage />
+  </RequireAccess>
+);
 
 function ClientsPage() {
-  const workspace = useWorkspace();
-  const [search, setSearch] = useTypedSearch(searchSchema);
-  const capabilities = getClientCapabilities();
-  const clientLimit = usePlanLimit("clients");
+  const access = useAccess();
+  const canManage = access.can("clients.manage");
+  // A member limited to its clients edits them but can't create or delete clients (Phase 21).
+  const canAdmin = access.can("clients.admin");
+  const queryClient = useQueryClient();
+  const [search, setSearch] = useState("");
+  const [editing, setEditing] = useState<ClientRecord | "new" | null>(null);
+  const [deleting, setDeleting] = useState<ClientRecord | null>(null);
+  const clients = useQuery({
+    queryKey: [...CLIENTS_KEY, "list", search.trim()],
+    queryFn: ({ signal }) => getClients(signal, search.trim() ? { search: search.trim() } : {}),
+  });
 
-  const q = (search.q ?? "").slice(0, 120);
-  const validStatuses: ClientAccountStatus[] = ["active", "setup_required", "disconnected"];
-  const status = validStatuses.includes(search.status as ClientAccountStatus)
-    ? (search.status as ClientAccountStatus)
-    : "all";
-  const validSorts: SortKey[] = ["name", "locations", "visibility", "gbp", "status"];
-  const sort = validSorts.includes(search.sort as SortKey) ? (search.sort as SortKey) : "name";
-  const order = search.order === "desc" ? "desc" : "asc";
-  const page = Math.max(1, Math.floor(search.page ?? 1));
-
-  const clients = useMemo(
-    () => buildManagedClients(workspace.clients, workspace.locations),
-    [workspace.clients, workspace.locations],
-  );
-
-  const filtered = useMemo(() => {
-    const rows = clients.filter((client) => {
-      if (status !== "all" && client.status !== status) return false;
-      if (q.trim() && !client.name.toLowerCase().includes(q.trim().toLowerCase())) return false;
-      return true;
-    });
-    const direction = order === "desc" ? -1 : 1;
-    return [...rows].sort((a, b) => {
-      if (sort === "locations") return (a.locationCount - b.locationCount) * direction;
-      if (sort === "visibility") return ((a.visibility ?? -1) - (b.visibility ?? -1)) * direction;
-      if (sort === "gbp") return ((a.gbpHealth ?? -1) - (b.gbpHealth ?? -1)) * direction;
-      if (sort === "status") return a.status.localeCompare(b.status) * direction;
-      return a.name.localeCompare(b.name) * direction;
-    });
-  }, [clients, status, q, sort, order]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / CLIENTS_PAGE_SIZE));
-  const current = Math.min(page, totalPages);
-  const visible = filtered.slice((current - 1) * CLIENTS_PAGE_SIZE, current * CLIENTS_PAGE_SIZE);
-  const hasFilters = q.trim() !== "" || status !== "all";
-
-  const update = (next: Partial<ClientsSearch>) => {
-    setSearch((prev) => ({ ...prev, page: undefined, ...next }));
-  };
-
-  const toggleSort = (key: SortKey) => {
-    if (sort === key) update({ sort: key, order: order === "asc" ? "desc" : "asc" });
-    else update({ sort: key, order: "asc" });
-  };
-
-  if (workspace.status === "loading") {
-    return (
-      <AppShell>
-        <PageHeader title="Clients" description={description} />
-        <TableSkeleton rows={6} columns={6} />
-      </AppShell>
-    );
-  }
-
-  if (workspace.status === "unavailable") {
-    return (
-      <AppShell>
-        <PageHeader title="Clients" description={description} />
-        <ErrorState
-          description="We couldn't load your agency workspace. Try again without leaving this page."
-          onRetry={() => window.location.reload()}
-        />
-      </AppShell>
-    );
-  }
-
-  if (workspace.organization?.accountType !== "agency") {
-    return (
-      <AppShell>
-        <PageHeader title="Clients" description="Client accounts are part of the Agency workspace." />
-        <EmptyState
-          title="Clients are only available to agency accounts"
-          description="This organization is a business account, so its locations are managed directly instead of through client accounts."
-          action={
-            <Button asChild>
-              <Link to="/locations">Go to locations</Link>
-            </Button>
-          }
-        />
-      </AppShell>
-    );
-  }
+  const remove = (client: ClientRecord) =>
+    void deleteClient(client.client_id)
+      .then((result) => {
+        toast.success(`${client.name} deleted${result.locations_unassigned ? `; ${result.locations_unassigned} location${result.locations_unassigned === 1 ? "" : "s"} unassigned` : ""}.`);
+        void queryClient.invalidateQueries({ queryKey: CLIENTS_KEY });
+        void queryClient.invalidateQueries({ queryKey: ["locations"] });
+      })
+      .catch((err: unknown) => toast.error(clientErrorText(err, "The client couldn't be deleted.")));
 
   return (
     <AppShell>
       <PageHeader
         title="Clients"
-        description={description}
-        actions={
-          capabilities.canCreate ? (
-            <Button
-              size="sm"
-              disabled={Boolean(clientLimit?.reached)}
-              title={clientLimit?.reached ? planLimitMessage(clientLimit) : undefined}
-            >
-              Add client
-            </Button>
-          ) : null
-        }
+        description="Group your locations by the business they belong to. Optional: locations work the same with or without a client."
+        actions={canAdmin ? <Button size="sm" onClick={() => setEditing("new")}><Plus aria-hidden /> New client</Button> : undefined}
       />
-
-      {clientLimit ? <PlanLimitNotice state={clientLimit} className="mb-4" /> : null}
-
-      {clients.length === 0 ? (
+      <div className="relative max-w-sm">
+        <Search aria-hidden className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input className="pl-8" placeholder="Search clients" value={search} onChange={(event) => setSearch(event.target.value)} />
+      </div>
+      {clients.isPending ? (
+        <TableSkeleton rows={4} columns={5} />
+      ) : clients.isError ? (
+        <ErrorState description="Clients couldn't be loaded." onRetry={() => void clients.refetch()} />
+      ) : clients.data.clients.length === 0 ? (
         <EmptyState
-          title="No clients in this agency yet"
-          description="A client groups the locations, rankings, Google Business Profiles, citations and reports that belong to one business you manage. Client creation is not available in the current product integration."
-          className="min-h-64"
+          icon={Building2}
+          title={search ? "No matching clients" : "No clients yet"}
+          description={search ? "Try another name." : "Create a client, then assign its locations to see them together."}
+          action={canAdmin && !search ? <Button size="sm" onClick={() => setEditing("new")}><Plus aria-hidden /> New client</Button> : undefined}
         />
       ) : (
-        <div className="space-y-4">
-          <Panel>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative w-full sm:w-64">
-                <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-                <Input
-                  value={q}
-                  onChange={(event) => update({ q: event.target.value || undefined })}
-                  placeholder="Search clients"
-                  aria-label="Search clients"
-                  className="h-9 pl-8"
-                />
-              </div>
-              <Select
-                value={status}
-                onValueChange={(value) => update({ status: value === "all" ? undefined : value })}
-              >
-                <SelectTrigger className="h-9 w-full sm:w-48" aria-label="Client status">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All statuses</SelectItem>
-                  {validStatuses.map((value) => (
-                    <SelectItem key={value} value={value}>
-                      {CLIENT_STATUS_LABEL[value]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {hasFilters ? (
-                <Button variant="ghost" size="sm" onClick={() => update({ q: undefined, status: undefined })}>
-                  Reset
-                </Button>
-              ) : null}
-              <span className="ml-auto text-xs text-muted-foreground">
-                {filtered.length} of {clients.length} clients
-              </span>
-            </div>
-          </Panel>
-
-          {filtered.length === 0 ? (
-            <EmptyState
-              title="No clients match these filters"
-              description="Adjust the search or status filter to see more of the portfolio."
-            />
-          ) : (
-            <>
-              <Panel className="hidden md:block">
-                <div className="-mx-4 overflow-x-auto">
-                  <table className="w-full min-w-[880px] border-collapse text-sm">
-                    <thead>
-                      <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
-                        <SortHeader label="Client" active={sort === "name"} order={order} onClick={() => toggleSort("name")} />
-                        <SortHeader label="Locations" active={sort === "locations"} order={order} onClick={() => toggleSort("locations")} />
-                        <SortHeader label="Visibility" active={sort === "visibility"} order={order} onClick={() => toggleSort("visibility")} />
-                        <SortHeader label="GBP health" active={sort === "gbp"} order={order} onClick={() => toggleSort("gbp")} />
-                        <th className="px-4 py-2 font-medium">Reviews</th>
-                        <th className="px-4 py-2 font-medium">Reports</th>
-                        <th className="px-4 py-2 font-medium">Last activity</th>
-                        <SortHeader label="Status" active={sort === "status"} order={order} onClick={() => toggleSort("status")} />
-                        <th className="px-4 py-2 text-right font-medium">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {visible.map((client) => (
-                        <tr key={client.id} className="border-b border-border last:border-b-0">
-                          <td className="px-4 py-3 font-medium">
-                            <Link
-                              to={`/clients/${client.id}`}
-                              onClick={() => workspace.setActiveClientId(client.id)}
-                              className="text-foreground hover:text-primary hover:underline"
-                            >
-                              {client.name}
-                            </Link>
-                          </td>
-                          <td className="px-4 py-3 text-muted-foreground">
-                            {client.locationCount}
-                            {client.needsAttention > 0 ? (
-                              <span className="ml-2 text-xs text-critical">· {client.needsAttention} need setup</span>
-                            ) : null}
-                          </td>
-                          <td className="px-4 py-3 text-muted-foreground">{formatScore(client.visibility)}</td>
-                          <td className="px-4 py-3 text-muted-foreground">{formatScore(client.gbpHealth)}</td>
-                          <td className="px-4 py-3 text-muted-foreground">
-                            {client.averageRating !== null
-                              ? `${client.averageRating.toFixed(1)}${client.reviewCount !== null ? ` · ${client.reviewCount}` : ""}`
-                              : "—"}
-                          </td>
-                          <td className="px-4 py-3 text-muted-foreground">{client.reportStatus ?? "—"}</td>
-                          <td className="px-4 py-3 text-muted-foreground">{client.lastActivity ?? "—"}</td>
-                          <td className="px-4 py-3">
-                            <StatusBadge tone={statusTone[client.status]}>{CLIENT_STATUS_LABEL[client.status]}</StatusBadge>
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            <ClientActions client={client} onOpen={() => workspace.setActiveClientId(client.id)} />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </Panel>
-
-              <div className="space-y-3 md:hidden">
-                {visible.map((client) => (
-                  <Panel key={client.id}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <Link
-                          to={`/clients/${client.id}`}
-                          onClick={() => workspace.setActiveClientId(client.id)}
-                          className="block truncate text-sm font-medium text-foreground hover:text-primary hover:underline"
-                        >
-                          {client.name}
-                        </Link>
-                        <p className="mt-0.5 text-xs text-muted-foreground">
-                          {client.locationCount} location{client.locationCount === 1 ? "" : "s"}
-                          {client.needsAttention > 0 ? ` · ${client.needsAttention} need setup` : ""}
-                        </p>
-                      </div>
-                      <StatusBadge tone={statusTone[client.status]}>{CLIENT_STATUS_LABEL[client.status]}</StatusBadge>
-                    </div>
-                    <dl className="mt-3 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                      <Detail label="Visibility" value={formatScore(client.visibility)} />
-                      <Detail label="GBP health" value={formatScore(client.gbpHealth)} />
-                      <Detail
-                        label="Reviews"
-                        value={client.averageRating !== null ? client.averageRating.toFixed(1) : "—"}
-                      />
-                      <Detail label="Reports" value={client.reportStatus ?? "—"} />
-                    </dl>
-                    <div className="mt-3">
-                      <ClientActions client={client} onOpen={() => workspace.setActiveClientId(client.id)} />
-                    </div>
-                  </Panel>
-                ))}
-              </div>
-
-              {totalPages > 1 ? (
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-xs text-muted-foreground">
-                    Page {current} of {totalPages}
-                  </p>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" disabled={current === 1} onClick={() => setSearch((prev) => ({ ...prev, page: current - 1 }))}>
-                      Previous
-                    </Button>
-                    <Button variant="outline" size="sm" disabled={current === totalPages} onClick={() => setSearch((prev) => ({ ...prev, page: current + 1 }))}>
-                      Next
-                    </Button>
-                  </div>
-                </div>
-              ) : null}
-            </>
-          )}
+        <div className="overflow-x-auto rounded-lg border border-border bg-surface shadow-card">
+          <table className="w-full min-w-[640px] text-left text-sm">
+            <thead className="border-b border-border bg-surface-strong text-xs text-muted-foreground">
+              <tr>
+                <th className="px-4 py-2.5 font-medium">Client</th>
+                <th className="px-3 py-2.5 text-right font-medium">Locations</th>
+                <th className="px-3 py-2.5 text-right font-medium" title="Average over the 5 tracking points, all keywords">Avg. rank</th>
+                <th className="px-3 py-2.5 text-right font-medium">Avg. GBP score</th>
+                <th className="px-3 py-2.5 font-medium">Status</th>
+                {canManage ? <th className="px-3 py-2.5" /> : null}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {clients.data.clients.map((client) => (
+                <tr key={client.client_id}>
+                  <td className="px-4 py-3">
+                    <Link to={`/clients/${client.client_id}`} className="font-medium text-foreground hover:text-primary hover:underline">{client.name}</Link>
+                    {client.contact_email ? <span className="block text-xs text-muted-foreground">{client.contact_email}</span> : null}
+                  </td>
+                  <td className="px-3 py-3 text-right tabular">{client.locations_count}</td>
+                  <td className="px-3 py-3 text-right tabular">{client.avg_rank == null ? "—" : client.avg_rank.toFixed(1)}</td>
+                  <td className="px-3 py-3 text-right tabular">{client.avg_gbp_score == null ? "—" : Math.round(client.avg_gbp_score)}</td>
+                  <td className="px-3 py-3"><StatusBadge tone={client.status === "ACTIVE" ? "success" : "neutral"}>{client.status === "ACTIVE" ? "Active" : "Inactive"}</StatusBadge></td>
+                  {canManage ? (
+                    <td className="px-3 py-3 text-right">
+                      <Button size="icon" variant="ghost" className="size-8" aria-label={`Edit ${client.name}`} onClick={() => setEditing(client)}><Pencil aria-hidden /></Button>
+                      {canAdmin ? (
+                        <Button size="icon" variant="ghost" className="size-8 text-critical" aria-label={`Delete ${client.name}`} onClick={() => setDeleting(client)}><Trash2 aria-hidden /></Button>
+                      ) : null}
+                    </td>
+                  ) : null}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
+      {editing ? <ClientDialog client={editing === "new" ? null : editing} onClose={() => setEditing(null)} /> : null}
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(open) => (open ? undefined : setDeleting(null))}
+        title={`Delete ${deleting?.name ?? "this client"}?`}
+        description="Its locations stay in your organization, without a client. Client users of this client lose access to them."
+        confirmLabel="Delete"
+        onConfirm={() => {
+          const target = deleting;
+          setDeleting(null);
+          if (target) remove(target);
+        }}
+      />
     </AppShell>
   );
 }
 
-function formatScore(value: number | null) {
-  return value === null ? "—" : String(value);
-}
+export function ClientDialog({ client, onClose }: { client: ClientRecord | null; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [name, setName] = useState(client?.name ?? "");
+  const [website, setWebsite] = useState(client?.website ?? "");
+  const [email, setEmail] = useState(client?.contact_email ?? "");
+  const [active, setActive] = useState(client?.status !== "INACTIVE");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-function Detail({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <dt className="uppercase tracking-wide">{label}</dt>
-      <dd className="mt-0.5 text-foreground">{value}</dd>
-    </div>
-  );
-}
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    const input = { name: name.trim(), website: website.trim() || null, contact_email: email.trim() || null };
+    try {
+      if (client) await updateClient(client.client_id, { ...input, status: active ? "ACTIVE" : "INACTIVE" });
+      else await createClient(input);
+      void queryClient.invalidateQueries({ queryKey: CLIENTS_KEY });
+      toast.success(client ? "Client saved." : "Client created.");
+      onClose();
+    } catch (err) {
+      setError(clientErrorText(err, "The client couldn't be saved. Try again."));
+    } finally {
+      setSaving(false);
+    }
+  };
 
-function SortHeader({
-  label,
-  active,
-  order,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  order: string;
-  onClick: () => void;
-}) {
   return (
-    <th className="px-4 py-2 font-medium">
-      <button type="button" onClick={onClick} className="inline-flex items-center gap-1 hover:text-foreground">
-        {label}
-        {active ? <span aria-hidden>{order === "desc" ? "↓" : "↑"}</span> : null}
-      </button>
-    </th>
-  );
-}
-
-/** Only exposes navigation that exists; client creation and invites stay out until the backend supports them. */
-function ClientActions({ client, onOpen }: { client: ManagedClient; onOpen: () => void }) {
-  const capabilities = getClientCapabilities();
-  return (
-    <div className="flex flex-wrap justify-end gap-2">
-      <Button asChild variant="outline" size="sm" onClick={onOpen}>
-        <Link to={`/clients/${client.id}`}>
-          Open client
-        </Link>
-      </Button>
-      <Button asChild variant="ghost" size="sm" onClick={onOpen}>
-        <Link to={`/locations?client=${encodeURIComponent(client.id)}`}>
-          Locations
-        </Link>
-      </Button>
-      {capabilities.canInviteUsers ? (
-        <Button variant="outline" size="sm">
-          Invite user
-        </Button>
-      ) : null}
-      {capabilities.canEdit ? (
-        <Button variant="ghost" size="sm">
-          Edit
-        </Button>
-      ) : null}
-    </div>
+    <Dialog open onOpenChange={(open) => (open || saving ? undefined : onClose())}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{client ? "Edit client" : "New client"}</DialogTitle>
+          <DialogDescription>Assign locations to it from the client's page or the Locations list.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1.5"><Label htmlFor="client-name">Name</Label><Input id="client-name" value={name} onChange={(event) => setName(event.target.value)} /></div>
+          <div className="space-y-1.5"><Label htmlFor="client-website">Website (optional)</Label><Input id="client-website" type="url" value={website} onChange={(event) => setWebsite(event.target.value)} /></div>
+          <div className="space-y-1.5"><Label htmlFor="client-email">Contact email (optional)</Label><Input id="client-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></div>
+          {client ? (
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /> Active
+            </label>
+          ) : null}
+          {error ? <p role="alert" className="text-sm text-critical">{error}</p> : null}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button disabled={saving || name.trim().length < 2} onClick={() => void save()}>
+            {saving ? <LoaderCircle aria-hidden className="animate-spin" /> : null} {client ? "Save" : "Create"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

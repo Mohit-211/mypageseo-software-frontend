@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
-import { cn } from "@/lib/utils";
+import { cn, formatMoney } from "@/lib/utils";
 
 const TOP_UP_TYPES: TokenLedgerEntry["type"][] = ["purchase", "grant", "monthly_grant"];
 
@@ -43,14 +43,6 @@ function useTokenBalance(enabled: boolean) {
     staleTime: 30_000,
     retry: false,
   });
-}
-
-function formatMoney(amount: number, currency: string) {
-  try {
-    return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(amount);
-  } catch {
-    return `${amount.toFixed(2)} ${currency}`;
-  }
 }
 
 /**

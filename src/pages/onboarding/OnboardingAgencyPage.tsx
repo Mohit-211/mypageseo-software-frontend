@@ -1,5 +1,8 @@
-import { OnboardingFlow } from "@/components/mypageseo/onboarding-flow";
+import { Navigate } from "react-router-dom";
 
-const OnboardingAgencyPage = () => <OnboardingFlow accountType="agency" />;
+/** Setup is one checklist for both account types (`GET onboarding/state`). */
+function OnboardingAgencyPage() {
+  return <Navigate to="/onboarding" replace />;
+}
 
 export default OnboardingAgencyPage;

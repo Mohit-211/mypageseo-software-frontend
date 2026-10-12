@@ -17,6 +17,7 @@ import { GlobalSearch } from "@/components/mypageseo/global-search";
 import { TokenBalance } from "@/components/layout/shared/token-balance";
 import logoUrl from "@/assets/logo.png";
 import { navigationFor, type NavGroup } from "@/lib/mypageseo/navigation";
+import { AccountStateBanner } from "./account-state-banner";
 import { useAccountType, useWorkspace } from "@/lib/mypageseo/workspace";
 import { cn } from "@/lib/utils";
 
@@ -80,6 +81,11 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
                       aria-hidden
                     />
                     {item.label}
+                    {item.soon ? (
+                      <span className="ml-auto rounded px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-sidebar-muted ring-1 ring-white/15">
+                        Soon
+                      </span>
+                    ) : null}
                   </>
                 );
                 return (
@@ -543,6 +549,7 @@ export function AppShell({
         <GlobalHeader onOpenNav={() => setNavOpen(true)} />
         {showLocationContext ? <LocationContextBar /> : null}
         <main id="main-content" className="min-w-0 flex-1 space-y-6 px-4 py-5 md:px-6 md:py-6">
+          <AccountStateBanner />
           {children}
         </main>
       </div>

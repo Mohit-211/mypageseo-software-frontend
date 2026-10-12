@@ -36,6 +36,7 @@ import {
   REPORT_TYPE_LABEL,
 } from "@/lib/reports/report-meta";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
+import { useCanEdit } from "@/hooks/use-access";
 
 const PAGE_SIZE = 20;
 const ACTIVE: ReportStatus[] = ["queued", "generating"];
@@ -44,8 +45,18 @@ const ACTIVE: ReportStatus[] = ["queued", "generating"];
  * Every generated report (`GET reports`), newest first, with filters. Pass
  * `locationId` to show one location's reports (its page under Locations).
  */
-export function ReportsList({ locationId, reportPath }: { locationId?: string; reportPath: (reportId: string, locationId: string | null) => string }) {
+export function ReportsList({
+  locationId,
+  clientId,
+  reportPath,
+}: {
+  locationId?: string;
+  /** One client's reports (the client page). */
+  clientId?: string;
+  reportPath: (reportId: string, locationId: string | null) => string;
+}) {
   const workspace = useWorkspace();
+  const canEdit = useCanEdit();
   const [locationFilter, setLocationFilter] = useState<string>("all");
   const [type, setType] = useState<ReportType | "all">("all");
   const [status, setStatus] = useState<ReportStatus | "all">("all");
@@ -56,6 +67,7 @@ export function ReportsList({ locationId, reportPath }: { locationId?: string; r
 
   const params = {
     ...(location ? { location_id: location } : {}),
+    ...(clientId ? { client_id: clientId } : {}),
     ...(type === "all" ? {} : { type }),
     ...(status === "all" ? {} : { status }),
     ...(hideDeleted ? { include_deleted: false } : {}),
@@ -103,9 +115,11 @@ export function ReportsList({ locationId, reportPath }: { locationId?: string; r
           Hide deleted locations
         </label>
       )}
-      <Button size="sm" className="sm:ml-auto" onClick={() => setCreating(true)} disabled={workspace.locations.length === 0}>
-        <FilePlus2 aria-hidden /> Create report
-      </Button>
+      {canEdit ? (
+        <Button size="sm" className="sm:ml-auto" onClick={() => setCreating(true)} disabled={workspace.locations.length === 0}>
+          <FilePlus2 aria-hidden /> Create report
+        </Button>
+      ) : null}
     </div>
   );
 

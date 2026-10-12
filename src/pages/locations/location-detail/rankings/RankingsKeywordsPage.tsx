@@ -30,6 +30,7 @@ function LocationKeywordsPage() {
         title="Keywords"
         description="Every tracked keyword, for your business and each tracked competitor."
         run={tracker.data?.run}
+        scope={tracker.data?.scope?.description}
         groupFilter
         actions={<EditKeywordsButton locationId={location.location_id} />}
       />
@@ -100,7 +101,7 @@ function KeywordPanel({
               return (
                 <tr key={target.key} className={target.key === "self" ? "bg-brand-tint/50" : undefined}>
                   <td className="px-4 py-3 font-medium text-foreground">{targetLabel(target.key, selfName, target.name)}</td>
-                  <td className="px-3 py-3 text-right"><AvgRank value={summary?.avgRank} /></td>
+                  <td className="px-3 py-3 text-right"><AvgRank value={summary?.avgRank} status={summary?.status} display={summary?.display} /></td>
                   <td className="px-3 py-3"><RankChange change={summary?.change} label={summary?.changeLabel} /></td>
                   <td className="px-3 py-3 text-right tabular text-muted-foreground">{formatRate(summary?.foundRate)}</td>
                   <td className="px-3 py-3 text-right tabular text-muted-foreground">{formatRate(summary?.top3Rate)}</td>

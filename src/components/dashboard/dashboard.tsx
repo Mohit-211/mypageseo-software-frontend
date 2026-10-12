@@ -197,16 +197,20 @@ export function BusinessDashboardView({ data }: { data: BusinessDashboard }) {
         <SectionHeader title="Performance summary" description={data.comparisonLabel} />
         <div className="grid grid-cols-1 overflow-hidden rounded-lg border border-border bg-surface shadow-card sm:grid-cols-2 xl:grid-cols-5 xl:divide-x xl:divide-border">
           <MetricCard
-            label="Local Visibility" accent="brand"
-            value={show(data.visibilityScore.value)}
+            label="Top-3 rate" accent="brand"
+            value={data.visibilityScore.value == null ? "—" : `${data.visibilityScore.value}%`}
             trend={<MetricTrend metric={data.visibilityScore} suffix=" pts" />}
-            caption="Share of local pack presence"
+            caption="Tracking points where you're in the Maps top 3"
           />
           <MetricCard
             label="Average Rank" accent="teal"
-            value={show(data.averageRank.value, 1)}
+            value={data.averageRankDisplay ?? show(data.averageRank.value, 1)}
             trend={<MetricTrend metric={data.averageRank} lowerIsBetter />}
-            caption={rankMovement.tracked === null ? "Google Maps, lower is better" : `${rankMovement.tracked} keywords tracked`}
+            caption={
+              data.averageRankDisplay === "No data"
+                ? "We couldn't get results from Google; measured again at the next refresh"
+                : `Average over the 5 tracking points, all keywords${rankMovement.tracked === null ? "" : ` (${rankMovement.tracked})`}`
+            }
           />
           <MetricCard
             label="GBP Health" accent="green"
@@ -468,7 +472,7 @@ export function BusinessDashboardView({ data }: { data: BusinessDashboard }) {
                             <span className="ml-2 text-xs text-muted-foreground">You</span>
                           ) : null}
                         </td>
-                        <td className="px-4 py-2.5 text-right tabular">{show(row.averageRank, 1)}</td>
+                        <td className="px-4 py-2.5 text-right tabular">{row.averageRank == null && row.averageRankDisplay ? row.averageRankDisplay : show(row.averageRank, 1)}</td>
                         <td className="px-4 py-2.5 text-right tabular">{show(row.rating, 1)}</td>
                         <td className="px-4 py-2.5 text-right tabular">{row.reviews === null ? "—" : row.reviews.toLocaleString()}</td>
                         <td className="px-4 py-2.5 text-right tabular">{row.photos ?? "—"}</td>
@@ -582,8 +586,8 @@ export function AgencyDashboardView({ data }: { data: AgencyDashboard }) {
           <MetricCard label="Clients" accent="brand" value={data.clientCount} caption="Active in this workspace" />
           <MetricCard label="Locations" accent="teal" value={data.locationCount} caption="Across all clients" />
           <MetricCard
-            label="Avg. Visibility" accent="green"
-            value={show(data.averageVisibility.value)}
+            label="Avg. top-3 rate" accent="green"
+            value={data.averageVisibility.value == null ? "—" : `${data.averageVisibility.value}%`}
             trend={<MetricTrend metric={data.averageVisibility} suffix=" pts" />}
             caption="Portfolio average"
           />
@@ -663,7 +667,8 @@ export function AgencyDashboardView({ data }: { data: AgencyDashboard }) {
               <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <th className="px-4 py-2.5 font-medium">Client</th>
                 <th className="px-4 py-2.5 font-medium">Location</th>
-                <th className="px-4 py-2.5 text-right font-medium">Visibility</th>
+                <th className="px-4 py-2.5 text-right font-medium" title="Average over the 5 tracking points, all keywords">Avg. rank</th>
+                <th className="px-4 py-2.5 text-right font-medium">Top 3</th>
                 <th className="px-4 py-2.5 text-right font-medium">Trend</th>
                 <th className="px-4 py-2.5 text-right font-medium">GBP health</th>
                 <th className="px-4 py-2.5 text-right font-medium">Unanswered</th>
@@ -687,7 +692,8 @@ export function AgencyDashboardView({ data }: { data: AgencyDashboard }) {
                     <span className="text-foreground">{row.locationName}</span>
                     <span className="block text-xs text-muted-foreground">{row.area}</span>
                   </td>
-                  <td className="px-4 py-2.5 text-right tabular">{show(row.visibility)}</td>
+                  <td className="px-4 py-2.5 text-right tabular">{row.averageRank ?? "—"}</td>
+                  <td className="px-4 py-2.5 text-right tabular">{row.visibility == null ? "—" : `${row.visibility}%`}</td>
                   <td className="px-4 py-2.5">
                     <div className="flex justify-end">
                       {row.visibilityChange === null ? (

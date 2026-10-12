@@ -97,3 +97,4 @@ export function Can({
   const access = useAccess();
   return <>{access.can(permission) ? children : fallback}</>;
 }
+

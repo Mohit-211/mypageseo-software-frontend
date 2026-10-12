@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useClientRequired } from "@/lib/clients/clients";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -26,6 +27,7 @@ import { LocationRowsTable } from "@/components/location/location-rows-table";
 import { LOCATION_STATUS_LABEL, locationSetupPath } from "@/lib/locations/location-actions";
 import type { SortOrder } from "@/components/layout/shared/data-table";
 import { Button } from "@/components/ui/button";
+import { useCanEdit } from "@/hooks/use-access";
 import {
   Dialog,
   DialogContent,
@@ -52,7 +54,7 @@ const searchSchema = z.object({
 
 const PAGE_SIZE = 25;
 const STATUSES: LocationStatus[] = ["active", "setup_required", "gbp_disconnected", "gbp_not_connected", "reconnect_required"];
-const SORTS: LocationSortField[] = ["name", "city", "rank", "gbp_score", "rating", "last_refreshed"];
+const SORTS: LocationSortField[] = ["name", "city", "rank", "gbp_score", "rating", "citation_score", "last_refreshed"];
 const DESCRIPTION = "Manage the Google Business Profiles connected to your Mypageseo account.";
 
 /** Delays a fast-changing value (the search box) so each keystroke doesn't send a request. */
@@ -93,6 +95,7 @@ function LocationsPage() {
     limit: PAGE_SIZE,
   });
 
+  const canEdit = useCanEdit();
   const [unbindTarget, setUnbindTarget] = useState<LocationRow | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<LocationRow | null>(null);
   const [clientTarget, setClientTarget] = useState<LocationRow | null>(null);
@@ -118,9 +121,11 @@ function LocationsPage() {
       title="Locations"
       description={DESCRIPTION}
       actions={
-        <Button onClick={() => navigate("/locations/add")}>
-          <MapPinPlus aria-hidden /> Add location
-        </Button>
+        canEdit ? (
+          <Button onClick={() => navigate("/locations/add")}>
+            <MapPinPlus aria-hidden /> Add location
+          </Button>
+        ) : null
       }
     />
   );
@@ -153,7 +158,7 @@ function LocationsPage() {
     <AppShell>
       {header}
 
-      <PendingGbpSection picks={pending} clients={clients} />
+      {canEdit ? <PendingGbpSection picks={pending} clients={clients} /> : null}
 
       {total === 0 && !hasFilters ? (
         pending.length === 0 ? <NoLocationsEmpty /> : null
@@ -213,18 +218,22 @@ function LocationsPage() {
               onPageChange={(nextPage) => updateSearch({ page: nextPage })}
               actions={{
                 onOpen: (location) => navigate(`/locations/${location.location_id}`),
-                onContinueSetup: (location) => navigate(locationSetupPath(location.location_id)),
-                onReconnect: () => connect(),
-                onUnbind: setUnbindTarget,
-                onDelete: setDeleteTarget,
-                onSetClient: agency && clients.length > 0 ? setClientTarget : undefined,
+                ...(canEdit
+                  ? {
+                      onContinueSetup: (location: LocationRow) => navigate(locationSetupPath(location.location_id)),
+                      onReconnect: () => connect(),
+                      onUnbind: setUnbindTarget,
+                      onDelete: setDeleteTarget,
+                      onSetClient: agency && clients.length > 0 ? setClientTarget : undefined,
+                    }
+                  : {}),
               }}
             />
           )}
         </div>
       )}
 
-      <GoogleAccountsPanel className="mt-6" />
+      {canEdit ? <GoogleAccountsPanel className="mt-6" /> : null}
 
       <ConfirmDialog
         open={unbindTarget !== null}
@@ -244,7 +253,7 @@ function LocationsPage() {
         open={deleteTarget !== null}
         onOpenChange={(open) => (open ? undefined : setDeleteTarget(null))}
         title={`Delete ${deleteTarget?.name ?? "this location"}?`}
-        description="Tracking stops and scheduled runs are cancelled. History is kept, and the place can be added again later. A paid location slot stays paid until the period ends."
+        description="Tracking stops and scheduled runs are cancelled. History is kept, and the place can be added again later. The paid slot isn’t refunded; it stays paid and reusable for another location until the period ends."
         cancelLabel="Keep location"
         confirmLabel="Delete"
         onConfirm={() => {
@@ -286,17 +295,18 @@ function SetClientDialog({
   onSave: (clientId: string | null) => void;
 }) {
   const [clientId, setClientId] = useState<string | null>(location.client?.client_id ?? null);
+  const required = useClientRequired();
   return (
     <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Client for {location.name}</DialogTitle>
-          <DialogDescription>Clients are an optional grouping. Choose "No client" to unassign.</DialogDescription>
+          <DialogDescription>{required ? "Move this location to another of your clients." : 'Clients are an optional grouping. Choose "No client" to unassign.'}</DialogDescription>
         </DialogHeader>
         <ClientSelect id="location-client" clients={clients} value={clientId} onChange={setClientId} label="Client" />
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button disabled={clientId === (location.client?.client_id ?? null)} onClick={() => onSave(clientId)}>Save</Button>
+          <Button disabled={clientId === (location.client?.client_id ?? null) || (required && !clientId)} onClick={() => onSave(clientId)}>Save</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

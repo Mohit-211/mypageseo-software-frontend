@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useCanEdit } from "@/hooks/use-access";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -45,9 +46,10 @@ function InsightsPage() {
     }
   };
 
+  const canEdit = useCanEdit();
   const noInsights = isApiError(insights.error) && (insights.error.reason === "no_insights" || insights.error.status === 404);
   const generateButton =
-    ai?.configured ? (
+    ai?.configured && canEdit ? (
       <Button size="sm" disabled={generating || ai.paused_today} onClick={() => void generate()}>
         {generating ? <LoaderCircle aria-hidden className="animate-spin" /> : <Sparkles aria-hidden />}
         {insights.data ? "Update insights" : "Generate insights"}{cost != null ? ` (${cost} token${cost === 1 ? "" : "s"})` : ""}

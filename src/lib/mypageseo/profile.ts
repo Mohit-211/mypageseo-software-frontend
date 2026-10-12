@@ -13,8 +13,6 @@
  */
 
 import type { Profile, UpdateProfileRequest } from "@/api/types/profile";
-import { withDemoFallback } from "./demo/demo-mode";
-import { DEMO_USER_PROFILE } from "./demo/profile";
 
 export type EmailVerificationState = "verified" | "unverified" | "unknown";
 
@@ -61,10 +59,6 @@ export type ProfileFormValues = {
 };
 
 export type ProfileFormErrors = Partial<Record<keyof ProfileFormValues, string>>;
-
-export function getUserProfile(real?: ProfileResult | null): ProfileResult {
-  return withDemoFallback(real, () => DEMO_USER_PROFILE());
-}
 
 export function profileToForm(profile: UserProfile): ProfileFormValues {
   return {

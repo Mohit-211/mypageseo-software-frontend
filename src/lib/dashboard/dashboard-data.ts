@@ -50,6 +50,8 @@ export type CompetitorRow = {
   name: string;
   isYou?: boolean;
   averageRank: number | null;
+  /** "60+" / "No data" when there's no number (2026-10-08 statuses). */
+  averageRankDisplay?: string | null;
   rating: number | null;
   reviews: number | null;
   photos: string | null;
@@ -69,6 +71,8 @@ export type BusinessDashboard = {
   focusLocationId: string | null;
   visibilityScore: MetricPoint;
   averageRank: MetricPoint;
+  /** "60+" / "No data" for one location when the average has no number. */
+  averageRankDisplay: string | null;
   gbpHealth: MetricPoint;
   reviewRating: MetricPoint;
   reviewCount: number | null;
@@ -87,6 +91,8 @@ export type PortfolioRow = {
   locationId: string;
   locationName: string;
   area: string;
+  /** "12.4", "60+" or "No data" (Rank Tracker average, 5 points). */
+  averageRank: string | null;
   visibility: number | null;
   visibilityChange: number | null;
   gbpHealth: number | null;
@@ -155,30 +161,52 @@ const ACTION_LABEL: Record<string, string> = {
   gbp: "Open audit",
   reviews: "Open reviews",
   citations: "Open citations",
+  posts: "Open posts",
   setup: "Finish setup",
   connection: "Reconnect Google",
 };
 
+/** Where each specific action id leads; sources without an entry use `SOURCE_PATH`. */
+const ACTION_PATH: Record<string, (locationId: string) => string> = {
+  "posts:failed": (id) => `/locations/${id}/gbp/posts?tab=problems`,
+  "posts:approval": (id) => `/locations/${id}/gbp/posts?tab=waiting`,
+  "posts:stale": (id) => `/locations/${id}/gbp/posts?compose=1`,
+  "posts:series_problem": (id) => `/locations/${id}/gbp/posts?tab=auto`,
+  "ranking:competitor_ahead": (id) => `/locations/${id}/rankings/competitors`,
+  "reviews:attention": (id) => `/locations/${id}/reputation`,
+  "reviews:suspicious": (id) => `/locations/${id}/reputation`,
+  "citations:nap_wrong": (id) => `/locations/${id}/citations`,
+  "citations:not_found": (id) => `/locations/${id}/citations`,
+};
+
+const ACTION_TEXT: Record<string, string> = {
+  "posts:stale": "Write a post",
+  "posts:approval": "Review posts",
+  "posts:series_problem": "Open auto-posts",
+};
+
+const SOURCE_PATH: Record<string, (locationId: string) => string> = {
+  setup: locationSetupPath,
+  ranking: (id) => `/locations/${id}/rankings`,
+  gbp: (id) => `/locations/${id}/gbp/audit`,
+  reviews: (id) => `/locations/${id}/reputation`,
+  citations: (id) => `/locations/${id}/citations`,
+  posts: (id) => `/locations/${id}/gbp/posts`,
+  // The Google accounts panel (Reconnect) is on the Locations page.
+  connection: () => "/locations",
+};
+
 function toAction(action: DashboardAction, showLocation: boolean): RecommendedAction {
   const id = action.location_id;
-  const to = !id
-    ? "/locations"
-    : ({
-        setup: locationSetupPath(id),
-        ranking: `/locations/${id}/rankings`,
-        gbp: `/locations/${id}/gbp/audit`,
-        reviews: `/locations/${id}/reputation`,
-        citations: `/locations/${id}/citations`,
-        // The Google accounts panel (Reconnect) is on the Locations page.
-        connection: "/locations",
-      } as Record<string, string>)[action.source] ?? `/locations/${id}`;
+  const target = ACTION_PATH[action.id] ?? SOURCE_PATH[action.source];
+  const to = !id ? "/locations" : target ? target(id) : `/locations/${id}`;
   return {
     id: `${action.id}-${id ?? ""}`,
     title: action.title,
     reason: [action.detail, showLocation && action.location_name ? action.location_name : null].filter(Boolean).join(" · "),
     severity: action.impact >= 0.7 ? "critical" : action.impact >= 0.4 ? "attention" : "info",
     to,
-    actionLabel: ACTION_LABEL[action.source] ?? "Open",
+    actionLabel: ACTION_TEXT[action.id] ?? ACTION_LABEL[action.source] ?? "Open",
   };
 }
 
@@ -228,12 +256,15 @@ function competitorRows(tracker: RankTrackerResponse | undefined, report: GbpRep
       name: target.key === "self" ? (selfName ?? fact?.name ?? "Your business") : (target.name ?? fact?.name ?? "Competitor"),
       isYou: target.key === "self",
       averageRank: tracker?.overall[target.key]?.overallAvgRank ?? null,
+      averageRankDisplay: tracker?.overall[target.key]?.display ?? null,
       rating: fact?.rating ?? null,
       reviews: fact?.user_rating_count ?? null,
       photos: fact?.photo_count == null ? null : fact.photos_capped ? "10+" : String(fact.photo_count),
     };
   });
 }
+
+const RANK_STATUS_DISPLAY: Record<string, string | null> = { no_data: "No data", not_found: "60+", ok: null };
 
 export function toBusinessDashboard(
   live: LiveBusiness,
@@ -250,8 +281,12 @@ export function toBusinessDashboard(
     rangeDays: RANGE_DAYS[live.range] ?? 30,
     performance: toPerformance(live.performance),
     focusLocationId: focus.locationId,
-    visibilityScore: { label: "Local Visibility", value: pct(visibility?.top3_rate), change: pct(visibility?.top3_rate_change) },
+    visibilityScore: { label: "Top-3 rate", value: pct(visibility?.top3_rate), change: pct(visibility?.top3_rate_change) },
     averageRank: { label: "Average Rank", value: visibility?.avg_rank ?? null, change: visibility?.change == null ? null : -visibility.change },
+    averageRankDisplay:
+      visibility?.avg_rank != null
+        ? null
+        : (visibility?.avg_rank_display ?? (visibility?.avg_rank_status ? RANK_STATUS_DISPLAY[visibility.avg_rank_status] : null)),
     gbpHealth: { label: "GBP Health", value: live.gbp.available ? live.gbp.score : null, change: live.gbp.available ? live.gbp.change : null },
     reviewRating: {
       label: "Review Rating",
@@ -288,7 +323,7 @@ export function toAgencyDashboard(live: LiveAgency): AgencyDashboard {
     performance: toPerformance(live.performance),
     clientCount: live.clients_count,
     locationCount: live.locations_count,
-    averageVisibility: { label: "Avg. Visibility", value: pct(live.portfolio.avg_top3_rate), change: pct(live.portfolio.avg_top3_rate_change) },
+    averageVisibility: { label: "Avg. top-3 rate", value: pct(live.portfolio.avg_top3_rate), change: pct(live.portfolio.avg_top3_rate_change) },
     averageGbpHealth: { label: "Avg. GBP Health", value: live.portfolio.avg_gbp_score, change: live.portfolio.avg_gbp_score_change },
     attention: {
       decliningLocations: live.declines.length,
@@ -302,6 +337,9 @@ export function toAgencyDashboard(live: LiveAgency): AgencyDashboard {
       locationId: row.location_id,
       locationName: row.name,
       area: row.city ?? "",
+      averageRank:
+        row.visibility?.avg_rank_display ??
+        (row.visibility?.avg_rank != null ? row.visibility.avg_rank.toFixed(1) : null),
       visibility: pct(row.visibility?.top3_rate),
       visibilityChange: pct(row.visibility?.top3_rate_change),
       gbpHealth: row.gbp?.score ?? null,

@@ -1,13 +1,13 @@
 import { Link } from "react-router-dom";
 import { ArrowDown, ArrowRight, ArrowUp } from "lucide-react";
-import type { RankBucket, RankTrackerResponse } from "@/api";
+import type { RankBucket, RankStatus, RankStatusText, RankTrackerResponse } from "@/api";
 import { MetricCard, Panel, StatusBadge } from "@/components/layout/shared/data-display";
 import { PageSkeleton } from "@/components/layout/shared/feedback/states";
 import { TermWithTip } from "@/components/layout/shared/info-tip";
 import { RankTrendChart } from "@/components/ranking/rank-charts";
-import { OverallChange, RankingsError, RankingsPageHeader } from "@/components/ranking/rank-ui";
+import { AvgRank, OverallChange, RankingsError, RankingsPageHeader } from "@/components/ranking/rank-ui";
 import { Button } from "@/components/ui/button";
-import { BUCKET_LABEL, CHANGE_LABEL_TEXT, formatAvgRank, formatRate } from "@/lib/rankings/format";
+import { BUCKET_LABEL, CHANGE_LABEL_TEXT, avgRankText, formatAvgRank, formatRate } from "@/lib/rankings/format";
 import { GLOSSARY } from "@/lib/rankings/glossary";
 import { useGroupParam, useRankingsContext, useRunParam } from "@/lib/rankings/rankings-context";
 import { useRankRuns, useRankTracker } from "@/lib/rankings/use-rankings";
@@ -15,6 +15,8 @@ import { useRankRuns, useRankTracker } from "@/lib/rankings/use-rankings";
 type KeywordRow = {
   keyword: string;
   current: number | null;
+  status: RankStatus | null;
+  display: string | null;
   previous: number | null;
   change: number | null;
   label: RankTrackerResponse["keywords"][number]["summary"][string]["changeLabel"];
@@ -41,6 +43,8 @@ function summarize(data: RankTrackerResponse) {
     return {
       keyword: keyword.keyword,
       current,
+      status: summary?.status ?? null,
+      display: summary?.display ?? null,
       // `change` is previous − current, so previous = current + change.
       previous: current !== null && change !== null ? Math.round((current + change) * 10) / 10 : null,
       change,
@@ -97,6 +101,7 @@ function LocationRankingsOverviewPage() {
         title="Rank Overview"
         description="How the business ranks on Google Maps for its keywords, and how that is changing."
         run={tracker.data?.run}
+        scope={tracker.data?.scope?.description}
         groupFilter
       />
       {tracker.isPending ? (
@@ -126,8 +131,8 @@ function OverviewContent({ data, locationId, selfName }: { data: RankTrackerResp
       <section aria-label="Ranking summary">
         <div className="grid overflow-hidden rounded-lg border border-border bg-surface shadow-card sm:grid-cols-2 xl:grid-cols-4 xl:divide-x xl:divide-border">
           <MetricCard
-            label="Average rank"
-            value={formatAvgRank(data.overall.self?.overallAvgRank)}
+            label="Average rank (5 points)"
+            value={avgRankText(data.overall.self?.overallAvgRank, data.overall.self?.status, data.overall.self?.display)}
             trend={<OverallChange overall={data.overall.self} />}
             caption="Lower is better · 1 is the top result"
           />
@@ -187,12 +192,14 @@ function OverviewContent({ data, locationId, selfName }: { data: RankTrackerResp
           title="Top movers"
           tip={GLOSSARY.movers}
           rows={stats.movers}
+          statusText={data.status_text}
           empty="No keyword moved since the previous run (or this is the first run)."
           action={<Button asChild variant="outline" size="sm"><Link to="keywords">All keywords <ArrowRight aria-hidden /></Link></Button>}
         />
         <KeywordTable
           title="Keyword snapshot"
           rows={stats.rows}
+          statusText={data.status_text}
           empty="No keywords in this run."
           action={<Button asChild variant="outline" size="sm"><Link to="tracker">Rank Tracker <ArrowRight aria-hidden /></Link></Button>}
         />
@@ -222,12 +229,14 @@ function KeywordTable({
   rows,
   empty,
   action,
+  statusText,
 }: {
   title: string;
   tip?: string;
   rows: KeywordRow[];
   empty: string;
   action?: React.ReactNode;
+  statusText?: RankStatusText | undefined;
 }) {
   return (
     <Panel
@@ -258,7 +267,7 @@ function KeywordTable({
                 <tr key={row.keyword}>
                   <td className="px-4 py-3 font-medium text-foreground">{row.keyword}</td>
                   <td className="px-3 py-3 text-right tabular text-muted-foreground">{formatAvgRank(row.previous)}</td>
-                  <td className="px-3 py-3 text-right font-semibold tabular text-foreground">{formatAvgRank(row.current)}</td>
+                  <td className="px-3 py-3 text-right"><AvgRank value={row.current} status={row.status} display={row.display} statusText={statusText} /></td>
                   <td className="px-3 py-3"><Movement row={row} /></td>
                   <td className="px-3 py-3 text-right tabular text-muted-foreground">{formatRate(row.top3)}</td>
                 </tr>

@@ -21,7 +21,6 @@ import {
   getSalesAudit,
   isApiError,
   type AuditChecklistItem,
-  type AuditCompetitor,
   type SalesAudit,
 } from "@/api";
 import { GridMap, type GridMapPoint } from "@/components/ranking/rank-map";
@@ -40,7 +39,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { formatDateTime, formatTime } from "@/lib/datetime";
 import { BUCKET_MARKER_CLASS } from "@/lib/rankings/format";
-import { AUDIT_LEGEND, FAILURE_TEXT, WARNING_TEXT, auditErrorText, auditQueryKey, cellBucket, cellText, pct } from "@/lib/staff/audit-format";
+import { AUDIT_LEGEND, FAILURE_TEXT, WARNING_TEXT, areaRankText, auditErrorText, auditQueryKey, avgRankText, cellBucket, cellText, pct } from "@/lib/staff/audit-format";
 import { cn } from "@/lib/utils";
 
 const POLL_MS = 2500;
@@ -278,6 +277,10 @@ function AuditResult({ audit, result }: { audit: SalesAudit; result: NonNullable
     [result.cells],
   );
   const centerText = summary.center_status === "error" ? "–" : summary.center_rank === null ? "30+" : String(summary.center_rank);
+  // Area-basis audits rank "who ranks higher" across the whole grid; older ones only at the business.
+  const isArea = result.basis === "area";
+  const areaText = areaRankText(summary.area_rank);
+  const centerCaption = summary.center_status === "error" ? "No answer at your business" : `${summary.center_rank === null ? "30+" : `#${summary.center_rank}`} at your business`;
 
   return (
     <>
@@ -292,11 +295,15 @@ function AuditResult({ audit, result }: { audit: SalesAudit; result: NonNullable
       ) : null}
 
       <section aria-label="Ranking summary" className="grid overflow-hidden rounded-lg border border-border bg-surface shadow-card sm:grid-cols-2 xl:grid-cols-4 xl:divide-x xl:divide-border">
-        <MetricCard label="Rank at the business" accent="brand" value={centerText} caption="Google Maps, at the business's address" />
+        {isArea ? (
+          <MetricCard label="Rank across the area" accent="brand" value={areaText} caption={centerCaption} />
+        ) : (
+          <MetricCard label="Rank at the business" accent="brand" value={centerText} caption="Google Maps, at the business's address" />
+        )}
         <MetricCard
           label="Average rank"
           accent="teal"
-          value={summary.avg_rank === null ? "—" : summary.avg_rank.toFixed(1)}
+          value={avgRankText(summary.avg_rank)}
           caption={`Across ${summary.points - summary.failed_points} points · 30+ counted as 31`}
         />
         <MetricCard label="Found in the top 30" accent="green" value={pct(summary.found_rate)} caption="Share of grid points" />
@@ -318,14 +325,64 @@ function AuditResult({ audit, result }: { audit: SalesAudit; result: NonNullable
             ))}
           </ul>
         </Panel>
-        <HigherList audit={audit} higher={result.higher} />
+        {isArea ? <AreaHigherList audit={audit} result={result} /> : <HigherList audit={audit} higher={result.higher} />}
       </div>
 
-      <QuickScore audit={audit} competitors={result.competitors} centerText={centerText} />
+      <QuickScore audit={audit} result={result} selfRank={isArea ? (summary.area_rank == null ? "30+" : String(summary.area_rank)) : centerText} />
     </>
   );
 }
 
+/** Area basis: up to 10 businesses ahead across the grid, in area order, then the business's own row. */
+function AreaHigherList({ audit, result }: { audit: SalesAudit; result: NonNullable<SalesAudit["result"]> }) {
+  const { higher } = result;
+  const ahead = higher?.filter((row) => !row.is_self) ?? [];
+  const total = result.area?.ahead ?? ahead.length;
+  const description = total > ahead.length ? `The top ${ahead.length} of ${total} businesses ahead across the area` : "Across the whole grid, in area order";
+  return (
+    <Panel title="Who ranks higher" description={description}>
+      {higher === null ? (
+        <p className="py-6 text-center text-sm text-muted-foreground">Business names aren't available for this audit.</p>
+      ) : ahead.length === 0 ? (
+        <p className="py-6 text-center text-sm text-muted-foreground">Nobody: {audit.business.name} ranks first across the area.</p>
+      ) : (
+        <>
+          <div className="-mx-4 -my-1 max-h-[440px] overflow-y-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="sticky top-0 border-b border-border bg-surface-strong text-xs text-muted-foreground">
+                <tr>
+                  <th scope="col" className="w-10 py-2 pl-4 pr-1 text-right font-medium">#</th>
+                  <th scope="col" className="px-3 py-2 font-medium">Business</th>
+                  <th scope="col" className="px-2 py-2 text-right font-medium whitespace-nowrap">Avg rank</th>
+                  <th scope="col" className="py-2 pl-2 pr-4 text-right font-medium whitespace-nowrap">In top 3</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {higher.map((row) => (
+                  <tr key={`${row.rank ?? "self"}-${row.name}`} className={cn(row.is_self && "bg-accent/60")}>
+                    <td className="py-2.5 pl-4 pr-1 text-right align-top font-semibold tabular text-muted-foreground">{row.rank ?? "30+"}</td>
+                    <td className="max-w-0 px-3 py-2.5">
+                      <p className="truncate font-medium text-foreground">
+                        {row.name}
+                        {row.is_self ? <span className="ml-2 text-xs font-normal text-primary">This business</span> : null}
+                      </p>
+                      {row.address ? <p className="truncate text-xs text-muted-foreground">{row.address}</p> : null}
+                    </td>
+                    <td className="px-2 py-2.5 text-right align-top tabular">{avgRankText(row.avg_rank)}</td>
+                    <td className="py-2.5 pl-2 pr-4 text-right align-top tabular">{pct(row.top3_rate)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {audit.attribution ? <p className="mt-3 text-right text-[11px] text-muted-foreground">{audit.attribution.text}</p> : null}
+        </>
+      )}
+    </Panel>
+  );
+}
+
+/** Older audits: everyone above the business at its address. */
 function HigherList({ audit, higher }: { audit: SalesAudit; higher: NonNullable<SalesAudit["result"]>["higher"] }) {
   return (
     <Panel title="Who ranks higher" description="At the business's address, in Google Maps order">
@@ -380,14 +437,18 @@ function gradeTone(score: number | null | undefined): "success" | "warning" | "c
   return score >= 80 ? "success" : score >= 50 ? "warning" : "critical";
 }
 
-function QuickScore({ audit, competitors, centerText }: { audit: SalesAudit; competitors: AuditCompetitor[]; centerText: string }) {
+function QuickScore({ audit, result, selfRank }: { audit: SalesAudit; result: NonNullable<SalesAudit["result"]>; selfRank: string }) {
   const { business } = audit;
+  const { competitors, summary } = result;
+  const isArea = result.basis === "area";
   const columns = [
     {
       key: "self",
       name: business.name,
       isSelf: true,
-      rank: centerText,
+      rank: selfRank,
+      avgRank: summary.avg_rank,
+      top3Rate: summary.top3_rate,
       score: business.score,
       rating: business.rating,
       reviews: business.user_rating_count,
@@ -399,6 +460,8 @@ function QuickScore({ audit, competitors, centerText }: { audit: SalesAudit; com
       name: competitor.name,
       isSelf: false,
       rank: String(competitor.rank),
+      avgRank: competitor.avg_rank ?? null,
+      top3Rate: competitor.top3_rate ?? null,
       score: competitor.score,
       rating: competitor.facts?.rating ?? null,
       reviews: competitor.facts?.user_rating_count ?? null,
@@ -429,7 +492,7 @@ function QuickScore({ audit, competitors, centerText }: { audit: SalesAudit; com
         </ul>
       </Panel>
 
-      <Panel title="Compared with the top 3" description="The top 3 other businesses at its address">
+      <Panel title="Compared with the top 3" description={isArea ? "The top 3 other businesses across the area" : "The top 3 other businesses at its address"}>
         {competitors.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">The top 3 aren't available for this audit.</p>
         ) : (
@@ -446,7 +509,13 @@ function QuickScore({ audit, competitors, centerText }: { audit: SalesAudit; com
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                <ComparisonRow label="Rank at the address" values={columns.map((column) => ({ key: column.key, isSelf: column.isSelf, node: <span className="font-semibold tabular">{column.rank}</span> }))} />
+                <ComparisonRow label={isArea ? "Rank across the area" : "Rank at the address"} values={columns.map((column) => ({ key: column.key, isSelf: column.isSelf, node: <span className="font-semibold tabular">{column.rank}</span> }))} />
+                {isArea ? (
+                  <>
+                    <ComparisonRow label="Avg rank" values={columns.map((column) => ({ key: column.key, isSelf: column.isSelf, node: <span className="tabular">{avgRankText(column.avgRank)}</span> }))} />
+                    <ComparisonRow label="In top 3" values={columns.map((column) => ({ key: column.key, isSelf: column.isSelf, node: <span className="tabular">{pct(column.top3Rate)}</span> }))} />
+                  </>
+                ) : null}
                 <ComparisonRow
                   label="Public score"
                   values={columns.map((column) => ({

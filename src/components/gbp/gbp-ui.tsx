@@ -1,3 +1,5 @@
+import type { ComponentProps } from "react";
+import { useCanEdit } from "@/hooks/use-access";
 import type { ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
@@ -35,7 +37,7 @@ export function SectionUnavailable({ section, compact = false }: { section: GbpU
 }
 
 /** Manual GBP refresh: a sync now (tokens, once per 24 h); the report regenerates ~2 min after it. */
-export function RefreshGbpButton({ locationId, gbpConnected }: { locationId: string; gbpConnected: boolean }) {
+function RefreshGbpButtonEditor({ locationId, gbpConnected }: { locationId: string; gbpConnected: boolean }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const state = useRefreshState(locationId);
@@ -165,4 +167,9 @@ export function GbpReportError({ error, onRetry, gbpConnected }: { error: unknow
     );
   }
   return <ErrorState description="The GBP report couldn't be loaded." onRetry={onRetry} />;
+}
+
+/** Hidden for a read-only client_user. */
+export function RefreshGbpButton(props: ComponentProps<typeof RefreshGbpButtonEditor>) {
+  return useCanEdit() ? <RefreshGbpButtonEditor {...props} /> : null;
 }

@@ -8,7 +8,7 @@ import { WhiteLabelPage } from "@/components/white-label/white-label-page";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
 
 const SettingsWhiteLabelPage = () => (
-  <RequireAccess permission="white_label.manage">
+  <RequireAccess permission="clients.view">
     <AppShell>
       <WhiteLabelGate />
     </AppShell>

@@ -1,4 +1,5 @@
 import { Link, generatePath } from "react-router-dom";
+import { avgRankText } from "@/lib/rankings/format";
 import { formatDate as formatLocalDate, formatShortDate } from "@/lib/datetime";
 import type { ReactNode } from "react";
 import { AlertTriangle, ArrowLeft, ArrowRight, Building2, FileBarChart, ListChecks, RefreshCw, TrendingUp, Users } from "lucide-react";
@@ -10,6 +11,7 @@ import { locationSetupPath } from "@/lib/locations/location-actions";
 import { EmptyState, ErrorState, PageSkeleton } from "@/components/layout/shared/feedback/states";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { CanEdit } from "@/components/mypageseo/can-edit";
 import { useGbpConnect } from "@/lib/gbp/use-gbp-connect";
 import { useLocationOverview } from "@/lib/locations/use-locations";
 import { useRequiredParams } from "@/hooks/use-required-params";
@@ -107,6 +109,7 @@ function LocationOverviewPage() {
         <PerformanceSummary data={data} />
         <ReviewsSummary data={data} />
         <CompetitorsSummary data={data} />
+        <CitationsSummary data={data} />
       </div>
       {data.attribution ? (
         <p className="-mt-4 mb-6 text-[11px] text-muted-foreground">Ratings, reviews and competitor names: {data.attribution.text}</p>
@@ -144,9 +147,11 @@ function StatusBanner({ location }: { location: LocationOverview }) {
         <AlertTitle>Setup isn't finished</AlertTitle>
         <AlertDescription>
           <p>Add keywords and competitors to start tracking this location.</p>
-          <Button asChild size="sm" className="mt-3">
-            <Link to={locationSetupPath(location.location_id)}>Continue setup</Link>
-          </Button>
+          <CanEdit>
+            <Button asChild size="sm" className="mt-3">
+              <Link to={locationSetupPath(location.location_id)}>Continue setup</Link>
+            </Button>
+          </CanEdit>
         </AlertDescription>
       </Alert>
     );
@@ -161,9 +166,11 @@ function StatusBanner({ location }: { location: LocationOverview }) {
             This location's profile was unbound{location.gbp_disconnected_at ? ` on ${formatLocalDate(location.gbp_disconnected_at)}` : ""}.
             Rankings keep working, but profile data, reviews and posts no longer update.
           </p>
-          <Button size="sm" className="mt-3" onClick={() => connect()}>
-            <RefreshCw aria-hidden /> Connect GBP again
-          </Button>
+          <CanEdit>
+            <Button size="sm" className="mt-3" onClick={() => connect()}>
+              <RefreshCw aria-hidden /> Connect GBP again
+            </Button>
+          </CanEdit>
         </AlertDescription>
       </Alert>
     );
@@ -175,9 +182,11 @@ function StatusBanner({ location }: { location: LocationOverview }) {
         <AlertTitle>Google access needs to be restored</AlertTitle>
         <AlertDescription>
           <p>Google refused the stored access for this location's account, so profile data has stopped syncing.</p>
-          <Button size="sm" className="mt-3" onClick={() => connect()}>
-            <RefreshCw aria-hidden /> Reconnect Google
-          </Button>
+          <CanEdit>
+            <Button size="sm" className="mt-3" onClick={() => connect()}>
+              <RefreshCw aria-hidden /> Reconnect Google
+            </Button>
+          </CanEdit>
         </AlertDescription>
       </Alert>
     );
@@ -211,7 +220,7 @@ function RankingsSummary({ data }: { data: LocationOverview }) {
   const change = section.change;
   return (
     <Summary title="Average rank">
-      <Big>{section.overall_avg_rank == null ? "—" : section.overall_avg_rank.toFixed(1)}</Big>
+      <Big>{avgRankText(section.overall_avg_rank, section.overall_status, section.overall_display)}</Big>
       {change != null ? (
         // `change` is previous − current: positive means improved.
         <TrendIndicator direction={change > 0 ? "up" : change < 0 ? "down" : "flat"} value={Math.abs(change).toFixed(1)} positive={change > 0} />
@@ -281,6 +290,29 @@ function CompetitorsSummary({ data }: { data: LocationOverview }) {
           {section.best_competitor.public_score != null ? ` (${section.best_competitor.public_score})` : ""}
         </Muted>
       ) : null}
+    </Summary>
+  );
+}
+
+function CitationsSummary({ data }: { data: LocationOverview }) {
+  const section = data.citations;
+  if (!section) return null;
+  if (!section.available) {
+    return (
+      <Summary title="Citations">
+        <Muted>{section.reason === "not_checked_yet" ? "Being checked by our team." : "Our team is setting up your citation tracking."}</Muted>
+      </Summary>
+    );
+  }
+  const checked = Math.round((section.coverage ?? 0) * section.listings);
+  return (
+    <Summary title="Citations">
+      <Big>{section.score == null ? "—" : `${section.score}${section.grade ? ` · ${section.grade}` : ""}`}</Big>
+      <Muted>
+        {checked} of {section.listings} listings checked
+        {section.counts.nap_wrong ? ` · ${section.counts.nap_wrong} with wrong details` : ""}
+      </Muted>
+      <Link to={`/locations/${data.location_id}/citations`} className="text-xs font-medium text-primary hover:underline">Open citations</Link>
     </Summary>
   );
 }

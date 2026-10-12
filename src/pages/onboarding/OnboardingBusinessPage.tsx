@@ -1,5 +1,8 @@
-import { OnboardingFlow } from "@/components/mypageseo/onboarding-flow";
+import { Navigate } from "react-router-dom";
 
-const OnboardingBusinessPage = () => <OnboardingFlow accountType="business" />;
+/** Setup is one checklist for both account types (`GET onboarding/state`). */
+function OnboardingBusinessPage() {
+  return <Navigate to="/onboarding" replace />;
+}
 
 export default OnboardingBusinessPage;

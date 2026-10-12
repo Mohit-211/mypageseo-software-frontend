@@ -29,6 +29,8 @@ export type NavItem = {
    * entry, so it stays highlighted there instead of Locations.
    */
   locationSection?: string;
+  /** Planned, not built yet: the page shows a "Coming soon" state (docs/PIPELINE.md). */
+  soon?: boolean;
   /** `locationPath`: the child's path under that section ("" = the section itself). */
   children?: { label: string; to: string; locationPath?: string }[];
 };
@@ -63,7 +65,6 @@ export const primaryNavigation: NavItem[] = [
       { label: "Audit", to: "/gbp/audit", locationPath: "audit" },
       { label: "Competitors", to: "/gbp/competitors", locationPath: "audit/competitors" },
       { label: "Posts", to: "/gbp/posts", locationPath: "posts" },
-      { label: "AI Posts", to: "/gbp/ai-posts" },
     ],
   },
   {
@@ -80,10 +81,10 @@ export const primaryNavigation: NavItem[] = [
   },
   { label: "Citations", group: "Visibility", to: "/citations", icon: ListChecks },
   { label: "Competitors", group: "Visibility", to: "/competitors", icon: Users },
-  { label: "AI Visibility", group: "Visibility", to: "/ai-visibility", icon: Sparkles },
+  { label: "AI Visibility", group: "Visibility", to: "/ai-visibility", icon: Sparkles, soon: true },
   { label: "Reports", group: "Workspace", to: "/reports", icon: FileBarChart, locationSection: "reports" },
   { label: "Clients", group: "Workspace", to: "/clients", icon: Users, accountTypes: ["agency"] },
-  { label: "Automations", group: "Workspace", to: "/automations", icon: Workflow },
+  { label: "Automations", group: "Workspace", to: "/automations", icon: Workflow, soon: true },
   // Settings opens from the workspace card at the foot of the sidebar.
 ];
 

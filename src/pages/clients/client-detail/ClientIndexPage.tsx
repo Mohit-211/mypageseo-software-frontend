@@ -1,300 +1,203 @@
-import { useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { ArrowLeft, MapPinPlus } from "lucide-react";
+import { useState } from "react";
+import { Link } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { ArrowLeft, Link2Off, LoaderCircle, MapPinPlus, Pencil, Plus, UserPlus } from "lucide-react";
+import { assignClientLocation, getClient, getMembers, isApiError, unassignClientLocation } from "@/api";
 import { AppShell } from "@/components/layout/shared/app-shell";
-import {
-  MetricCard,
-  PageHeader,
-  Panel,
-  SectionHeader,
-  StatusBadge,
-} from "@/components/layout/shared/data-display";
-import { EmptyState, ErrorState, TableSkeleton } from "@/components/layout/shared/feedback/states";
-import { LocationsTable, type LocationSort, type SortOrder } from "@/components/location/locations-table";
+import { MetricCard, PageHeader, Panel, StatusBadge } from "@/components/layout/shared/data-display";
+import { EmptyState, ErrorState, PageSkeleton } from "@/components/layout/shared/feedback/states";
+import { ReportsList } from "@/components/report/reports-list";
+import { ReportSchedulesContent, ScheduleReportDialog } from "@/components/report/report-schedules";
+import { InviteDialog } from "@/components/team/invite-dialog";
+import { TEAM_KEY } from "@/lib/team/team";
 import { Button } from "@/components/ui/button";
-import {
-  CLIENT_STATUS_LABEL,
-  buildManagedClients,
-  getClientCapabilities,
-  type ClientAccountStatus,
-} from "@/lib/mypageseo/clients-data";
-import { buildManagedLocations } from "@/lib/mock-data/locations-data";
-import { getReports } from "@/lib/reports/reports";
-import { useWorkspace } from "@/lib/mypageseo/workspace";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useAccess, useCanEdit } from "@/hooks/use-access";
 import { useRequiredParams } from "@/hooks/use-required-params";
+import { avgRankText } from "@/lib/rankings/format";
+import { useWorkspace } from "@/lib/mypageseo/workspace";
+import { ClientDialog } from "@/pages/clients/ClientsIndexPage";
+import { CLIENTS_KEY, clientErrorText } from "@/lib/clients/clients";
 
-const statusTone: Record<ClientAccountStatus, "success" | "warning" | "critical"> = {
-  active: "success",
-  setup_required: "warning",
-  disconnected: "critical",
-};
-
-const PAGE_SIZE = 10;
-
-
-
-function ClientDetailPage() {
-  const workspace = useWorkspace();
-  const navigate = useNavigate();
+/** One client: its locations, a summary over them, its users, reports and schedules. */
+function ClientIndexPage() {
   const { clientId } = useRequiredParams("clientId");
-  const capabilities = getClientCapabilities();
-  const [sort, setSort] = useState<LocationSort>("location");
-  const [order, setOrder] = useState<SortOrder>("asc");
-  const [page, setPage] = useState(1);
+  const access = useAccess();
+  const canManage = access.can("clients.manage");
+  // Removing a location from a client would hide it from a limited member (400 `client_required`).
+  const canUnassign = access.can("clients.admin");
+  const canEdit = useCanEdit();
+  const queryClient = useQueryClient();
+  const detail = useQuery({ queryKey: [...CLIENTS_KEY, "detail", clientId], queryFn: ({ signal }) => getClient(clientId, signal) });
+  const [editing, setEditing] = useState(false);
+  const [assigning, setAssigning] = useState(false);
+  const [scheduling, setScheduling] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
 
-  const client = useMemo(
-    () => buildManagedClients(workspace.clients, workspace.locations).find((row) => row.id === clientId) ?? null,
-    [workspace.clients, workspace.locations, clientId],
-  );
-
-  const locations = useMemo(
-    () =>
-      buildManagedLocations(workspace.locations, workspace.clients).filter(
-        (location) => location.clientId === clientId,
-      ),
-    [workspace.locations, workspace.clients, clientId],
-  );
-
-  const sorted = useMemo(() => {
-    const direction = order === "asc" ? 1 : -1;
-    return [...locations].sort((a, b) => {
-      const pick = (row: (typeof locations)[number]) =>
-        sort === "visibility"
-          ? row.visibility
-          : sort === "gbp"
-            ? row.gbpHealth
-            : sort === "reviews"
-              ? (row.reviewCount ?? null)
-              : sort === "rank"
-                ? row.averageRank
-                : sort === "status"
-                  ? row.status
-                  : row.businessName;
-      const left = pick(a);
-      const right = pick(b);
-      if (left === null || left === undefined) return 1;
-      if (right === null || right === undefined) return -1;
-      return direction * (typeof left === "string" ? left.localeCompare(String(right)) : left - Number(right));
-    });
-  }, [locations, sort, order]);
-
-  const pageCount = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
-  const safePage = Math.min(page, pageCount);
-  const visible = sorted.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-
-  const reports = getReports();
-
-  if (workspace.status === "loading") {
+  if (detail.isPending) return <AppShell><PageSkeleton /></AppShell>;
+  if (detail.isError) {
     return (
       <AppShell>
-        <PageHeader title="Client" description="Loading this client account." />
-        <TableSkeleton rows={6} columns={7} />
+        {isApiError(detail.error) && detail.error.status === 404 ? (
+          <EmptyState title="Client not found" description="It may have been deleted." action={<Button asChild variant="outline"><Link to="/clients"><ArrowLeft aria-hidden /> Back to clients</Link></Button>} />
+        ) : (
+          <ErrorState description="This client couldn't be loaded." onRetry={() => void detail.refetch()} />
+        )}
       </AppShell>
     );
   }
-
-  if (workspace.status === "unavailable") {
-    return (
-      <AppShell>
-        <PageHeader title="Client" description="Agency client account." />
-        <ErrorState
-          description="We couldn't load this client account. Try again without leaving this page."
-          onRetry={() => window.location.reload()}
-        />
-      </AppShell>
-    );
-  }
-
-  if (workspace.organization?.accountType !== "agency") {
-    return (
-      <AppShell>
-        <PageHeader title="Client" description="Client accounts are part of the Agency workspace." />
-        <EmptyState
-          title="Client accounts are only available to agency organizations"
-          description="This organization is a business account, so its locations are managed directly instead of through client accounts."
-          action={
-            <Button asChild>
-              <Link to="/locations">Go to locations</Link>
-            </Button>
-          }
-        />
-      </AppShell>
-    );
-  }
-
-  if (!client) {
-    return (
-      <AppShell>
-        <PageHeader title="Client not found" description="This client is not part of the current agency workspace." />
-        <EmptyState
-          title="We couldn't find this client"
-          description="The client may have been removed, or it belongs to another agency organization."
-          action={
-            <Button asChild>
-              <Link to="/clients">
-                <ArrowLeft aria-hidden /> Back to clients
-              </Link>
-            </Button>
-          }
-        />
-      </AppShell>
-    );
-  }
+  const { client, locations, summary } = detail.data;
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: CLIENTS_KEY });
+    void queryClient.invalidateQueries({ queryKey: ["locations"] });
+  };
+  const unassign = (locationId: string, name: string) => {
+    setBusy(locationId);
+    void unassignClientLocation(client.client_id, locationId)
+      .then(() => {
+        toast.success(`${name} removed from ${client.name}.`);
+        refresh();
+      })
+      .catch((err: unknown) => toast.error(clientErrorText(err, "The location couldn't be removed from the client.")))
+      .finally(() => setBusy(null));
+  };
 
   return (
     <AppShell>
-      <div className="mb-3">
-        <Button asChild variant="ghost" size="sm" className="-ml-2">
-          <Link to="/clients">
-            <ArrowLeft aria-hidden /> Back to clients
-          </Link>
-        </Button>
-      </div>
-
+      <Button asChild variant="ghost" size="sm" className="-ml-2 w-fit"><Link to="/clients"><ArrowLeft aria-hidden /> Clients</Link></Button>
       <PageHeader
         title={client.name}
-        description="Client-level overview of the locations, profile health and reporting Mypageseo manages for this account."
-        meta={
-          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <StatusBadge tone={statusTone[client.status]}>{CLIENT_STATUS_LABEL[client.status]}</StatusBadge>
-            <span>
-              {client.locationCount} location{client.locationCount === 1 ? "" : "s"}
-            </span>
-            {client.needsAttention > 0 ? (
-              <span className="text-critical">{client.needsAttention} need setup</span>
-            ) : null}
-          </div>
-        }
-        actions={
-          <>
-            {capabilities.canEdit ? (
-              <Button variant="outline" size="sm">
-                Edit client
-              </Button>
-            ) : null}
-            <Button asChild variant="outline" size="sm">
-              <Link to={`/clients/${client.id}/users`}>
-                Client users
-              </Link>
-            </Button>
-            <Button size="sm" onClick={() => navigate("/locations/add")}>
-              <MapPinPlus aria-hidden /> Add location
-            </Button>
-          </>
-        }
+        description={[client.website, client.contact_email].filter(Boolean).join(" · ") || "Client"}
+        meta={<StatusBadge tone={client.status === "ACTIVE" ? "success" : "neutral"}>{client.status === "ACTIVE" ? "Active" : "Inactive"}</StatusBadge>}
+        actions={canManage ? <Button size="sm" variant="outline" onClick={() => setEditing(true)}><Pencil aria-hidden /> Edit</Button> : undefined}
       />
 
-      <div className="mt-5 space-y-6">
-        <section>
-          <SectionHeader
-            title="Account summary"
-            description="Aggregated from the locations assigned to this client. Metrics without a source are shown as unavailable."
-          />
-          <div className="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-2 xl:grid-cols-4">
-            <MetricCard label="Locations" value={String(client.locationCount)} caption="Assigned to this client" />
-            <MetricCard
-              label="Visibility"
-              value={client.visibility === null ? "—" : String(client.visibility)}
-              caption="Average across reporting locations"
-            />
-            <MetricCard
-              label="GBP health"
-              value={client.gbpHealth === null ? "—" : String(client.gbpHealth)}
-              caption="Average profile health"
-            />
-            <MetricCard
-              label="Reviews"
-              value={client.averageRating === null ? "—" : client.averageRating.toFixed(1)}
-              caption={client.reviewCount === null ? "No review data" : `${client.reviewCount} reviews total`}
-            />
-          </div>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Citation health, report status and client activity are supplied by services that are not connected to this
-            frontend yet, so they are not shown here.
-          </p>
-        </section>
+      <section className="grid overflow-hidden rounded-lg border border-border bg-surface shadow-card sm:grid-cols-3 sm:divide-x sm:divide-border">
+        <MetricCard label="Locations" value={summary.locations} caption={`${summary.gbp_connected} connected to Google`} />
+        <MetricCard label="Avg. rank" value={summary.avg_rank == null ? "—" : summary.avg_rank.toFixed(1)} caption="Over the locations with ranking data" />
+        <MetricCard label="Avg. GBP score" value={summary.avg_gbp_score == null ? "—" : Math.round(summary.avg_gbp_score)} caption="Over the locations with a GBP report" />
+      </section>
 
-        <section>
-          <SectionHeader
-            title="Locations"
-            description="Every location assigned to this client. Open a location to work inside its rankings, GBP and citations."
-            actions={
-              <Button asChild variant="outline" size="sm">
-                <Link to={`/clients/${client.id}/locations`}>
-                  Manage locations
+      <Panel
+        title="Locations"
+        actions={canManage ? <Button size="sm" variant="outline" onClick={() => setAssigning(true)}><MapPinPlus aria-hidden /> Assign a location</Button> : undefined}
+      >
+        {locations.length === 0 ? (
+          <p className="py-4 text-sm text-muted-foreground">No locations assigned yet.</p>
+        ) : (
+          <ul className="-m-4 divide-y divide-border">
+            {locations.map((location) => (
+              <li key={location.location_id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                <Link to={`/locations/${location.location_id}`} className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-foreground hover:text-primary">{location.name}</span>
+                  <span className="block text-xs text-muted-foreground">{location.city ?? ""}</span>
                 </Link>
-              </Button>
-            }
-          />
-          {locations.length === 0 ? (
-            <EmptyState
-              title="No locations assigned to this client"
-              description="Connect a Google Business Profile location and assign it to this client to start tracking local performance."
-              action={
-                <Button onClick={() => navigate("/locations/add")}>
-                  <MapPinPlus aria-hidden /> Add location
-                </Button>
-              }
-            />
-          ) : (
-            <LocationsTable
-              locations={visible}
-              agency
-              sort={sort}
-              order={order}
-              page={safePage}
-              pageCount={pageCount}
-              onSort={(next) => {
-                setOrder(sort === next && order === "asc" ? "desc" : "asc");
-                setSort(next);
-                setPage(1);
-              }}
-              onPageChange={setPage}
-              onOpen={(location) => {
-                workspace.setActiveClientId(client.id);
-                workspace.setActiveLocationId(location.id);
-                navigate(`/locations/${location.id}/rankings`);
-              }}
-            />
-          )}
-        </section>
+                <span className="text-xs text-muted-foreground">
+                  Rank {avgRankText(location.rank?.overall_avg_rank, location.rank?.status, location.rank?.display)} · GBP {location.gbp?.score ?? "—"}
+                </span>
+                {canUnassign ? (
+                  <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => unassign(location.location_id, location.name)}>
+                    {busy === location.location_id ? <LoaderCircle aria-hidden className="animate-spin" /> : <Link2Off aria-hidden />} Remove
+                  </Button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Panel>
 
-        <section>
-          <SectionHeader
-            title="Reports"
-            description="Reports generated for this client."
-            actions={
-              <Button asChild variant="outline" size="sm">
-                <Link to="/reports">Reports center</Link>
-              </Button>
-            }
-          />
-          <Panel className="p-4">
-            {reports.status === "no_reports" || reports.reports.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No reports have been generated for this client. Reporting is managed from the Reports Center.
-              </p>
-            ) : (
-              <ul className="divide-y divide-border text-sm">
-                {reports.reports
-                  .filter((report) => report.clientId === client.id)
-                  .map((report) => (
-                    <li key={report.id} className="flex items-center justify-between gap-3 py-2">
-                      <span className="truncate text-foreground">{report.name}</span>
-                      <Button asChild variant="ghost" size="sm">
-                        <Link to={`/reports/${report.id}`}>
-                          View
-                        </Link>
-                      </Button>
-                    </li>
-                  ))}
-              </ul>
-            )}
-          </Panel>
-        </section>
-      </div>
+      {access.can("team.manage") ? <ClientUsers clientId={client.client_id} /> : null}
+
+      <Panel title="Reports">
+        <ReportsList clientId={client.client_id} reportPath={(reportId) => `/reports/${reportId}`} />
+      </Panel>
+
+      <Panel title="Scheduled reports" actions={canEdit ? <Button size="sm" variant="outline" onClick={() => setScheduling(true)}><Plus aria-hidden /> Schedule</Button> : undefined}>
+        <ReportSchedulesContent clientId={client.client_id} onCreate={() => setScheduling(true)} />
+      </Panel>
+
+      {editing ? <ClientDialog client={client} onClose={() => { setEditing(false); refresh(); }} /> : null}
+      {assigning ? <AssignLocationDialog clientId={client.client_id} assigned={locations.map((l) => l.location_id)} onClose={() => { setAssigning(false); refresh(); }} /> : null}
+      {scheduling ? <ScheduleReportDialog defaultClientId={client.client_id} onClose={() => setScheduling(false)} /> : null}
     </AppShell>
   );
 }
 
-export default ClientDetailPage;
+function ClientUsers({ clientId }: { clientId: string }) {
+  const [inviting, setInviting] = useState(false);
+  const members = useQuery({ queryKey: [...TEAM_KEY, "members"], queryFn: ({ signal }) => getMembers(signal) });
+  const users = (members.data ?? []).filter((member) => member.role === "client_user" && member.client_ids.includes(clientId));
+  return (
+    <Panel
+      title="Client users"
+      description="People at this client who can see its locations and reports (read-only)."
+      actions={<Button size="sm" variant="outline" onClick={() => setInviting(true)}><UserPlus aria-hidden /> Invite</Button>}
+    >
+      {members.isPending ? (
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : users.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No client users yet.</p>
+      ) : (
+        <ul className="space-y-1 text-sm">
+          {users.map((user) => (
+            <li key={user.user_id}><span className="font-medium text-foreground">{user.name}</span> <span className="text-muted-foreground">{user.email}</span></li>
+          ))}
+        </ul>
+      )}
+      <p className="mt-2 text-xs text-muted-foreground">Manage everyone's access in <Link to="/settings/team" className="text-primary hover:underline">Settings → Team</Link>.</p>
+      {inviting ? <InviteDialog clientId={clientId} onClose={() => setInviting(false)} /> : null}
+    </Panel>
+  );
+}
+
+function AssignLocationDialog({ clientId, assigned, onClose }: { clientId: string; assigned: string[]; onClose: () => void }) {
+  const workspace = useWorkspace();
+  const options = workspace.locations.filter((location) => !assigned.includes(location.id));
+  const [locationId, setLocationId] = useState(options[0]?.id ?? "");
+  const [saving, setSaving] = useState(false);
+
+  const save = () => {
+    setSaving(true);
+    void assignClientLocation(clientId, locationId)
+      .then(() => {
+        toast.success("Location assigned.");
+        onClose();
+      })
+      .catch((err: unknown) => toast.error(clientErrorText(err, "The location couldn't be assigned.")))
+      .finally(() => setSaving(false));
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => (open || saving ? undefined : onClose())}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Assign a location</DialogTitle>
+          <DialogDescription>A location belongs to at most one client; assigning moves it from its current client.</DialogDescription>
+        </DialogHeader>
+        {options.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Every location is already assigned to this client.</p>
+        ) : (
+          <Select value={locationId} onValueChange={setLocationId}>
+            <SelectTrigger className="bg-background"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {options.map((location) => (
+                <SelectItem key={location.id} value={location.id}>
+                  {location.businessName}
+                  {location.clientId ? ` (${workspace.clients.find((c) => c.id === location.clientId)?.name ?? "another client"})` : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button disabled={saving || !locationId} onClick={save}>{saving ? <LoaderCircle aria-hidden className="animate-spin" /> : null} Assign</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export default ClientIndexPage;

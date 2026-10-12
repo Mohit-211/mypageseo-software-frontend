@@ -1,15 +1,13 @@
 /**
  * Frontend access control.
  *
- * This mirrors the access model the product already assumes — an account type
- * (business or agency) plus an administrative role on the organization. It does
- * not create new permissions and it is not a security boundary: the backend
- * remains authoritative. Its job is to keep the UI honest, so people never see
- * a control or a page they would be refused.
- *
- * When the account backend supplies real permissions, replace
- * `resolveAccessProfile` with that read; the permission ids and the components
- * that consume them stay the same.
+ * Mirrors the backend's organization roles (FRONTEND_REVIEW_CLAUDE_NOTE §0):
+ * - `owner`: everything.
+ * - `member`: everything except organization settings, team, billing payments
+ *   and white-label branding.
+ * - `client_user` (agency): read-only, limited by the backend to its clients.
+ * It is not a security boundary: the backend stays authoritative. Its job is to
+ * keep the UI honest, so people never see a control they would be refused.
  */
 
 import type { AccountType } from "./navigation";
@@ -17,56 +15,60 @@ import type { AccountType } from "./navigation";
 export type Permission =
   /** Agency-only surfaces: clients, client locations, client users. */
   | "clients.view"
+  /** Edit a client's details (a limited member: its own clients). */
   | "clients.manage"
-  /** Agency-only branding on client-facing reports. */
+  /** Create / delete clients and leave a location without a client (not a limited member). */
+  | "clients.admin"
+  /** Agency-only branding on client-facing reports (owner). */
   | "white_label.manage"
-  /** Organization administration. */
+  /** Organization administration (owner). */
   | "settings.manage"
   | "team.view"
   | "team.manage"
   | "billing.view"
   | "billing.manage"
-  | "integrations.manage";
+  | "integrations.manage"
+  /** Any write on locations, rankings, reviews, posts and reports (not client_user). */
+  | "workspace.edit";
+
+export type Role = "owner" | "member" | "client_user";
 
 export type AccessProfile = {
   accountType: AccountType;
+  role: Role;
+  /** Phase 21: a member limited to some clients (or a client_user). Its client picker is required. */
+  restricted: boolean;
   permissions: Permission[];
 };
 
-const BUSINESS_ADMIN: Permission[] = [
-  "settings.manage",
-  "team.view",
-  "team.manage",
-  "billing.view",
-  "billing.manage",
-  "integrations.manage",
-];
+const MEMBER: Permission[] = ["billing.view", "integrations.manage", "workspace.edit"];
+const OWNER: Permission[] = [...MEMBER, "settings.manage", "team.view", "team.manage", "billing.manage"];
+const AGENCY_EXTRA: Record<Role, Permission[]> = {
+  owner: ["clients.view", "clients.manage", "clients.admin", "white_label.manage"],
+  member: ["clients.view", "clients.manage", "clients.admin"],
+  client_user: [],
+};
 
-const AGENCY_ADMIN: Permission[] = [
-  ...BUSINESS_ADMIN,
-  "clients.view",
-  "clients.manage",
-  "white_label.manage",
-];
+export function toRole(role: string | null | undefined): Role {
+  return role === "member" || role === "client_user" ? role : "owner";
+}
 
 /**
- * Access for the signed-in user. The account backend is not connected, so the
- * current user is treated as an administrator of their own organization —
- * agency-only permissions still exist only on agency accounts.
+ * Access for the signed-in user from the organization's account type, the user's role in it,
+ * and whether a member is limited to some clients (Phase 21: no `clients.admin`).
  */
-export function resolveAccessProfile(accountType: AccountType): AccessProfile {
-  console.log(accountType, "accountType")
-
+export function resolveAccessProfile(accountType: AccountType, role: Role = "owner", restricted = false): AccessProfile {
+  const base = role === "owner" ? OWNER : role === "member" ? MEMBER : [];
+  const agency = AGENCY_EXTRA[role].filter((permission) => !(restricted && role === "member" && permission === "clients.admin"));
   return {
     accountType,
-    permissions: accountType === "agency" ? AGENCY_ADMIN : BUSINESS_ADMIN,
+    role,
+    restricted: role === "client_user" || (role === "member" && restricted),
+    permissions: accountType === "agency" ? [...base, ...agency] : base,
   };
 }
 
 export function hasPermission(profile: AccessProfile, permission: Permission): boolean {
-  console.log(profile, "profile")
-  console.log(permission, "permission")
-
   return profile.permissions.includes(permission);
 }
 
@@ -94,6 +96,10 @@ export function accessDeniedReason(permission: Permission, accountType: AccountT
       return "Connecting and disconnecting accounts is limited to the people who administer this organization.";
     case "settings.manage":
       return "Organization settings are limited to the people who administer this organization.";
+    case "clients.admin":
+      return "The account owner creates and deletes clients. You work on the clients assigned to you.";
+    case "workspace.edit":
+      return "Your access is read-only. Ask the agency that manages this account to make changes.";
     default:
       return "Your account does not have access to this area. Someone who administers this organization can grant it.";
   }

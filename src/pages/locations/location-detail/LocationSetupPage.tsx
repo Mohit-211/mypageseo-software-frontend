@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CheckCircle2, LoaderCircle, MapPin, Plus, Search, Star, X } from "lucide-react";
 import {
@@ -101,8 +101,13 @@ function SetupFlow({ location }: { location: LocationHeader }) {
   const queryClient = useQueryClient();
   const step = location.onboarding?.step;
   const serviceArea = step === "center_needed" || step === "center_set";
+  const [params] = useSearchParams();
+  // `?step=keywords|competitors` opens that step directly (e.g. "Manage competitors").
+  const requested = params.get("step");
   const [stage, setStage] = useState<Stage | "done">(() =>
-    location.onboarding ? stageFor(step) : location.status === "setup_required" ? "keywords" : "done",
+    requested === "keywords" || requested === "competitors"
+      ? requested
+      : location.onboarding ? stageFor(step) : location.status === "setup_required" ? "keywords" : "done",
   );
   const [runId, setRunId] = useState<string | null>(null);
 

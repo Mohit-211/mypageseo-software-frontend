@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { clientErrorText, useClientRequired } from "@/lib/clients/clients";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -33,6 +34,7 @@ export function PendingGbpSection({ picks, clients }: { picks: PendingGbpPick[];
   const [choosingClient, setChoosingClient] = useState<PendingGbpPick | null>(null);
   const gate = useLocationBillingGate();
 
+  const clientRequired = useClientRequired();
   const bind = async (action: PendingLocationAction) => {
     setBusy(action.kind === "bind" ? action.pickId : null);
     try {
@@ -46,6 +48,8 @@ export function PendingGbpSection({ picks, clients }: { picks: PendingGbpPick[];
         void invalidateGbpQueries(queryClient);
       } else if (isApiError(err) && err.reason === "place_id_mismatch") {
         toast.error(`${action.title} doesn't match the Google place of the existing location, so it can't be linked.`);
+      } else if (isApiError(err) && ["client_required", "client_not_assigned"].includes(err.reason ?? "")) {
+        toast.error(clientErrorText(err, `${action.title} could not be bound.`));
       } else {
         toast.error(isApiError(err) && err.message ? err.message : `${action.title} could not be bound. Try again.`);
       }
@@ -55,8 +59,9 @@ export function PendingGbpSection({ picks, clients }: { picks: PendingGbpPick[];
   };
 
   const startBind = (pick: PendingGbpPick) => {
-    // Linking an existing location keeps its client; otherwise offer one when the agency has clients.
-    if (clients.length > 0 && !pick.existing_location_id) setChoosingClient(pick);
+    // Linking an existing location keeps its client; otherwise offer one when the agency has clients
+    // (always for a member limited to its clients, who must pick one).
+    if ((clients.length > 0 || clientRequired) && !pick.existing_location_id) setChoosingClient(pick);
     else void bind({ kind: "bind", pickId: pick.pick_id, title: pick.title });
   };
 
@@ -155,19 +160,20 @@ function BindClientDialog({
   onBind: (clientId: string | null) => void;
 }) {
   const [clientId, setClientId] = useState<string | null>(null);
+  const required = useClientRequired();
   return (
     <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Bind {pick.title}</DialogTitle>
-          <DialogDescription>Optionally group this location under a client. You can change it later.</DialogDescription>
+          <DialogDescription>{required ? "Choose which of your clients this location belongs to." : "Optionally group this location under a client. You can change it later."}</DialogDescription>
         </DialogHeader>
         <ClientSelect id="bind-client" clients={clients} value={clientId} onChange={setClientId} />
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={() => onBind(clientId)}>
+          <Button disabled={required && !clientId} onClick={() => onBind(clientId)}>
             <Link2 aria-hidden /> Bind
           </Button>
         </DialogFooter>

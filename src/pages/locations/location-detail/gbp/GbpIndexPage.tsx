@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { TrackKeywordButton } from "@/components/ranking/track-keyword-button";
 import { formatMonth, formatShortDate } from "@/lib/datetime";
 import { toast } from "sonner";
 import { Area, AreaChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -76,7 +77,7 @@ function OverviewContent({ report, range }: { report: GbpReport; range: GbpRange
   return (
     <div className="space-y-6">
       {report.performance.available ? <Performance data={report.performance} range={range} /> : <Panel title="Profile performance"><SectionUnavailable section={report.performance} compact /></Panel>}
-      {report.keywords.available ? <SearchTerms data={report.keywords} /> : <Panel title="What people searched"><SectionUnavailable section={report.keywords} compact /></Panel>}
+      {report.keywords.available ? <SearchTerms data={report.keywords} locationId={report.location_id} /> : <Panel title="What people searched"><SectionUnavailable section={report.keywords} compact /></Panel>}
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(300px,0.6fr)]">
         {report.profile.available ? <ProfileDetails profile={report.profile} /> : <Panel title="Profile details"><SectionUnavailable section={report.profile} compact /></Panel>}
         <ProfileStatus report={report} />
@@ -214,7 +215,7 @@ function SplitBar({ title, parts }: { title: string; parts: { label: string; val
 
 /* ----------------------------- Search terms ----------------------------- */
 
-function SearchTerms({ data }: { data: SearchKeywordsSection }) {
+function SearchTerms({ data, locationId }: { data: SearchKeywordsSection; locationId: string }) {
   const monthLabel = formatMonth(data.latest_month, data.latest_month);
   return (
     <Panel
@@ -243,7 +244,16 @@ function SearchTerms({ data }: { data: SearchKeywordsSection }) {
                   <td className="px-3 py-2.5 text-right tabular text-muted-foreground">
                     {term.change === null ? "—" : `${term.change > 0 ? "+" : ""}${term.change.toLocaleString()}`}
                   </td>
-                  <td className="px-3 py-2.5">{term.tracked ? <StatusBadge tone="success">Tracked</StatusBadge> : <span className="text-xs text-muted-foreground">Not tracked</span>}</td>
+                  <td className="px-3 py-2.5">
+                    {term.tracked ? (
+                      <StatusBadge tone="success">Tracked</StatusBadge>
+                    ) : (
+                      <span className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-xs text-muted-foreground">Not tracked</span>
+                        <TrackKeywordButton locationId={locationId} keyword={term.keyword} />
+                      </span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

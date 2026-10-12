@@ -136,7 +136,8 @@ function SignupPage() {
             <>
               We sent a verification link to <span className="font-medium text-foreground">{created.email}</span>. Open it to
               finish creating your account
-              {deadline ? ` before ${deadline}` : ""}.
+              {deadline ? ` before ${deadline}` : ""}. Accounts that aren't verified within 24 hours are deleted, and you'd
+              need to sign up again.
             </>
           }
         >

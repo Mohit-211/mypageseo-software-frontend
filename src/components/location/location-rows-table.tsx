@@ -1,4 +1,6 @@
 import { ExternalLink, Link2Off, ListChecks, MapPin, RefreshCw, Star, Tag, Trash2 } from "lucide-react";
+import { avgRankText } from "@/lib/rankings/format";
+import { cn } from "@/lib/utils";
 import { formatDate as formatLocalDate } from "@/lib/datetime";
 import type { LocationRow, LocationSortField, LocationStatus } from "@/api";
 import { DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
@@ -32,12 +34,13 @@ export function LocationRowStatusBadge({ status }: { status: LocationStatus }) {
   return <StatusBadge tone={meta.tone}>{meta.label}</StatusBadge>;
 }
 
+/** Write actions are left out for a read-only client_user, which hides their menu items. */
 export type LocationRowActions = {
   onOpen: (location: LocationRow) => void;
-  onContinueSetup: (location: LocationRow) => void;
-  onReconnect: (location: LocationRow) => void;
-  onUnbind: (location: LocationRow) => void;
-  onDelete: (location: LocationRow) => void;
+  onContinueSetup?: ((location: LocationRow) => void) | undefined;
+  onReconnect?: ((location: LocationRow) => void) | undefined;
+  onUnbind?: ((location: LocationRow) => void) | undefined;
+  onDelete?: ((location: LocationRow) => void) | undefined;
   /** Agency only. */
   onSetClient?: ((location: LocationRow) => void) | undefined;
 };
@@ -73,7 +76,7 @@ export function LocationRowsTable({
   return (
     <TableCard>
       <div className="hidden md:block">
-        <TableScroll minWidth={980} label="Locations">
+        <TableScroll minWidth={1060} label="Locations">
           <TableHead>
             <SortableTh label="Location" value="name" active={sort} order={order} onSort={onSort} className="min-w-[240px]" />
             <SortableTh label="City" value="city" active={sort} order={order} onSort={onSort} />
@@ -81,6 +84,7 @@ export function LocationRowsTable({
             <SortableTh label="Avg. rank" value="rank" active={sort} order={order} onSort={onSort} />
             <SortableTh label="GBP score" value="gbp_score" active={sort} order={order} onSort={onSort} />
             <SortableTh label="Reviews" value="rating" active={sort} order={order} onSort={onSort} />
+            <SortableTh label="Citations" value="citation_score" active={sort} order={order} onSort={onSort} />
             <Th>Status</Th>
             <SortableTh label="Last refreshed" value="last_refreshed" active={sort} order={order} onSort={onSort} />
             <Th className="w-12" srOnly>
@@ -106,6 +110,7 @@ export function LocationRowsTable({
                 <td className={tdClass}><RankCell location={location} /></td>
                 <td className={tdClass}><GbpScoreCell location={location} /></td>
                 <td className={tdClass}><ReviewsCell location={location} /></td>
+                <td className={tdClass}><CitationsCell location={location} /></td>
                 <td className={tdClass}><LocationRowStatusBadge status={location.status} /></td>
                 <td className={tdClass}><span className="text-sm text-muted-foreground">{formatDate(location.last_refreshed_at)}</span></td>
                 <td className="px-2 py-3.5"><RowMenu location={location} agency={agency} actions={actions} /></td>
@@ -129,7 +134,7 @@ export function LocationRowsTable({
               <RowMenu location={location} agency={agency} actions={actions} />
             </div>
             <div className="mt-3 grid grid-cols-3 gap-3 border-y border-border py-3">
-              <MobileField label="Avg. rank" value={location.rank?.overall_avg_rank == null ? "—" : location.rank.overall_avg_rank.toFixed(1)} />
+              <MobileField label="Avg. rank" value={rankText(location)} />
               <MobileField label="GBP score" value={location.gbp?.score == null ? "—" : `${location.gbp.score}${location.gbp.grade ? ` (${location.gbp.grade})` : ""}`} />
               <MobileField label="Last refreshed" value={formatDate(location.last_refreshed_at)} />
             </div>
@@ -169,13 +174,33 @@ function formatDate(iso: string | null) {
 
 const dash = <span className="text-sm text-muted-foreground">—</span>;
 
-function RankCell({ location }: { location: LocationRow }) {
-  const avg = location.rank?.overall_avg_rank;
-  if (avg == null) return dash;
-  const change = location.rank?.change;
+/** "12.4", "60+" (not in the top 60) or "No data" (searches failed); "—" before the first run. */
+function rankText(location: LocationRow): string {
+  return avgRankText(location.rank?.overall_avg_rank, location.rank?.status, location.rank?.display);
+}
+
+function CitationsCell({ location }: { location: LocationRow }) {
+  const citations = location.citations;
+  if (!citations || citations.score == null) return dash;
   return (
     <div>
-      <span className="text-sm font-semibold text-foreground">{avg.toFixed(1)}</span>
+      <span className="text-sm font-semibold text-foreground">{citations.score}{citations.grade ? ` (${citations.grade})` : ""}</span>
+      {citations.nap_wrong > 0 ? <span className="mt-0.5 block text-xs text-critical">{citations.nap_wrong} wrong NAP</span> : null}
+    </div>
+  );
+}
+
+function RankCell({ location }: { location: LocationRow }) {
+  if (!location.rank || (location.rank.overall_avg_rank == null && !location.rank.status)) return dash;
+  const change = location.rank.change;
+  return (
+    <div>
+      <span
+        className={cn("text-sm font-semibold", location.rank.status === "no_data" ? "text-muted-foreground" : "text-foreground")}
+        title="Average over the 5 tracking points, all keywords"
+      >
+        {rankText(location)}
+      </span>
       {change != null ? (
         // `change` is previous − current: positive means the rank improved.
         <TrendIndicator
@@ -220,18 +245,18 @@ function RowMenu({ location, agency, actions }: { location: LocationRow; agency:
       <DropdownMenuItem onSelect={() => actions.onOpen(location)}>
         <ExternalLink aria-hidden /> Open location
       </DropdownMenuItem>
-      {location.status === "setup_required" ? (
-        <DropdownMenuItem onSelect={() => actions.onContinueSetup(location)}>
+      {location.status === "setup_required" && actions.onContinueSetup ? (
+        <DropdownMenuItem onSelect={() => actions.onContinueSetup?.(location)}>
           <ListChecks aria-hidden /> Continue setup
         </DropdownMenuItem>
       ) : null}
-      {location.status === "gbp_disconnected" ? (
-        <DropdownMenuItem onSelect={() => actions.onReconnect(location)}>
+      {location.status === "gbp_disconnected" && actions.onReconnect ? (
+        <DropdownMenuItem onSelect={() => actions.onReconnect?.(location)}>
           <RefreshCw aria-hidden /> Connect GBP again
         </DropdownMenuItem>
       ) : null}
-      {location.status === "reconnect_required" ? (
-        <DropdownMenuItem onSelect={() => actions.onReconnect(location)}>
+      {location.status === "reconnect_required" && actions.onReconnect ? (
+        <DropdownMenuItem onSelect={() => actions.onReconnect?.(location)}>
           <RefreshCw aria-hidden /> Reconnect Google
         </DropdownMenuItem>
       ) : null}
@@ -240,15 +265,19 @@ function RowMenu({ location, agency, actions }: { location: LocationRow; agency:
           <Tag aria-hidden /> {location.client ? "Change client" : "Set client"}
         </DropdownMenuItem>
       ) : null}
-      {location.gbp_connected ? (
-        <DropdownMenuItem onSelect={() => actions.onUnbind(location)}>
+      {location.gbp_connected && actions.onUnbind ? (
+        <DropdownMenuItem onSelect={() => actions.onUnbind?.(location)}>
           <Link2Off aria-hidden /> Unbind GBP
         </DropdownMenuItem>
       ) : null}
-      <DropdownMenuSeparator />
-      <DropdownMenuItem className="text-critical focus:text-critical" onSelect={() => actions.onDelete(location)}>
-        <Trash2 aria-hidden /> Delete location
-      </DropdownMenuItem>
+      {actions.onDelete ? (
+        <>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem className="text-critical focus:text-critical" onSelect={() => actions.onDelete?.(location)}>
+            <Trash2 aria-hidden /> Delete location
+          </DropdownMenuItem>
+        </>
+      ) : null}
     </RowActions>
   );
 }

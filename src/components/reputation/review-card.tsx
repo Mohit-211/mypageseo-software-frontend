@@ -19,6 +19,7 @@ import { StatusBadge } from "@/components/layout/shared/data-display";
 import { ConfirmDialog } from "@/components/layout/shared/form-fields";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useCanEdit } from "@/hooks/use-access";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { reviewErrorMessage } from "@/lib/reviews/review-errors";
@@ -50,7 +51,6 @@ const POLICY_LABEL: Record<string, string> = {
 };
 
 const SKIP_REASON: Record<string, string> = {
-  rating_not_eligible: "AI drafts are for 4–5 star reviews; write this reply yourself.",
   has_reply: "Already replied.",
   suspicious: "Flagged as suspicious; review it before replying.",
   no_text: "No written review.",
@@ -97,6 +97,7 @@ export function ReviewCard({
   const aiUsable = ai.configured && !ai.paused_today;
   const published = replyText(review.reply);
   const draftText = text ?? review.draft?.text ?? (editing ? (published ?? "") : "");
+  const canEdit = useCanEdit();
   const showEditor = editing || review.reply_state === "draft" || review.reply_state === "failed";
 
   const refresh = () => {
@@ -155,7 +156,7 @@ export function ReviewCard({
   return (
     <article className={cn("rounded-lg border bg-surface p-4 shadow-card", review.flag_level === "suspicious" ? "border-critical/40" : review.flag_level === "attention" ? "border-warning/50" : "border-border")}>
       <header className="flex items-start gap-3">
-        <Checkbox className="mt-1" checked={selected} onCheckedChange={(value) => onSelect(value === true)} aria-label={`Select review by ${reviewer}`} />
+        {canEdit ? <Checkbox className="mt-1" checked={selected} onCheckedChange={(value) => onSelect(value === true)} aria-label={`Select review by ${reviewer}`} /> : null}
         <div className="min-w-0 flex-1">
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
             <Stars rating={review.rating} />
@@ -214,7 +215,7 @@ export function ReviewCard({
               <p role="alert" className="text-sm text-critical">Last send failed: {review.send_error}</p>
             ) : null}
 
-            {showEditor ? (
+            {!canEdit ? null : showEditor ? (
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                   {review.draft ? <StatusBadge tone={review.draft.source === "ai" ? "brand" : "neutral"}>{review.draft.source === "ai" && !review.draft.edited ? "AI draft" : "Draft"}</StatusBadge> : null}
@@ -290,7 +291,7 @@ export function ReviewCard({
           </div>
 
           {/* Removal request (Google has no reporting API: copy, open Google's tool, record the outcome) */}
-          {review.appeal_eligible ? (
+          {review.appeal_eligible && canEdit ? (
             <div className="mt-3 border-t border-border pt-3">
               {review.appeal ? (
                 <div className="space-y-2 text-sm">

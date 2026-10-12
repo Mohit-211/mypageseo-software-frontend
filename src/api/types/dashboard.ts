@@ -1,3 +1,4 @@
+import type { RankStatus } from "./rankings";
 /** `GET /dashboard`: built from stored per-location summaries (no Google calls). Shape by organization type. */
 import type { LocationStatus } from "./locations";
 
@@ -89,7 +90,16 @@ export type BusinessDashboard = {
   selected_location: SelectedLocation;
   performance: PerformanceBlock;
   locations_count: number;
-  visibility: { avg_rank: number | null; change: number | null; top3_rate: number | null; top3_rate_change?: number | null; trend: { run_at: string; avg_rank: number | null }[] } | null;
+  visibility: {
+    avg_rank: number | null;
+    /** null = no run yet; `no_data` = no location has a usable average; `not_found` = every measured location is outside the top 60. */
+    avg_rank_status?: RankStatus | null;
+    avg_rank_display?: string | null;
+    change: number | null;
+    top3_rate: number | null;
+    top3_rate_change?: number | null;
+    trend: { run_at: string; avg_rank: number | null }[];
+  } | null;
   gbp: { available: true; score: number | null; grade: string | null; change: number | null; partial: boolean } | Unavailable;
   reviews: ReviewsBlock;
   citations?: CitationsBlock;
@@ -99,6 +109,9 @@ export type BusinessDashboard = {
     name: string | null;
     avg_rank: number | null;
     self_avg_rank: number | null;
+    /** 2026-10-08: what each average is (`ok | not_found | no_data`, null = no run yet). */
+    status?: RankStatus | null;
+    self_status?: RankStatus | null;
     ahead: boolean;
     location_id: string;
     location_name: string;
@@ -112,6 +125,8 @@ export type BusinessDashboard = {
     city?: string | null;
     status: LocationStatus;
     avg_rank: number | null;
+    avg_rank_status?: RankStatus | null;
+    avg_rank_display?: string | null;
     change: number | null;
     gbp_score: number | null;
     citation_score?: number | null;
@@ -124,7 +139,14 @@ export type AgencyTableRow = {
   client: { client_id: string; name: string } | null;
   city?: string | null;
   status: LocationStatus;
-  visibility: { avg_rank: number | null; change: number | null; top3_rate: number | null; top3_rate_change?: number | null } | null;
+  visibility: {
+    avg_rank: number | null;
+    avg_rank_status?: RankStatus | null;
+    avg_rank_display?: string | null;
+    change: number | null;
+    top3_rate: number | null;
+    top3_rate_change?: number | null;
+  } | null;
   gbp: { score: number | null; grade: string | null; change: number | null } | null;
   reviews?: { rating: number | null; total: number | null; awaiting_attention: number; suspicious: number } | null;
   citations?: { score: number | null; grade: string | null; nap_wrong: number } | null;
@@ -141,6 +163,8 @@ export type AgencyDashboard = {
   locations_count: number;
   portfolio: {
     avg_rank: number | null;
+    avg_rank_status?: RankStatus | null;
+    avg_rank_display?: string | null;
     avg_rank_change: number | null;
     avg_top3_rate: number | null;
     avg_top3_rate_change?: number | null;

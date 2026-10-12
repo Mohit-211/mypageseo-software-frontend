@@ -61,13 +61,29 @@ export type AuditBusiness = {
 export type AuditCell = { row: number; col: number; lat: number; lng: number; rank: number | null; status: "ok" | "not_found" | "error" | string };
 
 export type AuditCompetitor = {
+  /** Area position on area-basis audits; the rank at the business on older ones. */
   rank: number;
   name: string;
   address: string | null;
+  /** Area-basis audits only. */
+  avg_rank?: number | null;
+  top3_rate?: number | null;
   /** Same shape as the business's public facts; null when unavailable. */
   facts: Partial<Omit<AuditBusiness, "score" | "checklist">> | null;
   score: AuditScore | null;
   checklist: AuditChecklistItem[] | null;
+};
+
+/** A "who ranks higher" row. On area-basis audits the business's own row comes last (`is_self`). */
+export type AuditHigherRow = {
+  /** Area position (area basis) or the rank at the business (older audits); null when the business wasn't in any top 30. */
+  rank: number | null;
+  name: string;
+  address: string | null;
+  is_self: boolean;
+  /** Area-basis audits only. */
+  avg_rank?: number | null;
+  top3_rate?: number | null;
 };
 
 export type AuditStatus = "queued" | "running" | "done" | "failed";
@@ -79,8 +95,12 @@ export type SalesAudit = {
   business: AuditBusiness;
   grid: { size: number; radius_km: number; spacing_km: number };
   result: {
+    /** `"area"`: "who ranks higher" is across the whole grid. Absent on older audits (centre only). */
+    basis?: "area";
     cells: AuditCell[];
     summary: {
+      /** Area basis only; null means "30+". */
+      area_rank?: number | null;
       center_rank: number | null;
       center_status: string;
       avg_rank: number | null;
@@ -89,7 +109,10 @@ export type SalesAudit = {
       points: number;
       failed_points: number;
     };
-    higher: { rank: number; name: string; address: string | null; is_self: boolean }[] | null;
+    /** Null with the `names_unavailable` warning. */
+    higher: AuditHigherRow[] | null;
+    /** Area basis only: `ahead` can exceed the (up to 10) businesses listed in `higher`. */
+    area?: { ahead: number };
     competitors: AuditCompetitor[];
   } | null;
   /** `some_points_failed`, `names_unavailable`, `some_competitors_unavailable`. */

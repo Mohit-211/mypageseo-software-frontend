@@ -224,7 +224,7 @@ export type GbpVerification = {
 export type CompetitorRow = {
   place_id: string;
   is_self: boolean;
-  source: "self" | "tracking" | "map_list" | string;
+  source: "self" | "tracking" | "area" | "map_list" | string;
   name: string | null;
   rating: number | null;
   user_rating_count: number | null;

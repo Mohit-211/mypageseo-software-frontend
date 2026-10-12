@@ -1,3 +1,4 @@
+import type { RankStatus } from "./rankings";
 /** Google's attribution for Places content: show `text` near business names, ratings and reviews. */
 export type Attribution = { provider: string; text: string };
 
@@ -37,14 +38,17 @@ export type LocationRow = {
   status: LocationStatus;
   gbp_disconnected_at?: string | null;
   /** `change` is previous − current: positive means improved. */
-  rank: { overall_avg_rank: number | null; change: number | null } | null;
+  /** `status` / `display` (2026-10-08): "12.4", "60+" or "No data". */
+  rank: { overall_avg_rank: number | null; change: number | null; status?: RankStatus | null; display?: string | null } | null;
   gbp: { score: number | null; grade: string | null; partial: boolean } | null;
   reviews: { rating: number | null; count: number | null } | null;
+  /** Null until the team has checked the listings. */
+  citations?: { score: number | null; grade: string | null; nap_wrong: number } | null;
   last_refreshed_at: string | null;
   next_refresh_at: string | null;
 };
 
-export type LocationSortField = "name" | "city" | "rank" | "gbp_score" | "rating" | "last_refreshed";
+export type LocationSortField = "name" | "city" | "rank" | "gbp_score" | "rating" | "citation_score" | "last_refreshed";
 
 export type LocationsListParams = {
   search?: string;
@@ -116,9 +120,11 @@ export type LocationOverview = LocationHeader & {
         run_at: string;
         status: string;
         overall_avg_rank: number | null;
+        overall_status?: RankStatus | null;
+        overall_display?: string | null;
         change: number | null;
         keywords: number;
-        trend: { run_at: string; overall_avg_rank: number | null }[];
+        trend: { run_at: string; overall_avg_rank: number | null; status?: RankStatus | null }[];
       }
     | Unavailable;
   gbp:
@@ -141,6 +147,19 @@ export type LocationOverview = LocationHeader & {
       }
     | Unavailable;
   reviews: { available: true; rating: number | null; count: number | null; unreplied: number | null } | Unavailable;
+  /** Phase 16; `no_citations_yet` / `not_checked_yet` when unavailable. */
+  citations?:
+    | {
+        available: true;
+        score: number | null;
+        grade: string | null;
+        score_change: number | null;
+        coverage: number | null;
+        listings: number;
+        counts: Record<string, number>;
+        last_checked_at: string | null;
+      }
+    | Unavailable;
   competitors:
     | {
         available: true;
@@ -286,7 +305,9 @@ export type OnboardingStateResponse = {
     steps: { id: string; status: "done" | "pending" | "skipped" | "not_available" }[];
     next_step: string | null;
     completed: boolean;
+    completed_at?: string | null;
   };
+  gbp?: { connected: boolean; connections: { google_sub: string; google_email: string; status: "active" | "revoked" }[] };
   locations: {
     location_id: string;
     name: string;
@@ -308,16 +329,58 @@ export type ClientRecord = {
   name: string;
   status: "ACTIVE" | "INACTIVE";
   locations_count: number;
+  website?: string | null;
+  contact_email?: string | null;
+  avg_rank?: number | null;
+  avg_gbp_score?: number | null;
+  created_at?: string;
 };
 
 /** `GET clients`. */
 export type ClientsListResponse = { clients: ClientRecord[]; page: number; limit: number; total: number };
 
 /** `GET billing` (only the fields the app reads so far). */
+export type BillingState = "trialing" | "active" | "past_due" | "inactive" | "suspended_by_admin";
+
+export type BillingPrices = { first_location: number; additional_location: number };
+
+export type BillingDetails = {
+  name: string | null;
+  email: string | null;
+  address_line1: string | null;
+  address_line2: string | null;
+  city: string | null;
+  region: string | null;
+  postal_code: string | null;
+  country: string | null;
+};
+
+/** `GET billing`. Owner and member read it; a client_user gets 403. */
 export type BillingSummary = {
-  state: "trialing" | "active" | "past_due" | "inactive" | "suspended_by_admin";
+  state: BillingState;
   read_only: boolean;
+  trial_ends_at?: string | null;
+  /** `past_due` keeps full access until this date. */
+  grace_ends_at?: string | null;
   currency: string;
+  plan?: { id: string; name: string; kind: string; max_locations: number; users_per_location: number } | null;
+  /** `current` is null until an admin sets prices. */
+  prices?: { current: BillingPrices | null; upcoming: (BillingPrices & { effective_from: string }) | null } | null;
+  subscription?: {
+    id: string;
+    status: string;
+    billing_method: "paypal" | "manual" | string;
+    paid_quantity: number;
+    price: BillingPrices | null;
+    current_period_start: string | null;
+    current_period_end: string | null;
+    cancel_at_period_end: boolean;
+    comp_until: string | null;
+  } | null;
+  /** Null when cancelled, comped or without a subscription. */
+  next_renewal?: { date: string; quantity: number; amount: number; fixed: boolean } | null;
+  locations?: { active: number; allowed: number; max: number };
+  users?: { used: number; limit: number };
   tokens: {
     balance: number;
     cost_per_refresh: { rankings: number; gbp: number };
@@ -325,9 +388,45 @@ export type BillingSummary = {
     monthly_grant?: number;
     last_grant_at?: string | null;
     next_grant_at?: string | null;
+    /** Token cost of each AI action, keyed by action. */
+    ai_costs?: Record<string, number>;
   };
+  billing_details?: BillingDetails | null;
   online_payments: boolean;
 };
+
+export type SubscriptionCheckout = {
+  subscription_id: string;
+  approve_url: string;
+  quantity: number;
+  currency: string;
+  monthly_amount: number;
+  starts_at: string | null;
+};
+
+export type InvoiceLine = { label: string; quantity: number; unit_price: number; amount: number };
+
+export type BillingInvoice = {
+  id: string;
+  number: string;
+  kind: "subscription" | "location_slots" | "token_pack" | "manual";
+  status: "open" | "paid" | "refunded" | "void";
+  currency: string;
+  lines: InvoiceLine[];
+  tax_lines: InvoiceLine[];
+  total: number;
+  charged_amount: number | null;
+  period_start: string | null;
+  period_end: string | null;
+  issued_at: string;
+  due_at: string | null;
+  paid_at: string | null;
+  has_pdf: boolean;
+};
+
+export type InvoiceList = { invoices: BillingInvoice[]; page: number; limit: number; total: number };
+
+export type CouponQuote = { pack_id: string; currency: string; price: number; discount: number; total: number };
 
 export type TokenLedgerEntry = {
   id: string;

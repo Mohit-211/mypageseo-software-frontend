@@ -3,7 +3,7 @@ import { Panel } from "@/components/layout/shared/data-display";
 import { PageSkeleton } from "@/components/layout/shared/feedback/states";
 import { RankTrendChart } from "@/components/ranking/rank-charts";
 import { AvgRank, BucketLegend, OverallChange, RankCellView, RankChange, RankingsError, RankingsPageHeader } from "@/components/ranking/rank-ui";
-import { formatAvgRank, formatRate, targetLabel } from "@/lib/rankings/format";
+import { avgRankText, formatRate, targetLabel } from "@/lib/rankings/format";
 import { TermWithTip } from "@/components/layout/shared/info-tip";
 import { GLOSSARY, pointExplanation } from "@/lib/rankings/glossary";
 import { useGroupParam, useRankingsContext, useRunParam } from "@/lib/rankings/rankings-context";
@@ -26,6 +26,7 @@ function RankingsTrackerPage() {
         title="Rank Tracker"
         description="Average Google Maps rank for each keyword at the center and 4 points around it."
         run={tracker.data?.run}
+        scope={tracker.data?.scope?.description}
         groupFilter
       />
       {tracker.isPending ? (
@@ -68,8 +69,10 @@ function TrackerContent({
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
-        <Panel title="Overall average rank">
-          <p className="text-3xl font-semibold tabular text-foreground">{formatAvgRank(self?.overallAvgRank)}</p>
+        <Panel title="Overall average rank (5 points)">
+          <p className="text-3xl font-semibold tabular text-foreground" title={self?.status ? data.status_text?.[self.status]?.tooltip : undefined}>
+            {avgRankText(self?.overallAvgRank, self?.status, self?.display)}
+          </p>
           <div className="mt-1"><OverallChange overall={self} /></div>
           <p className="mt-2 text-xs text-muted-foreground">
             Across {self?.keywords_total ?? data.keywords.length} keyword{(self?.keywords_total ?? data.keywords.length) === 1 ? "" : "s"}. Lower is better; not found counts as 61.
@@ -80,7 +83,7 @@ function TrackerContent({
                 <li key={target.key} className="flex items-center justify-between gap-3">
                   <span className="min-w-0 truncate text-muted-foreground">{targetLabel(target.key, selfName, target.name)}</span>
                   <span className="flex shrink-0 items-center gap-2">
-                    <AvgRank value={data.overall[target.key]?.overallAvgRank} />
+                    <AvgRank value={data.overall[target.key]?.overallAvgRank} status={data.overall[target.key]?.status} display={data.overall[target.key]?.display} statusText={data.status_text} />
                     <OverallChange overall={data.overall[target.key]} />
                   </span>
                 </li>
@@ -116,7 +119,7 @@ function TrackerContent({
                         {group.keywords_in_run}
                         {group.keywords_in_run !== group.keywords.length ? ` of ${group.keywords.length}` : ""}
                       </td>
-                      <td className="px-3 py-3 text-right"><AvgRank value={summary?.avgRank} /></td>
+                      <td className="px-3 py-3 text-right"><AvgRank value={summary?.avgRank} status={summary?.status} display={summary?.display} statusText={data.status_text} /></td>
                       <td className="px-3 py-3"><RankChange change={summary?.change} /></td>
                       <td className="px-3 py-3 text-right tabular text-muted-foreground">{formatRate(summary?.top3Rate)}</td>
                     </tr>
@@ -158,7 +161,7 @@ function TrackerContent({
                   return (
                     <tr key={keyword.keyword}>
                       <td className="px-4 py-3 font-medium text-foreground">{keyword.keyword}</td>
-                      <td className="px-3 py-3 text-right"><AvgRank value={summary?.avgRank} /></td>
+                      <td className="px-3 py-3 text-right"><AvgRank value={summary?.avgRank} status={summary?.status} display={summary?.display} statusText={data.status_text} /></td>
                       <td className="px-3 py-3"><RankChange change={summary?.change} label={summary?.changeLabel} /></td>
                       <td className="px-3 py-3 text-right tabular text-muted-foreground">{formatRate(summary?.foundRate)}</td>
                       <td className="px-3 py-3 text-right tabular text-muted-foreground">{formatRate(summary?.top3Rate)}</td>
