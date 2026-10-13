@@ -2,6 +2,7 @@ import { api, unwrapData, type QueryParams } from "../client";
 import type {
   AiImageStyle,
   AiPostDraft,
+  AiPostTopic,
   ApprovalMode,
   CtaType,
   Post,
@@ -148,11 +149,32 @@ export async function deletePostMedia(locationId: string, mediaId: string): Prom
 
 /* ----------------------------------- AI ----------------------------------- */
 
+/**
+ * `keywords` (≤ 3) are woven in once each (default: the first 2 tracked keywords); `avoid` (≤ 6) are the
+ * drafts already shown, so a Redo comes out clearly different.
+ */
 export async function aiDraftPost(
   locationId: string,
-  input: { topic: string; tone?: PostTone; type?: PostType; cta_type?: CtaType; variants?: number; language_code?: string },
-): Promise<{ drafts: AiPostDraft[]; tokens_spent: number }> {
-  return unwrapData(await api.post(`${posts(locationId)}/ai-draft`, input, { timeoutMs: 60_000 }));
+  input: {
+    topic: string;
+    tone?: PostTone;
+    type?: PostType;
+    cta_type?: CtaType;
+    variants?: number;
+    language_code?: string;
+    keywords?: string[];
+    avoid?: string[];
+  },
+): Promise<{ drafts: AiPostDraft[]; compliant?: boolean; tokens_spent: number }> {
+  return unwrapData(await api.post(`${posts(locationId)}/ai-draft`, input, { timeoutMs: 90_000 }));
+}
+
+/** Post ideas (Phase 22): 5–8 topics with an angle, a type and tracked keywords. `post_topics` tokens. */
+export async function aiPostTopics(
+  locationId: string,
+  input: { count?: number; focus?: string },
+): Promise<{ topics: AiPostTopic[]; tokens_spent: number }> {
+  return unwrapData(await api.post(`${posts(locationId)}/ai-topics`, input, { timeoutMs: 90_000 }));
 }
 
 /** 10–60 s. Either a description (`prompt_hint`) or a saved post to illustrate (`post_id`). */

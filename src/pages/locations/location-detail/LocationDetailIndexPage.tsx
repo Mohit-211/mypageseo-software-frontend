@@ -17,6 +17,7 @@ import { useLocationOverview } from "@/lib/locations/use-locations";
 import { useRequiredParams } from "@/hooks/use-required-params";
 import { centerDescription } from "@/lib/rankings/format";
 import { BackgroundActivity } from "@/components/location/background-activity";
+import { FirstRunProgress } from "@/components/ranking/first-run-progress";
 import { ReportMenuButton } from "@/components/report/rank-report-button";
 import { REPORT_CREATE_ERRORS } from "@/lib/reports/report-meta";
 import { citationsUnavailableText, coverageText } from "@/lib/citations/citations";
@@ -108,7 +109,12 @@ function LocationOverviewPage() {
       />
 
       <StatusBanner location={data} />
-      <BackgroundActivity locationId={data.location_id} className="mb-6" />
+      {/* Before the first finished run: how long until the first data (otherwise the usual activity line). */}
+      {!data.rankings.available && data.rankings.reason === "no_ranking_data" ? (
+        <FirstRunProgress locationId={data.location_id} className="mb-6" fallback={<BackgroundActivity locationId={data.location_id} className="mb-6" />} />
+      ) : (
+        <BackgroundActivity locationId={data.location_id} className="mb-6" />
+      )}
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <RankingsSummary data={data} />

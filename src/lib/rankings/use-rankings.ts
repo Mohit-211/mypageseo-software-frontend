@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, queryOptions, useQuery } from "@tanstack/react-query";
 import {
   apiErrorData,
   getKeywordGroups,
@@ -19,14 +19,16 @@ export const rankingsKey = (locationId: string) => ["locations", locationId, "ra
 /** 4xx answers are states (no run yet, unknown keyword…), not failures to retry. */
 const retry = (count: number, err: unknown) => !(isApiError(err) && err.status < 500) && count < 2;
 
-export function useRankTracker(locationId: string, runId: string | undefined, group?: string) {
-  return useQuery({
+export const rankTrackerQuery = (locationId: string, runId?: string, group?: string) =>
+  queryOptions({
     queryKey: [...rankingsKey(locationId), "tracker", runId ?? "latest", group ?? "all"],
     queryFn: ({ signal }) =>
       getRankTracker(locationId, { ...(runId ? { runId } : {}), ...(group ? { group } : {}) }, signal),
     retry,
-    placeholderData: keepPreviousData,
   });
+
+export function useRankTracker(locationId: string, runId: string | undefined, group?: string) {
+  return useQuery({ ...rankTrackerQuery(locationId, runId, group), placeholderData: keepPreviousData });
 }
 
 export function useGrid(locationId: string, runId: string | undefined, group?: string) {

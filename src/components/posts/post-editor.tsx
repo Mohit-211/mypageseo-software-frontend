@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { ImagePlus, LoaderCircle, Sparkles, Trash2, Upload, X } from "lucide-react";
+import { ImagePlus, Lightbulb, LoaderCircle, RotateCw, Sparkles, Trash2, Upload, X } from "lucide-react";
 import {
   aiDraftPost,
+  aiPostTopics,
   aiPostImage,
   createPost,
   deletePostMedia,
@@ -15,6 +16,7 @@ import {
   uploadPostMedia,
   type AiImageStyle,
   type AiPostDraft,
+  type AiPostTopic,
   type CtaType,
   type Post,
   type PostInput,
@@ -27,6 +29,8 @@ import {
   type WeekOfMonth,
   type Weekday,
 } from "@/api";
+import { StatusBadge } from "@/components/layout/shared/data-display";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -36,7 +40,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import {
   CTA_LABEL,
+  STOCK_ART_STYLES,
   STYLE_LABEL,
+  STYLE_ORDER,
   TONE_LABEL,
   WEEKDAYS,
   postErrorText,
@@ -48,6 +54,8 @@ import {
   useInvalidatePosts,
   usePostMedia,
 } from "@/lib/posts/use-posts";
+import { sameKeyword } from "@/lib/rankings/keywords";
+import { useTracking } from "@/lib/rankings/use-rankings";
 import { cn } from "@/lib/utils";
 
 const SUMMARY_MAX = 1500;
@@ -200,6 +208,8 @@ export function PostEditor({
   // A schedule-time problem blocks Schedule, not Publish now.
   const incomplete = validation.data ? !validation.data.complete : false;
   const blocksPublish = issues.some((issue) => issue.field !== "scheduled_at");
+  // Hotels and lodging (Phase 22): validate answers `offer_not_allowed_for_lodging` for an Offer post.
+  const lodging = issues.some((issue) => issue.code === "offer_not_allowed_for_lodging");
   const issueFor = (field: string) => issues.filter((issue) => issue.field === field || issue.field.startsWith(`${field}.`));
 
   const fail = (err: unknown, fallback: string) => {
@@ -294,19 +304,32 @@ export function PostEditor({
                   type="button"
                   size="sm"
                   variant={form.type === type ? "default" : "outline"}
-                  disabled={onGoogle && form.type !== type}
-                  title={onGoogle && form.type !== type ? "A published post's type can't change; duplicate it instead" : undefined}
+                  disabled={(onGoogle && form.type !== type) || (type === "offer" && lodging && form.type !== "offer")}
+                  title={
+                    onGoogle && form.type !== type
+                      ? "A published post's type can't change; duplicate it instead"
+                      : type === "offer" && lodging
+                        ? "Google doesn't allow Offer posts for hotels and lodging"
+                        : undefined
+                  }
                   onClick={() => set("type", type)}
                 >
                   {type === "standard" ? "Update" : type === "event" ? "Event" : "Offer"}
                 </Button>
               ))}
             </div>
+            {lodging ? (
+              <p className="text-xs text-warning-foreground">Google doesn't allow Offer posts for hotels and other lodging. Use an Update or Event post instead.</p>
+            ) : null}
           </Field>
 
           <AiWriter
             locationId={locationId}
             type={form.type}
+            lodging={lodging}
+            onTypeChange={(type) => {
+              if (!onGoogle) set("type", type);
+            }}
             onPick={(draft) => {
               setForm((current) => ({
                 ...current,
@@ -540,74 +563,210 @@ function RecurrenceFields({ form, set, issues }: { form: Form; set: <K extends k
 }
 
 /** "Write with AI": 1–3 variants for a topic; picking one fills the editor (nothing is saved). */
-function AiWriter({ locationId, type, onPick }: { locationId: string; type: PostType; onPick: (draft: AiPostDraft) => void }) {
+const MAX_DRAFT_KEYWORDS = 3;
+
+/**
+ * AI writing (Phase 22): "Suggest post ideas" gives topic cards; picking one (or typing a topic)
+ * writes drafts that weave in up to 3 tracked keywords. "Redo" asks for clearly different drafts.
+ * Drafts carry Google post-rule checks; they're guidance, saving is never blocked.
+ */
+function AiWriter({
+  locationId,
+  type,
+  lodging,
+  onTypeChange,
+  onPick,
+}: {
+  locationId: string;
+  type: PostType;
+  /** Google doesn't allow Offer posts for lodging: an Offer idea is written as an update. */
+  lodging: boolean;
+  onTypeChange: (type: PostType) => void;
+  onPick: (draft: AiPostDraft) => void;
+}) {
   const navigate = useNavigate();
   const costs = useAiCosts();
   const invalidate = useInvalidatePosts(locationId);
+  const tracking = useTracking(locationId);
+  const tracked = tracking.data?.tracking.keywords.map((keyword) => keyword.text) ?? [];
   const [open, setOpen] = useState(false);
+  const [focus, setFocus] = useState("");
+  const [topics, setTopics] = useState<AiPostTopic[]>([]);
   const [topic, setTopic] = useState("");
+  const [keywords, setKeywords] = useState<string[]>([]);
   const [tone, setTone] = useState<PostTone>("friendly");
   const [variants, setVariants] = useState("2");
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"ideas" | "write" | null>(null);
   const [drafts, setDrafts] = useState<AiPostDraft[]>([]);
   const aiAvailable = useAiAvailable();
   if (!aiAvailable) return null;
 
-  const write = async () => {
-    setBusy(true);
+  const fail = (err: unknown, fallback: string) => {
+    const { message, buyTokens } = postErrorText(err, fallback);
+    toast.error(message, buyTokens ? { action: { label: "Buy tokens", onClick: () => navigate("/settings/billing") } } : undefined);
+  };
+
+  const suggestIdeas = async () => {
+    setBusy("ideas");
     try {
-      const result = await aiDraftPost(locationId, { topic: topic.trim(), tone, type, variants: Number(variants) });
-      setDrafts(result.drafts);
+      const result = await aiPostTopics(locationId, { count: 6, ...(focus.trim() ? { focus: focus.trim() } : {}) });
+      setTopics(result.topics);
       invalidate();
     } catch (err) {
-      const { message, buyTokens } = postErrorText(err, "The AI couldn't write a post. Try again.");
-      toast.error(message, buyTokens ? { action: { label: "Buy tokens", onClick: () => navigate("/settings/billing") } } : undefined);
+      fail(err, "The AI couldn't suggest ideas. Try again.");
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
 
+  const write = async (input: { topic: string; type: PostType; keywords: string[]; redo?: boolean }) => {
+    setBusy("write");
+    try {
+      const result = await aiDraftPost(locationId, {
+        topic: input.topic.trim(),
+        tone,
+        type: input.type,
+        variants: Number(variants),
+        ...(input.keywords.length ? { keywords: input.keywords } : {}),
+        ...(input.redo && drafts.length ? { avoid: drafts.map((draft) => draft.summary).slice(0, 6) } : {}),
+      });
+      setDrafts(result.drafts);
+      invalidate();
+    } catch (err) {
+      fail(err, "The AI couldn't write a post. Try again.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const pickTopic = (idea: AiPostTopic) => {
+    const nextType = idea.type === "offer" && lodging ? "standard" : idea.type;
+    const nextKeywords = idea.keywords.slice(0, MAX_DRAFT_KEYWORDS);
+    setTopic(idea.angle ? `${idea.topic}: ${idea.angle}` : idea.topic);
+    setKeywords(nextKeywords);
+    onTypeChange(nextType);
+    void write({ topic: idea.topic + (idea.angle ? `. ${idea.angle}` : ""), type: nextType, keywords: nextKeywords });
+  };
+
+  const addKeyword = (value: string) => {
+    if (keywords.length >= MAX_DRAFT_KEYWORDS || keywords.some((keyword) => sameKeyword(keyword, value))) return;
+    setKeywords([...keywords, value]);
+  };
+  const available = tracked.filter((keyword) => !keywords.some((chosen) => sameKeyword(chosen, keyword)));
+
   if (!open) {
     return (
-      <Button type="button" variant="outline" size="sm" onClick={() => setOpen(true)}>
-        <Sparkles aria-hidden /> Write with AI ({tokens(costs.draft)})
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" variant="outline" size="sm" onClick={() => setOpen(true)}>
+          <Sparkles aria-hidden /> Write with AI
+        </Button>
+      </div>
     );
   }
   return (
-    <div className="space-y-3 rounded-lg border border-primary/25 bg-brand-tint/40 p-3">
+    <div className="space-y-4 rounded-lg border border-primary/25 bg-brand-tint/40 p-3">
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold text-foreground">Write with AI</p>
         <Button variant="ghost" size="icon" className="size-7" aria-label="Close" onClick={() => setOpen(false)}><X aria-hidden /></Button>
       </div>
-      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_150px_110px]">
-        <Input placeholder="What's the post about? e.g. new rye loaf" value={topic} onChange={(event) => setTopic(event.target.value)} />
-        <Select value={tone} onValueChange={(value) => setTone(value as PostTone)}>
-          <SelectTrigger className="bg-background" aria-label="Tone"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {(Object.keys(TONE_LABEL) as PostTone[]).map((value) => <SelectItem key={value} value={value}>{TONE_LABEL[value]}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Select value={variants} onValueChange={setVariants}>
-          <SelectTrigger className="bg-background" aria-label="Variants"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {["1", "2", "3"].map((value) => <SelectItem key={value} value={value}>{value} version{value === "1" ? "" : "s"}</SelectItem>)}
-          </SelectContent>
-        </Select>
+
+      {/* 1. Ideas */}
+      <div className="space-y-2">
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Input placeholder="Focus (optional), e.g. holiday specials" value={focus} onChange={(event) => setFocus(event.target.value)} />
+          <Button type="button" size="sm" variant="outline" className="shrink-0" disabled={busy !== null} onClick={() => void suggestIdeas()}>
+            {busy === "ideas" ? <LoaderCircle aria-hidden className="animate-spin" /> : <Lightbulb aria-hidden />} Suggest post ideas ({tokens(costs.topics)})
+          </Button>
+        </div>
+        {topics.length > 0 ? (
+          <ul className="grid gap-2 sm:grid-cols-2">
+            {topics.map((idea) => (
+              <li key={idea.topic}>
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => pickTopic(idea)}
+                  className="h-full w-full rounded-md border border-border bg-background p-3 text-left transition-colors hover:border-primary/50 disabled:opacity-60"
+                >
+                  <span className="flex items-start justify-between gap-2">
+                    <span className="text-sm font-semibold text-foreground">{idea.topic}</span>
+                    {idea.type !== "standard" ? <StatusBadge tone="info" className="shrink-0 capitalize">{idea.type}</StatusBadge> : null}
+                  </span>
+                  <span className="mt-1 block text-sm text-muted-foreground">{idea.angle}</span>
+                  {idea.keywords.length ? (
+                    <span className="mt-2 flex flex-wrap gap-1">
+                      {idea.keywords.map((keyword) => <Badge key={keyword} variant="secondary" className="text-[11px]">{keyword}</Badge>)}
+                    </span>
+                  ) : null}
+                  <span className="mt-2 block text-xs text-muted-foreground">{idea.why}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </div>
-      <Button size="sm" disabled={busy || topic.trim().length < 2} onClick={() => void write()}>
-        {busy ? <LoaderCircle aria-hidden className="animate-spin" /> : <Sparkles aria-hidden />} Write ({tokens(costs.draft)})
-      </Button>
-      {drafts.length > 0 ? (
-        <ul className="grid gap-2">
-          {drafts.map((draft, index) => (
-            <li key={index} className="rounded-md border border-border bg-background p-3 text-sm">
-              {draft.event_title ? <p className="font-semibold text-foreground">{draft.event_title}</p> : null}
-              <p className="whitespace-pre-line text-foreground">{draft.summary}</p>
-              <Button size="sm" variant="outline" className="mt-2" onClick={() => onPick(draft)}>Use this</Button>
-            </li>
+
+      {/* 2. Draft */}
+      <div className="space-y-2 border-t border-primary/15 pt-3">
+        <Input placeholder="Or type your own topic, e.g. new rye loaf" value={topic} onChange={(event) => setTopic(event.target.value)} />
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-muted-foreground">Keywords to weave in ({keywords.length}/{MAX_DRAFT_KEYWORDS}):</span>
+          {keywords.map((keyword) => (
+            <Badge key={keyword} variant="secondary" className="gap-1 pr-1">
+              {keyword}
+              <button type="button" aria-label={`Remove ${keyword}`} className="rounded p-0.5 hover:bg-muted" onClick={() => setKeywords(keywords.filter((item) => item !== keyword))}>
+                <X className="size-3" aria-hidden />
+              </button>
+            </Badge>
           ))}
-        </ul>
+          {keywords.length < MAX_DRAFT_KEYWORDS && available.length > 0 ? (
+            <Select value="" onValueChange={addKeyword}>
+              <SelectTrigger className="h-7 w-40 bg-background text-xs" aria-label="Add a tracked keyword"><SelectValue placeholder="+ Add keyword" /></SelectTrigger>
+              <SelectContent>{available.map((keyword) => <SelectItem key={keyword} value={keyword}>{keyword}</SelectItem>)}</SelectContent>
+            </Select>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={tone} onValueChange={(value) => setTone(value as PostTone)}>
+            <SelectTrigger className="w-40 bg-background" aria-label="Tone"><SelectValue /></SelectTrigger>
+            <SelectContent>{(Object.keys(TONE_LABEL) as PostTone[]).map((value) => <SelectItem key={value} value={value}>{TONE_LABEL[value]}</SelectItem>)}</SelectContent>
+          </Select>
+          <Select value={variants} onValueChange={setVariants}>
+            <SelectTrigger className="w-32 bg-background" aria-label="Versions"><SelectValue /></SelectTrigger>
+            <SelectContent>{["1", "2", "3"].map((value) => <SelectItem key={value} value={value}>{value} version{value === "1" ? "" : "s"}</SelectItem>)}</SelectContent>
+          </Select>
+          <Button size="sm" disabled={busy !== null || topic.trim().length < 2} onClick={() => void write({ topic, type, keywords })}>
+            {busy === "write" ? <LoaderCircle aria-hidden className="animate-spin" /> : <Sparkles aria-hidden />} Write ({tokens(costs.draft)})
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">Drafts match the style of your previous posts.</p>
+      </div>
+
+      {drafts.length > 0 ? (
+        <div className="space-y-2">
+          <ul className="grid gap-2">
+            {drafts.map((draft, index) => (
+              <li key={index} className="rounded-md border border-border bg-background p-3 text-sm">
+                {draft.event_title ? <p className="font-semibold text-foreground">{draft.event_title}</p> : null}
+                <p className="whitespace-pre-line text-foreground">{draft.summary}</p>
+                {draft.compliant === false ? (
+                  <p className="mt-2 rounded border border-warning/40 bg-warning-surface/40 px-2 py-1.5 text-xs text-warning-foreground">
+                    This draft may break Google's post rules: {(draft.warnings ?? []).map((warning) => warning.message.replace(/[.\s]+$/, "")).join("; ") || "see the notes in the editor"}. Edit it or Redo.
+                  </p>
+                ) : null}
+                {draft.duplicate_risk ? (
+                  <p className="mt-2 rounded border border-warning/40 bg-warning-surface/40 px-2 py-1.5 text-xs text-warning-foreground">
+                    Too close to an earlier post; Google treats repeats as spam.
+                  </p>
+                ) : null}
+                <Button size="sm" variant="outline" className="mt-2" onClick={() => onPick(draft)}>Use this</Button>
+              </li>
+            ))}
+          </ul>
+          <Button size="sm" variant="ghost" disabled={busy !== null || topic.trim().length < 2} onClick={() => void write({ topic, type, keywords, redo: true })}>
+            {busy === "write" ? <LoaderCircle aria-hidden className="animate-spin" /> : <RotateCw aria-hidden />} Redo: different versions ({tokens(costs.draft)})
+          </Button>
+        </div>
       ) : null}
     </div>
   );
@@ -724,6 +883,7 @@ function PhotoField({
         ) : null}
       </div>
       <p className="text-xs text-muted-foreground">JPEG or PNG, at least 250×250, up to 5 MB. Photos are cropped to 4:3. Photos no post uses are deleted after 30 days.</p>
+      {aiAvailable ? <p className="text-xs text-muted-foreground">Real photos of your business work best on Google; upload your own when you can.</p> : null}
       {aiOpen && aiAvailable ? (
         <div className="space-y-2 rounded-md border border-primary/25 bg-brand-tint/40 p-3">
           <Input placeholder="Describe the picture, e.g. fresh loaves on a wooden table" value={hint} onChange={(event) => setHint(event.target.value)} />
@@ -731,8 +891,13 @@ function PhotoField({
             <Select value={style} onValueChange={(value) => setStyle(value as AiImageStyle | "rotate")}>
               <SelectTrigger className="w-48 bg-background" aria-label="Style"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="rotate">Any style</SelectItem>
-                {(Object.keys(STYLE_LABEL) as AiImageStyle[]).map((value) => <SelectItem key={value} value={value}>{STYLE_LABEL[value]}</SelectItem>)}
+                <SelectItem value="rotate">Any photo style</SelectItem>
+                {STYLE_ORDER.map((value) => (
+                  <SelectItem key={value} value={value}>
+                    {STYLE_LABEL[value]}
+                    {STOCK_ART_STYLES.has(value) ? " (may look like stock art)" : ""}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <Button size="sm" disabled={generating || (hint || imageIdea).trim().length < 3} onClick={() => void generate()}>
@@ -740,7 +905,10 @@ function PhotoField({
               {generating ? "Creating… (up to a minute)" : `Create (${tokens(costs.image)})`}
             </Button>
           </div>
-          <p className="text-xs text-muted-foreground">Images never contain words, logos or brand names.</p>
+          <p className="text-xs text-muted-foreground">
+            Images never contain words, logos or brand names.
+            {style !== "rotate" && STOCK_ART_STYLES.has(style) ? " This style may look like stock art; Google prefers real photos." : ""}
+          </p>
         </div>
       ) : null}
       {galleryOpen ? (

@@ -64,7 +64,7 @@ export function useInvalidatePosts(locationId: string) {
 export function useAiCosts() {
   const billing = useBilling();
   const costs = billing.data?.tokens.ai_costs ?? {};
-  return { draft: costs.post_draft ?? 1, image: costs.post_image ?? 3 };
+  return { draft: costs.post_draft ?? 1, image: costs.post_image ?? 3, topics: costs.post_topics ?? 1 };
 }
 
 export const tokens = (count: number) => `${count} token${count === 1 ? "" : "s"}`;
@@ -120,11 +120,15 @@ export const STYLE_LABEL: Record<AiImageStyle, string> = {
   photo_scene: "Realistic photo",
   lifestyle_photo: "Lifestyle photo",
   detail_photo: "Close-up photo",
+  photo_wide: "Wide photo",
   flat_illustration: "Flat illustration",
   render_3d: "3D render",
   watercolor: "Watercolour",
-  photo_wide: "Wide photo",
 };
+
+/** Photo styles first (Google prefers real-looking photos); the rest may read as stock art. */
+export const STYLE_ORDER: AiImageStyle[] = ["photo_scene", "lifestyle_photo", "detail_photo", "photo_wide", "flat_illustration", "render_3d", "watercolor"];
+export const STOCK_ART_STYLES = new Set<AiImageStyle>(["flat_illustration", "render_3d", "watercolor"]);
 
 export const WEEKDAYS: { id: Weekday; short: string }[] = [
   { id: "MONDAY", short: "Mon" },
@@ -151,6 +155,7 @@ const SERIES_ERRORS: Record<string, string> = {
   ai_budget_reached: "AI was paused for the day",
   ai_failed: "The AI didn't answer",
   gbp_not_connected: "The location isn't connected to Google",
+  ai_not_compliant: "The AI draft didn't meet Google's post rules (no tokens were used)",
 };
 
 export function seriesErrorText(code: string): string {

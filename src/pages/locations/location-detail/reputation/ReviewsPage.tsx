@@ -306,6 +306,11 @@ function BulkReplies({ locationId, summary }: { locationId: string; summary: Rev
           Send all {drafts} draft{drafts === 1 ? "" : "s"}
         </Button>
       </div>
+      {aiUsable ? (
+        <p className="text-xs text-muted-foreground">
+          AI replies are 2–4 sentences, use your keywords where they fit, and answer in the reviewer's language. Drafts made before this stay as they were until you regenerate them.
+        </p>
+      ) : null}
       {busy === "draft" ? <p className="text-xs text-muted-foreground">Drafting up to {ai.draft_all_max ?? 50} replies. This takes about 15 seconds.</p> : null}
       {progress ? <p className="text-xs text-muted-foreground">{progress}</p> : null}
       {ai.paused_today ? <p className="text-xs text-muted-foreground">AI is paused for today.</p> : null}

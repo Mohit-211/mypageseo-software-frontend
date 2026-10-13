@@ -1521,7 +1521,7 @@ Body: `{ "code", "state" }` from the popup callback.
 Body, one of:
 - `{ "place_id": "ChIJ…", "session": "<the picker's session token>" }` (2026-10-01, **recommended**): a suggestion picked from `GET /places/autocomplete`. **1 Place Details call** (Essentials: `location`, `formattedAddress`) that also ends the autocomplete session; `center_label` is Google's address (e.g. "Tampa, FL, USA"). Counts **1** toward the daily Places limit.
 - `{ "query": "Fredericton, NB" }`: a city or ZIP / postal code typed freely, 2–100 characters (the original path, below).
-- `{ "use_business_location": true }` (2026-10-12): the business's **own** Google Maps position, from its `place_id` (**1 Place Details call** for `location`, counted against the daily Places limit). Saved with `center_source: "place_details"` and no label, so the pages say "Measured around: your Google Maps pin, <address>". **400** `no_place_id`; **404** `no_business_location` (Google Maps has no position: pick a city or ZIP).
+- `{ "use_business_location": true }` (2026-10-12): the business's **own** Google Maps position, from its `place_id` (**1 Place Details call** for `location`, counted against the daily Places limit). Saved with `center_source: "place_details"` and no label, so the pages say "Measured around: your Google Maps pin, <address>". **Two fields, two vocabularies:** the `PUT /center` answer carries the stored value `center_source` (`manual` or `place_details`); everything the pages read carries the display field `center.source`, which is only ever `place` or `manual` (`GET /locations/:id`, the overview, and each run's `run.center`). A `place_details` center shows as `center.source: "place"` with the address as `center.label`. Build the UI on `center.source`. **400** `no_place_id`; **404** `no_business_location` (Google Maps has no position: pick a city or ZIP).
 
 **Fewer center steps (2026-10-12):** Google often leaves a Business Profile's map pin (`latlng`) empty, even for a storefront with a full address. The Bind / select-profile step now takes the center from the profile's `place_id` itself (1 Place Details call), so `center_needed` is true only when Google Maps can't place the business (a real service-area business). A location already waiting on the center step can use `{ "use_business_location": true }`.
 
@@ -3353,6 +3353,112 @@ The series object:
   - `GET /post-series/:id/preview?count=5` → `{ time_zone, slots: [{ slot_at, topic, generates_at }] }` (no AI).
   - `POST /post-series/:id/generate-next` → **201** `{ series, post }`: makes the next slot's post now, as a sample.
   - `DELETE /post-series/:id?keep_scheduled=false`: its scheduled posts go back to drafts unless `keep_scheduled=true`; published posts stay.
+
+## AI assist (Phase 22)
+
+Decisions and scope: CLAUDE.md §12n. The text people read (keyword suggestions, review replies, post topics and text) uses `OPENAI_WRITING_MODEL` (default `gpt-5-mini`); analysis stays on `OPENAI_MODEL`. AI errors as in "AI errors (every AI route)": **503** `ai_not_configured` / `ai_budget_reached`, **502** `ai_failed`, **402** `insufficient_tokens` (not for keyword suggestions, which are free).
+
+### `POST /locations/:locationId/keywords/suggest { "more"?: false }`: keyword suggestions at setup
+
+Owner / member; free (no tokens); 20 runs per location per UTC day (**429** `suggestion_limit_reached`; a run that fails doesn't count).
+
+```json
+{ "suggestions": [ { "keyword": "puppy classes", "reason": "Listed on the website's services page", "source": "website" }, "…" ],
+  "website_used": true, "website_note": null, "can_suggest_more": true, "runs_left_today": 19 }
+```
+
+- **What the AI reads:**
+  - the business's Google categories, description and services, city / region, language
+  - the website (title, description, headings and visible text of `website_URL`, fetched safely and cached 7 days)
+  - With no website, or one that doesn't answer, only the rest: `website_used: false`, `website_note: no_website | unreachable | not_html`.
+- **At least 7, at most 12 per run**, mostly short service phrases (at most 2 with the city).
+- **No duplicates ignoring case and spacing** (*cleaner* = *Cleaner* = *CLEANER*): nothing already tracked, nothing twice in a run, and with `"more": true` nothing shown in the last 30 days.
+- **Picking suggestions:** they're saved like typed keywords, with `PUT /tracking { keywords }` (which also drops duplicates by the same rule).
+
+### Review reply drafts (changed)
+
+`POST /reviews/drafts` and `/reviews/drafts/all` have the same shapes. The drafts now follow these rules:
+- **Length:** 2–4 sentences, 40–100 words (50–110 for 1–3★).
+- **Keywords:** woven in where they fit: 1 (2 on long positive reviews) for 4–5★ and 3★; 1–2★ only if natural and not promotional. The business name or city may appear once.
+- **Language:** the reviewer's original language. Google's "(Translated by Google)" wrapper is removed and the "(Original)" text used. A review without text is answered in the location's language: its posting language, else French in Quebec, else English.
+
+Existing drafts stay until **Regenerate**.
+
+### `POST /locations/:locationId/posts/ai-topics { "count"?: 6, "focus"?: "holiday baking" }`: post ideas
+
+`post_topics` tokens (default 1, admin-set).
+
+```json
+{ "topics": [ { "topic": "Winter puppy socialisation tips", "angle": "Three indoor ways to socialise a puppy when it's cold.", "type": "standard", "keywords": ["puppy classes"], "why": "Fits the season and a tracked keyword." }, "…" ],
+  "tokens_spent": 1 }
+```
+
+- **Inputs:** the business facts, tracked keywords, today's date, upcoming holidays (60 days) and this location's recent topics (so ideas don't repeat).
+- **Keywords:** only real tracked keywords, in their tracked spelling.
+- **Next:** pick one → `POST /posts/ai-draft { topic, type, keywords }` → `POST /posts/ai-image { prompt_hint: <draft's image_idea> }`.
+
+### `POST /posts/ai-draft` (changed)
+
+New optional fields:
+- `keywords: [≤ 3]`: keywords to weave in once each, naturally. Default: the first 2 tracked keywords.
+- `avoid: [≤ 6 texts]`: for **Redo**, the drafts already shown; the new ones are clearly different.
+
+The voice comes from this location's last 20 posts. With fewer than 5, recent posts from the same organization's other locations are used as style examples (facts never copied). Never another organization's posts.
+
+### Google post rules on AI posts (2026-10-13)
+
+The AI posts follow Google's post guidelines. The full table of rules and checks is in [GBP_POST_GUIDELINES.md](GBP_POST_GUIDELINES.md).
+
+**The `ai-draft` answer:**
+
+```json
+{ "drafts": [ { "summary": "…", "event_title": null, "cta_type": "LEARN_MORE", "image_idea": "…",
+               "warnings": [], "duplicate_risk": false, "compliant": true } ],
+  "compliant": true, "tokens_spent": 1, "model": "gpt-5-mini" }
+```
+
+- **Free retry:** a draft that breaks a hard rule gets one free retry naming the problems. Hard rules: phone or link in the text, capitals, "!!!", symbols, emoji, a guarantee / "#1" / "instant" claim, a copy of an earlier post, a lodging price or deal.
+- **Drafts that still fail** come back with `compliant: false` and their `warnings`. Show them, and suggest **Redo** or editing.
+- **`duplicate_risk: true`:** the text repeats an earlier post of this location, or one of the organization's other locations. Google treats repeats as spam.
+- **`cta_type`:** always set (Learn more, or Call when the location has no website), except for offers.
+- **Auto-posts:** a slot whose draft still fails is not posted. The tokens are refunded, `last_error.code` is `ai_not_compliant`, and the slot is retried on the next hourly run.
+- **Post ideas (`ai-topics`):** ideas that promise results are dropped; lodging never gets an `offer` idea.
+- **Images:** without a chosen `style`, AI images rotate over the realistic photo styles only. Every prompt forbids text, logos, watermarks, generic charts / arrows and staged scenes, and keeps regulated products out of the picture.
+
+**Every post (not only AI):**
+- **New editor warnings:** `repeated_punctuation`, `special_characters` and `bold_claim`. `all_caps` now also covers 3 or more shouting words; acronyms like SEO and HVAC are fine.
+- **New blocking issue** for hotels and other lodging: `offer_not_allowed_for_lodging`. Google blocks Offer posts for them, so scheduling or publishing one answers 422 `post_incomplete` with this issue.
+
+## Directory discovery (Phase 22, admin)
+
+Perplexity suggests citation directories; every suggestion waits in a review list until an admin accepts or dismisses it. `citations.view` to list; `citations.manage` to discover / accept / dismiss. An employee assigned to locations (Phase 21) can only discover and decide for those locations.
+
+`POST /api/v1/admin/citations/directory-suggestions/discover` (10–30 s; one Perplexity search):
+
+| `scope` | Needs | Searches for |
+|---|---|---|
+| `general` | `country` (US / CA), optional `region` | general national and regional directories |
+| `category` | `country`, `business_category_id` | industry directories and associations for that business category |
+| `location` | `location_id` | local directories, chamber, local listings for its city / region and its business type |
+
+```json
+{ "created": [ { "id": "…", "name": "Brantford Chamber of Commerce", "url": "https://brantfordchamber.example", "domain": "brantfordchamber.example",
+                 "type": "government_chamber", "countries": ["CA"], "regions": ["ON"], "category_ids": [], "why": "Local chamber; listings are trusted by Google.",
+                 "sources": ["https://…"], "url_check": { "ok": true, "reason": null, "checked_at": "…" },
+                 "scope": { "kind": "location", "country": "CA", "region": "ON", "city": "Brantford", "business_category": "Dog trainer", "location_id": "…" },
+                 "status": "pending", "created_by": { "admin_id": "…", "name": "Ravi" }, "created_at": "…" } ],
+  "skipped_duplicates": 2, "sources": ["https://…"], "cost_usd": 0.0068 }
+```
+
+- **Never suggested again:** domains already on the master list, already suggested, or dismissed.
+- **`url_check.ok: false`:** the site didn't answer when checked; review it before accepting.
+- **`category_ids`:** the directory category groups matching the business category (for category / location scopes); change them on accept.
+- **Errors:** **503** `perplexity_not_configured` (no `PERPLEXITY_API_KEY`) or `perplexity_budget_reached` (`PERPLEXITY_DAILY_BUDGET_USD`); **502** `perplexity_failed`.
+
+**Other routes:**
+- `GET …/directory-suggestions?status=pending|accepted|dismissed&scope=&country=&location_id=` lists suggestions.
+- `POST …/:suggestionId/accept { name?, url?, type?, countries?, regions?, category_ids?, authority?, add_to_location? }` creates the directory through the normal directory rules (**409** `domain_taken`, **400** `invalid_directory`). With `add_to_location: true` (location scope), it also goes on that location's citation list as `not_checked`.
+- `POST …/:suggestionId/dismiss { note? }`. Both answer **409** `already_decided` for a decided suggestion.
 
 ## Sales audit (Phase 19)
 

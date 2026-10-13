@@ -1,4 +1,5 @@
 import type { ComponentProps } from "react";
+import { FirstRunProgress } from "@/components/ranking/first-run-progress";
 import { useCanEdit } from "@/hooks/use-access";
 import type { ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -142,10 +143,20 @@ export function GbpPageHeader({
 }
 
 /** Loading / no report yet / error states shared by the GBP pages. */
-export function GbpReportError({ error, onRetry, gbpConnected }: { error: unknown; onRetry: () => void; gbpConnected: boolean }) {
+export function GbpReportError({
+  error,
+  onRetry,
+  gbpConnected,
+  locationId,
+}: {
+  error: unknown;
+  onRetry: () => void;
+  gbpConnected: boolean;
+  locationId?: string;
+}) {
   const { connect } = useGbpConnect();
   if (isNoReportYet(error)) {
-    return (
+    const empty = (
       <EmptyState
         title="No GBP report yet"
         description={
@@ -156,6 +167,9 @@ export function GbpReportError({ error, onRetry, gbpConnected }: { error: unknow
         action={gbpConnected ? undefined : <Button size="sm" onClick={() => connect()}>Connect Google</Button>}
       />
     );
+    // While the first ranking run (or the report build) is going, show the wait instead (the competitor
+    // comparison is built then too, also without GBP).
+    return locationId ? <FirstRunProgress locationId={locationId} for="gbp-report" fallback={empty} /> : empty;
   }
   if (isApiError(error) && error.status === 404) {
     return (

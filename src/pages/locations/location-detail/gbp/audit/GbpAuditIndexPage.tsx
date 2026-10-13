@@ -50,7 +50,7 @@ function LocationGbpAuditPage() {
       {report.isPending ? (
         <PageSkeleton />
       ) : report.isError ? (
-        <GbpReportError error={report.error} onRetry={() => void report.refetch()} gbpConnected={location.gbp_connected} />
+        <GbpReportError error={report.error} onRetry={() => void report.refetch()} gbpConnected={location.gbp_connected} locationId={location.location_id} />
       ) : (
         <AuditContent report={report.data} />
       )}

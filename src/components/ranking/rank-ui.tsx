@@ -1,6 +1,6 @@
 import type { ComponentProps } from "react";
 import { useCanEdit } from "@/hooks/use-access";
-import { useEffect, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -36,6 +36,7 @@ import { GridSettingsButton } from "@/components/ranking/grid-settings-dialog";
 import { BackgroundActivity } from "@/components/location/background-activity";
 import { RankReportButton } from "@/components/report/rank-report-button";
 import { GroupFilter } from "@/components/ranking/keyword-controls";
+import { FirstRunProgress } from "@/components/ranking/first-run-progress";
 import { InfoTip } from "@/components/layout/shared/info-tip";
 import { GLOSSARY } from "@/lib/rankings/glossary";
 import type { RankBucket } from "@/api";
@@ -228,42 +229,19 @@ export function RankingsError({
   }
 }
 
+/** 404 `no_completed_run`: the first run's progress, or "finish setup" when there's no run at all. */
 function FirstRunPending({ locationId }: { locationId: string }) {
-  const queryClient = useQueryClient();
-  const runs = useRankRuns(locationId, 1, 15_000);
-  const latest = runs.data?.runs[0];
-  const finished = latest?.status === "done" || latest?.status === "partial";
-
-  useEffect(() => {
-    if (finished) void queryClient.invalidateQueries({ queryKey: rankingsKey(locationId) });
-  }, [finished, locationId, queryClient]);
-
-  if (runs.isSuccess && !latest) {
-    return (
-      <EmptyState
-        title="No ranking run yet"
-        description="Finish this location's setup (keywords and competitors) to start the first ranking run."
-        action={<Button asChild><Link to={locationSetupPath(locationId)}>Continue setup</Link></Button>}
-      />
-    );
-  }
-  if (latest?.status === "failed") {
-    return (
-      <EmptyState
-        title="The first ranking run failed"
-        description="Nothing was charged. Start a new run with Refresh, or wait for the next monthly refresh."
-        action={<RefreshRankingsButton locationId={locationId} />}
-      />
-    );
-  }
   return (
-    <div role="status" className="flex flex-col items-center gap-3 rounded-lg border border-border bg-surface p-8 text-center shadow-card">
-      <LoaderCircle aria-hidden className="size-6 animate-spin text-primary" />
-      <p className="text-sm font-semibold text-foreground">First ranking run in progress</p>
-      <p className="max-w-md text-sm text-muted-foreground">
-        {latest ? `Status: ${latest.status}. ` : ""}A run takes a few minutes. This page updates on its own.
-      </p>
-    </div>
+    <FirstRunProgress
+      locationId={locationId}
+      fallback={
+        <EmptyState
+          title="No ranking run yet"
+          description="Finish this location's setup (keywords and competitors) to start the first ranking run."
+          action={<Button asChild><Link to={locationSetupPath(locationId)}>Continue setup</Link></Button>}
+        />
+      }
+    />
   );
 }
 

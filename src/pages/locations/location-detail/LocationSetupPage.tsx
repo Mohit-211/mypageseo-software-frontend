@@ -1,11 +1,12 @@
 import { useState } from "react";
+import { KeywordSuggestions } from "@/components/ranking/keyword-suggestions";
+import { MAX_KEYWORDS, addKeywords } from "@/lib/rankings/keywords";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CheckCircle2, LoaderCircle, MapPin, Plus, Search, Star, X } from "lucide-react";
 import {
   completeOnboarding,
   getCompetitorSuggestions,
-  getRankRun,
   getTracking,
   isApiError,
   searchPlaces,
@@ -27,7 +28,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PinsMap } from "@/components/ranking/rank-map";
 import { PlaceAutocomplete } from "@/components/location/place-autocomplete";
-import { BackgroundActivity } from "@/components/location/background-activity";
+import { FirstRunProgress } from "@/components/ranking/first-run-progress";
 import { useRequiredParams } from "@/hooks/use-required-params";
 import { LOCATIONS_QUERY_KEY, useLocation } from "@/lib/locations/use-locations";
 import { cn } from "@/lib/utils";
@@ -39,9 +40,7 @@ import { cn } from "@/lib/utils";
  */
 type Stage = "center" | "keywords" | "competitors" | "finish";
 
-const MAX_KEYWORDS = 20;
 const MAX_COMPETITORS = 5;
-const RUN_POLL_MS = 10_000;
 
 function stageFor(step: LocationOnboardingStep | undefined): Stage | "done" {
   switch (step) {
@@ -248,7 +247,7 @@ function CenterStep({ location, onDone }: { location: LocationHeader; onDone: ()
           </p>
           <PinsMap
             className="h-64 w-full rounded-md"
-            pins={[{ key: "center", lat: resolved.lat, lng: resolved.lng, rank: 1, name: resolved.center_label ?? "Center", kind: "self" }]}
+            pins={[{ key: "center", lat: resolved.lat, lng: resolved.lng, rank: null, name: resolved.center_label ?? "Center", kind: "self" }]}
           />
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Button variant="outline" onClick={() => setResolved(null)}>Use a different place</Button>
@@ -322,15 +321,20 @@ function KeywordsStep({ locationId, onDone }: { locationId: string; onDone: () =
   const [saving, setSaving] = useState(false);
   const keywords = edited ?? tracking.data?.tracking.keywords.map((keyword) => keyword.text) ?? [];
 
+  // Several at once: "clean; cleaner" adds two keywords.
   const addDraft = () => {
-    const value = draft.trim().replace(/\s+/g, " ");
-    if (!value) return;
-    if (value.length < 2 || value.length > 80) return setError("Each keyword needs 2–80 characters.");
-    if (keywords.some((keyword) => keyword.toLowerCase() === value.toLowerCase())) return setError("That keyword is already in the list.");
-    if (keywords.length >= MAX_KEYWORDS) return setError(`Up to ${MAX_KEYWORDS} keywords.`);
-    setEdited([...keywords, value]);
-    setDraft("");
-    setError(null);
+    if (!draft.trim()) return;
+    const result = addKeywords(keywords, draft);
+    if (result.added.length) setEdited(result.keywords);
+    // Keep the text when nothing could be added, so it can be fixed.
+    if (result.added.length || !result.message) setDraft("");
+    setError(result.message);
+  };
+
+  const addSuggested = (picked: string[]) => {
+    const result = addKeywords(keywords, picked.join("\n"));
+    if (result.added.length) setEdited(result.keywords);
+    setError(result.message);
   };
 
   const save = async () => {
@@ -349,6 +353,9 @@ function KeywordsStep({ locationId, onDone }: { locationId: string; onDone: () =
 
   return (
     <Panel title="Keywords to track" description="The local searches customers use to find this business, e.g. “emergency plumber”. Up to 20.">
+      <p className="-mt-1 mb-3 text-xs text-muted-foreground">
+        More keywords and bigger grids give more detail but take longer the first time (about 1 minute per keyword on a 7×7 grid).
+      </p>
       {tracking.isPending ? (
         <Skeleton className="h-10 w-full" />
       ) : (
@@ -361,17 +368,25 @@ function KeywordsStep({ locationId, onDone }: { locationId: string; onDone: () =
             }}
           >
             <Input
-              aria-label="New keyword"
+              aria-label="New keywords"
               value={draft}
-              maxLength={80}
-              placeholder="emergency plumber"
+              maxLength={2000}
+              placeholder="emergency plumber; drain cleaning"
               onChange={(event) => {
                 setDraft(event.target.value);
                 setError(null);
               }}
             />
-            <Button type="submit" variant="outline"><Plus aria-hidden /> Add</Button>
+            <Button type="submit" variant="outline" disabled={keywords.length >= MAX_KEYWORDS}><Plus aria-hidden /> Add</Button>
           </form>
+          {/* Runs on its own the first time, when there are no keywords yet. */}
+          <KeywordSuggestions locationId={locationId} keywords={keywords} onAdd={addSuggested} autoRun={tracking.isSuccess && keywords.length === 0} />
+          <p className="flex flex-wrap justify-between gap-2 text-xs text-muted-foreground">
+            <span>Add several at once by separating them with “;”, e.g. cleaning; janitor service.</span>
+            <span className={keywords.length >= MAX_KEYWORDS ? "font-medium text-warning-foreground" : "font-medium text-foreground"}>
+              {keywords.length} of {MAX_KEYWORDS} keywords
+            </span>
+          </p>
           {keywords.length > 0 ? (
             <ul className="flex flex-wrap gap-2">
               {keywords.map((keyword) => (
@@ -623,7 +638,7 @@ function FinishStep({
   };
 
   return (
-    <Panel title="Start tracking" description="The first ranking run starts now and takes a few minutes. Rankings refresh automatically every month after that.">
+    <Panel title="Start tracking" description="The first ranking run starts now; you'll see how long it should take. Rankings refresh automatically every month after that.">
       <div className="space-y-3">
         {error ? (
           <div role="alert" className="space-y-2 text-sm text-critical">
@@ -644,39 +659,25 @@ function FinishStep({
   );
 }
 
+/** After `POST onboarding/complete`: the first run's wait, shown right away from its run id. */
 function DoneStep({ locationId, runId }: { locationId: string; runId: string | null }) {
-  const run = useQuery({
-    queryKey: [...LOCATIONS_QUERY_KEY, "rank-run", locationId, runId],
-    queryFn: ({ signal }) => getRankRun(locationId, runId!, signal),
-    enabled: Boolean(runId),
-    refetchInterval: (query) => {
-      const status = query.state.data?.status;
-      return !status || status === "queued" || status === "running" ? RUN_POLL_MS : false;
-    },
-  });
-  const status = run.data?.status;
-  const finished = status === "done" || status === "partial";
-
   return (
     <Panel>
       <div className="space-y-3">
         {!runId ? (
           <p className="text-sm text-muted-foreground">This location is set up. Rankings refresh automatically every month.</p>
-        ) : status === "failed" ? (
-          <p className="text-sm text-critical">
-            The first ranking run failed{run.data?.failure_reason ? `: ${run.data.failure_reason}` : "."} It will run again with the next refresh.
-          </p>
-        ) : finished ? (
-          <p className="flex items-center gap-2 text-sm text-foreground">
-            <CheckCircle2 aria-hidden className="size-4 text-success" /> The first ranking run is done{status === "partial" ? " (some searches failed)" : ""}.
-          </p>
         ) : (
-          <p className="flex items-center gap-2 text-sm text-muted-foreground">
-            <LoaderCircle aria-hidden className="size-4 animate-spin" />
-            The first ranking run is {status === "running" ? "running" : "queued"}. This takes a few minutes; you can leave this page.
-          </p>
+          <FirstRunProgress
+            locationId={locationId}
+            runId={runId}
+            className="border-0 p-0 shadow-none"
+            fallback={
+              <p className="flex items-center gap-2 text-sm text-foreground">
+                <CheckCircle2 aria-hidden className="size-4 text-success" /> The first ranking run is done. Your GBP report follows within a couple of minutes.
+              </p>
+            }
+          />
         )}
-        <BackgroundActivity locationId={locationId} watch />
         <div className="flex justify-end gap-2">
           <Button asChild variant="outline"><Link to="/locations">All locations</Link></Button>
           <Button asChild><Link to={`/locations/${locationId}`}>Open location</Link></Button>

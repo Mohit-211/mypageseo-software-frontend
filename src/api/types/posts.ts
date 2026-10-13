@@ -138,7 +138,23 @@ export type PostsCalendar = { from: string; to: string; items: CalendarItem[]; l
 
 export type PostTone = "friendly" | "professional" | "enthusiastic" | "informative";
 
-export type AiPostDraft = { summary: string; event_title: string | null; cta_type: CtaType | null; image_idea: string | null };
+/**
+ * One AI draft. Phase 22: checked against Google's post rules. `compliant: false` still breaks a
+ * rule after the free retry (its `warnings` say which); `duplicate_risk` repeats an earlier post.
+ * `cta_type` is always set except for offers.
+ */
+export type AiPostDraft = {
+  summary: string;
+  event_title: string | null;
+  cta_type: CtaType | null;
+  image_idea: string | null;
+  warnings?: { code: string; message: string }[];
+  duplicate_risk?: boolean;
+  compliant?: boolean;
+};
+
+/** A post idea from `POST posts/ai-topics`; `keywords` are tracked keywords in their tracked spelling. */
+export type AiPostTopic = { topic: string; angle: string; type: PostType; keywords: string[]; why: string };
 
 export type AiImageStyle =
   | "photo_scene"

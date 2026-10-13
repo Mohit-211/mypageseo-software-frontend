@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, queryOptions, useQuery } from "@tanstack/react-query";
 import {
   getClients,
   getLocation,
@@ -21,18 +21,24 @@ export function useLocationsList(params: LocationsListParams) {
   });
 }
 
-export function useLocation(locationId: string) {
-  return useQuery({
+export const locationQuery = (locationId: string) =>
+  queryOptions({
     queryKey: [...LOCATIONS_QUERY_KEY, "detail", locationId],
     queryFn: ({ signal }) => getLocation(locationId, signal),
   });
+
+export function useLocation(locationId: string) {
+  return useQuery(locationQuery(locationId));
 }
 
-export function useLocationOverview(locationId: string) {
-  return useQuery({
+export const locationOverviewQuery = (locationId: string) =>
+  queryOptions({
     queryKey: [...LOCATIONS_QUERY_KEY, "overview", locationId],
     queryFn: ({ signal }) => getLocationOverview(locationId, signal),
   });
+
+export function useLocationOverview(locationId: string) {
+  return useQuery(locationOverviewQuery(locationId));
 }
 
 /**

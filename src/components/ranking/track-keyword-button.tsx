@@ -1,4 +1,5 @@
 import type { ComponentProps } from "react";
+import { sameKeyword } from "@/lib/rankings/keywords";
 import { useCanEdit } from "@/hooks/use-access";
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -16,7 +17,7 @@ function TrackKeywordButtonEditor({ locationId, keyword, onTracked }: { location
   const tracking = useTracking(locationId);
   const [saving, setSaving] = useState(false);
   const current = tracking.data?.tracking.keywords.map((entry) => entry.text) ?? null;
-  if (!current || current.some((text) => text.trim().toLowerCase() === keyword.trim().toLowerCase())) return null;
+  if (!current || current.some((text) => sameKeyword(text, keyword))) return null;
   const full = current.length >= MAX_KEYWORDS;
 
   const track = async () => {

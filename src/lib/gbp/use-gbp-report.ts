@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, queryOptions, useQuery } from "@tanstack/react-query";
 import { getGbpReport, isApiError, type GbpRange } from "@/api";
 
 export const gbpReportKey = (locationId: string) => ["locations", locationId, "gbp-report"] as const;
@@ -10,11 +10,16 @@ const retry = (count: number, err: unknown) => !(isApiError(err) && err.status <
  * The stored GBP report. While a new one is being generated (after a sync or a refresh)
  * it is polled until `generated_at` changes.
  */
-export function useGbpReport(locationId: string, range: GbpRange) {
-  return useQuery({
+export const gbpReportQuery = (locationId: string, range: GbpRange) =>
+  queryOptions({
     queryKey: [...gbpReportKey(locationId), range],
     queryFn: ({ signal }) => getGbpReport(locationId, range, signal),
     retry,
+  });
+
+export function useGbpReport(locationId: string, range: GbpRange) {
+  return useQuery({
+    ...gbpReportQuery(locationId, range),
     placeholderData: keepPreviousData,
     refetchInterval: (query) => (query.state.data?.generation?.pending ? 20_000 : false),
   });

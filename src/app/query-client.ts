@@ -15,4 +15,9 @@ function onError(error: unknown) {
 export const queryClient: QueryClient = new QueryClient({
   queryCache: new QueryCache({ onError }),
   mutationCache: new MutationCache({ onError }),
+  defaultOptions: {
+    // Pages read stored data that changes only after a refresh (and writes invalidate what they
+    // change), so coming back to a page within 30 s reuses what's loaded instead of refetching.
+    queries: { staleTime: 30_000 },
+  },
 });

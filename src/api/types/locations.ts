@@ -272,10 +272,14 @@ export type RankRunStatus = "queued" | "running" | "done" | "partial" | "failed"
 export type RankRun = {
   run_id: string;
   status: RankRunStatus;
+  /** When it was queued; the expected start while `started_at` is null. */
   run_at: string;
   started_at: string | null;
   finished_at: string | null;
   failure_reason: string | null;
+  /** How long the run should take at the server's search rate (2026-10-01). */
+  expected_duration_ms?: number | null;
+  estimate?: { keywords?: number; gridSize?: number; points?: number } | null;
 };
 
 /** The `quote` on a 402 `location_payment_required`. */

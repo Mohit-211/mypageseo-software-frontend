@@ -1,4 +1,6 @@
 import type { ComponentProps } from "react";
+import { KeywordSuggestions } from "@/components/ranking/keyword-suggestions";
+import { MAX_KEYWORDS, addKeywords, sameKeyword } from "@/lib/rankings/keywords";
 import { useCanEdit } from "@/hooks/use-access";
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -20,7 +22,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useGroupParam } from "@/lib/rankings/rankings-context";
 import { rankingsKey, useKeywordGroups, useTracking } from "@/lib/rankings/use-rankings";
 
-const MAX_KEYWORDS = 20;
 
 /** Filters the Rank Tracker, Keywords and grid pages to one keyword group (`?group=`). */
 export function GroupFilter({ locationId }: { locationId: string }) {
@@ -67,17 +68,22 @@ function EditKeywordsDialog({ locationId, onClose }: { locationId: string; onClo
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const removed = saved.filter((keyword) => !keywords.some((entry) => entry.toLowerCase() === keyword.toLowerCase()));
+  const canEditKeywords = keywords.length < MAX_KEYWORDS;
+  const removed = saved.filter((keyword) => !keywords.some((entry) => sameKeyword(entry, keyword)));
 
+  // Several at once: "clean; cleaner" adds two keywords.
   const add = () => {
-    const value = draft.trim().replace(/\s+/g, " ");
-    if (!value) return;
-    if (value.length < 2 || value.length > 80) return setError("Each keyword needs 2–80 characters.");
-    if (keywords.some((keyword) => keyword.toLowerCase() === value.toLowerCase())) return setError("That keyword is already in the list.");
-    if (keywords.length >= MAX_KEYWORDS) return setError(`Up to ${MAX_KEYWORDS} keywords.`);
-    setEdited([...keywords, value]);
-    setDraft("");
-    setError(null);
+    if (!draft.trim()) return;
+    const result = addKeywords(keywords, draft);
+    if (result.added.length) setEdited(result.keywords);
+    if (result.added.length || !result.message) setDraft("");
+    setError(result.message);
+  };
+
+  const addSuggested = (picked: string[]) => {
+    const result = addKeywords(keywords, picked.join("\n"));
+    if (result.added.length) setEdited(result.keywords);
+    setError(result.message);
   };
 
   const save = async () => {
@@ -123,17 +129,19 @@ function EditKeywordsDialog({ locationId, onClose }: { locationId: string; onClo
               }}
             >
               <Input
-                aria-label="New keyword"
+                aria-label="New keywords"
                 value={draft}
-                maxLength={80}
-                placeholder="emergency plumber"
+                maxLength={2000}
+                placeholder="emergency plumber; drain cleaning"
                 onChange={(event) => {
                   setDraft(event.target.value);
                   setError(null);
                 }}
               />
-              <Button type="submit" variant="outline"><Plus aria-hidden /> Add</Button>
+              <Button type="submit" variant="outline" disabled={keywords.length >= MAX_KEYWORDS}><Plus aria-hidden /> Add</Button>
             </form>
+            <p className="text-xs text-muted-foreground">Add several at once by separating them with “;”.</p>
+            {canEditKeywords ? <KeywordSuggestions locationId={locationId} keywords={keywords} onAdd={addSuggested} /> : null}
             <ul className="flex flex-wrap gap-2">
               {keywords.map((keyword) => (
                 <li key={keyword}>
@@ -151,7 +159,9 @@ function EditKeywordsDialog({ locationId, onClose }: { locationId: string; onClo
                 </li>
               ))}
             </ul>
-            <p className="text-xs text-muted-foreground">{keywords.length} of {MAX_KEYWORDS}</p>
+            <p className={keywords.length >= MAX_KEYWORDS ? "text-xs font-medium text-warning-foreground" : "text-xs font-medium text-foreground"}>
+              {keywords.length} of {MAX_KEYWORDS} keywords
+            </p>
             {removed.length > 0 ? (
               <p className="text-xs text-muted-foreground">
                 Removing {removed.length === 1 ? `"${removed[0]}"` : `${removed.length} keywords`} also takes {removed.length === 1 ? "it" : "them"} out of any keyword group. Past results are kept.

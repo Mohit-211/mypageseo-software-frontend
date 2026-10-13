@@ -137,3 +137,16 @@ export async function getTrackingEstimate(
 ): Promise<TrackingEstimate> {
   return unwrapData(await api.get(ENDPOINTS.locations.trackingEstimate(locationId), { query: params, ...withSignal(signal) }));
 }
+
+/** Phase 22 AI keyword suggestions at setup: free; 20 runs per location per day (429 `suggestion_limit_reached`). */
+export type KeywordSuggestions = {
+  suggestions: { keyword: string; reason: string; source: "website" | "profile" | "category" | string }[];
+  website_used: boolean;
+  website_note: "no_website" | "unreachable" | "not_html" | null;
+  can_suggest_more: boolean;
+  runs_left_today: number;
+};
+
+export async function suggestKeywords(locationId: string, more = false): Promise<KeywordSuggestions> {
+  return unwrapData(await api.post(`locations/${encodeURIComponent(locationId)}/keywords/suggest`, more ? { more: true } : {}, { timeoutMs: 90_000 }));
+}

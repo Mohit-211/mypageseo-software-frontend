@@ -5,6 +5,7 @@ import { BarChart3, Building2, FileText, LoaderCircle } from "lucide-react";
 import { gbpReportKey } from "@/lib/gbp/use-gbp-report";
 import { reviewsKey } from "@/lib/reviews/use-reviews";
 import { hasBackgroundWork, rankingsKey, useRefreshState } from "@/lib/rankings/use-rankings";
+import { useFirstRunCardShown } from "@/lib/rankings/first-data";
 import { cn } from "@/lib/utils";
 
 /**
@@ -26,6 +27,8 @@ export function BackgroundActivity({
   const state = useRefreshState(locationId, watch);
   const data = state.data;
   const busy = hasBackgroundWork(data);
+  // A first-run card on the page already shows the run and the report.
+  const firstRunCard = useFirstRunCardShown(locationId);
 
   // When work finishes, refresh the pages that show its results.
   const wasBusy = useRef(false);
@@ -70,7 +73,10 @@ export function BackgroundActivity({
           to: `/locations/${locationId}/gbp/audit`,
         }
       : null,
-  ].filter((item) => item !== null);
+  ]
+    .filter((item) => item !== null)
+    .filter((item) => !(firstRunCard && (item.key === "rankings" || item.key === "report")));
+  if (items.length === 0) return null;
 
   return (
     <section aria-label="Background activity" aria-live="polite" className={cn("rounded-lg border border-info/30 bg-info-surface/50 p-3", className)}>

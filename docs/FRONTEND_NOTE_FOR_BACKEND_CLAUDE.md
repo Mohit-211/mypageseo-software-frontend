@@ -94,3 +94,27 @@ After merging a second posts implementation from another branch, the customer ap
 - **Panel copy:** "We couldn't find this business's position on Google Maps…" when an address exists. "service-area business without a public address" only when there's none.
 - **Search failures:** a network error or 5xx shows "Search is unavailable right now…". "Use what I typed" stays available. The autocomplete dropdown says the same.
 - **Center source (answered):** the UI reads `center.source` (`place` | `manual`) on the location and every run. `place_details` is only read from the `PUT center` answer.
+
+## First-data wait (2026-10-13): report back
+
+| Item | Status |
+|---|---|
+| Run queued / running message ("N keywords across a 7×7 grid. Started …, ready around … (about M minutes left)") | **Changed:** shared card on the overview (before the first finished run), Rank Tracker / Grid / Map Ranking (404 `no_completed_run`), the GBP report pages and the Finish step (from `rank_run.run_id`). Ready time = `started_at` (else `run_at`) + `expected_duration_ms`, rounded to the minute. |
+| Progress bar, capped at 95 % until done | **Changed** |
+| GBP report while the run goes ("…about 2 minutes after ready time"), then "Building your GBP report…" with `report.scheduled_for` | **Changed** (also on Audit / Competitors, which share the report) |
+| Past the estimate: "Taking a bit longer than usual…", no error | **Changed** |
+| `failed`: "The first ranking run didn't finish." + Run again (`POST refresh { types: ["rankings"] }`) | **Changed** (Run again hidden for a client_user) |
+| Polling 30 s while a run is active, 10 s while `report.pending`; reload the page data once when done; stop when the tab is hidden | **Changed** (React Query intervals pause in a hidden tab) |
+| Keyword-step tip | **Changed** |
+
+The existing activity banner hides its own run / report lines while this card is on screen, so nothing is said twice.
+
+## AI assist (Phase 22, 2026-10-13): report back
+
+| § | Status | What changed |
+|---|---|---|
+| 1 Keyword suggestions | **Changed** | Setup Keywords step and the Edit keywords dialog. Runs once on its own when setup opens with no keywords; otherwise a "Suggest keywords (free)" button. Tickable cards show the `reason` and the source label ("From your website / Google profile / category"), with "Add selected" and "Suggest more" (hidden when `can_suggest_more` is false or on 429 `suggestion_limit_reached`: "That's all for today"). Shows the `website_note` text. Typed or picked duplicates show "already in your list" and are never added; suggestions already in the list aren't shown. |
+| 2 Review replies | **Changed** | A one-line hint above the bulk reply buttons (2–4 sentences, keywords, the reviewer's language; old drafts stay until regenerated). No "short replies" copy existed. |
+| 3 AI posts | **Changed** | "Write with AI" now offers: "Suggest post ideas" (`ai-topics`, optional focus, `post_topics` cost) → idea cards (topic, angle, type badge, keyword chips, why) → picking one sets the type and keywords and writes drafts. Keyword chips are editable (≤ 3, from tracked keywords, same duplicate rule). "Redo: different versions" sends `avoid`. Drafts show the `compliant: false` and `duplicate_risk` notes without blocking. `cta_type` is pre-selected. Photo styles are listed first; illustration / 3D / watercolour are marked as "may look like stock art". A real-photo nudge sits near Create image. `offer_not_allowed_for_lodging` from validate disables Offer with a note (an Offer idea becomes an update for lodging). Auto-post `ai_not_compliant` has its own message. New editor warning codes show like the others. |
+
+**Duplicate rule:** the app uses your rule: case and extra spaces don't count, a space inside a keyword does ("office cleaning" ≠ "officecleaning").
