@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowRight, ImageUp, LoaderCircle, Save, Trash2 } from "lucide-react";
+import { ArrowRight, ImageUp, Link2, LoaderCircle, Save, Trash2 } from "lucide-react";
 import {
   deleteBrandingLogo,
   getBranding,
@@ -23,16 +23,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useAccess } from "@/hooks/use-access";
-
-const BRANDING_KEY = ["organization", "branding"] as const;
-const LOGO_MAX_BYTES = 512 * 1024;
-const HEX = /^#[0-9a-fA-F]{6}$/;
+import { BRANDING_KEY } from "@/lib/white-label/client-links";
+import { HEX, WEBSITE_URL, readLogoFile, usePrivateLogoUrl } from "@/lib/white-label/branding";
+import { ColorField } from "./branding-fields";
 
 type Form = Required<{ [K in keyof BrandingInput]: NonNullable<BrandingInput[K]> }>;
 
 function toForm(branding: Branding): Form {
   return {
-    name: branding.name ?? "",
+    agency_name: branding.agency_name ?? "",
+    website_url: branding.website_url ?? "",
     primary_color: branding.primary_color ?? "#1d4ed8",
     secondary_color: branding.secondary_color ?? "#0f766e",
     footer_text: branding.footer_text ?? "",
@@ -44,7 +44,7 @@ function toForm(branding: Branding): Form {
 }
 
 /**
- * White-label (agency): the branding on reports, share pages and report emails
+ * White-label settings (agency): the branding on reports, share pages, report emails and client links
  * (`/organization/branding`). The owner edits; other members see it read-only.
  */
 export function WhiteLabelPage() {
@@ -54,7 +54,10 @@ export function WhiteLabelPage() {
 
   return (
     <>
-      <PageHeader title="White-Label" description="Your agency's name, colours and logo on client reports, share links and report emails." />
+      <PageHeader
+        title="White-label settings"
+        description="Your agency's own name, website, logo and colours on client reports, client links and report emails. They can differ from your organization details."
+      />
       <SettingsNav active="white-label" isAgency className="mt-4" />
       {branding.isPending ? (
         <PageSkeleton />
@@ -64,6 +67,13 @@ export function WhiteLabelPage() {
         <div className="mt-5 grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
           <div className="min-w-0 space-y-6">
             <BrandingForm branding={branding.data} canManage={canManage} />
+            <Panel
+              title="Client links"
+              description="One link per location for your client: a page on a neutral domain with your branding and the reports you choose. It updates after every refresh, and your client can open earlier versions. MyPageSEO isn't mentioned on it."
+            >
+              <p className="mb-3 text-sm text-muted-foreground">Create a location's link from its Reports page. Changes here show on every link at once, older versions included.</p>
+              <Button asChild variant="outline" size="sm"><Link to="/reports/client-links"><Link2 aria-hidden /> Client links <ArrowRight aria-hidden /></Link></Button>
+            </Panel>
             <Panel title="Client reports" description="Every report you create or schedule uses this branding. Reports already generated keep the branding they were made with.">
               <div className="flex flex-wrap gap-2">
                 <Button asChild variant="outline" size="sm"><Link to="/reports">Reports <ArrowRight aria-hidden /></Link></Button>
@@ -72,7 +82,7 @@ export function WhiteLabelPage() {
             </Panel>
             <ComingSoon
               title="Custom domain"
-              description="Share links will be able to use your own domain (for example reports.youragency.com). Until then they use MyPageSEO's link, with your branding on the page."
+              description="Share links will be able to use your own domain (for example reports.youragency.com). Until then client links use a neutral domain with your branding on the page."
             />
           </div>
           <BrandPreview branding={branding.data} />
@@ -93,6 +103,10 @@ function BrandingForm({ branding, canManage }: { branding: Branding; canManage: 
   const save = async () => {
     if (!HEX.test(form.primary_color) || !HEX.test(form.secondary_color)) {
       setError("Colours must look like #1d4ed8.");
+      return;
+    }
+    if (form.website_url && (!WEBSITE_URL.test(form.website_url) || form.website_url.length > 300)) {
+      setError("The website must start with http:// or https://.");
       return;
     }
     if (form.email_reply_to && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.email_reply_to)) {
@@ -116,9 +130,15 @@ function BrandingForm({ branding, canManage }: { branding: Branding; canManage: 
     <Panel title="Branding" description={canManage ? undefined : "Only the account owner can change branding."}>
       <fieldset disabled={!canManage || saving} className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1.5 sm:col-span-2">
-            <Label htmlFor="brand-name">Name on reports</Label>
-            <Input id="brand-name" value={form.name} onChange={(event) => set("name", event.target.value)} />
+          <div className="space-y-1.5">
+            <Label htmlFor="brand-name">Agency name</Label>
+            <Input id="brand-name" placeholder={branding.name ?? undefined} value={form.agency_name} onChange={(event) => set("agency_name", event.target.value)} />
+            <p className="text-xs text-muted-foreground">Empty uses your organization's name.</p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="brand-website">Website URL</Label>
+            <Input id="brand-website" type="url" placeholder="https://youragency.com" value={form.website_url} onChange={(event) => set("website_url", event.target.value)} />
+            <p className="text-xs text-muted-foreground">Linked from your client links.</p>
           </div>
           <ColorField id="brand-primary" label="Primary colour" value={form.primary_color} onChange={(value) => set("primary_color", value)} />
           <ColorField id="brand-secondary" label="Secondary colour" value={form.secondary_color} onChange={(value) => set("secondary_color", value)} />
@@ -132,7 +152,7 @@ function BrandingForm({ branding, canManage }: { branding: Branding; canManage: 
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="brand-sender">Email sender name</Label>
-            <Input id="brand-sender" placeholder={`${form.name || "Your agency"} via MyPageSEO`} value={form.email_sender_name} onChange={(event) => set("email_sender_name", event.target.value)} />
+            <Input id="brand-sender" placeholder={`${form.agency_name || branding.name || "Your agency"} via MyPageSEO`} value={form.email_sender_name} onChange={(event) => set("email_sender_name", event.target.value)} />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="brand-reply">Reply-to address</Label>
@@ -140,7 +160,7 @@ function BrandingForm({ branding, canManage }: { branding: Branding; canManage: 
           </div>
         </div>
         <label className="flex items-center gap-2 text-sm">
-          <Checkbox checked={form.hide_mypageseo} onCheckedChange={(value) => set("hide_mypageseo", value === true)} /> Hide “MyPageSEO” on reports and share pages
+          <Checkbox checked={form.hide_mypageseo} onCheckedChange={(value) => set("hide_mypageseo", value === true)} /> Hide “MyPageSEO” on reports and share pages (client links never show it)
         </label>
         <LogoField branding={branding} canManage={canManage} />
         {error ? <p role="alert" className="text-sm text-critical">{error}</p> : null}
@@ -154,28 +174,9 @@ function BrandingForm({ branding, canManage }: { branding: Branding; canManage: 
   );
 }
 
-function ColorField({ id, label, value, onChange }: { id: string; label: string; value: string; onChange: (value: string) => void }) {
-  return (
-    <div className="space-y-1.5">
-      <Label htmlFor={id}>{label}</Label>
-      <div className="flex items-center gap-2">
-        <input type="color" aria-label={`${label} picker`} className="size-9 shrink-0 cursor-pointer rounded border border-border bg-background" value={HEX.test(value) ? value : "#000000"} onChange={(event) => onChange(event.target.value)} />
-        <Input id={id} value={value} onChange={(event) => onChange(event.target.value)} />
-      </div>
-    </div>
-  );
-}
-
-/** The private logo as an object URL (it needs the session, so it can't be an <img src> to the API). */
+/** The organization's logo as an object URL. */
 function useLogoUrl(branding: Branding) {
-  const logo = useQuery({
-    queryKey: [...BRANDING_KEY, "logo", branding.logo?.bytes ?? null, branding.updated_at ?? null],
-    queryFn: async ({ signal }) => URL.createObjectURL(await getBrandingLogo(signal)),
-    enabled: Boolean(branding.logo),
-    retry: false,
-    staleTime: Infinity,
-  });
-  return branding.logo ? (logo.data ?? null) : null;
+  return usePrivateLogoUrl(BRANDING_KEY, branding.logo ? getBrandingLogo : null, [branding.logo?.bytes ?? null, branding.updated_at ?? null]);
 }
 
 function LogoField({ branding, canManage }: { branding: Branding; canManage: boolean }) {
@@ -185,21 +186,20 @@ function LogoField({ branding, canManage }: { branding: Branding; canManage: boo
   const [busy, setBusy] = useState(false);
 
   const upload = (file: File) => {
-    if (!["image/png", "image/jpeg"].includes(file.type)) return toast.error("Use a PNG or JPEG logo.");
-    if (file.size > LOGO_MAX_BYTES) return toast.error("The logo must be 512 KB or smaller.");
-    const reader = new FileReader();
-    reader.onload = () => {
-      setBusy(true);
-      void uploadBrandingLogo(String(reader.result))
-        .then((result) => {
-          queryClient.setQueryData(BRANDING_KEY, result);
-          void queryClient.invalidateQueries({ queryKey: BRANDING_KEY });
-          toast.success("Logo saved.");
-        })
-        .catch((err: unknown) => toast.error(isApiError(err) && err.reason === "logo_too_large" ? "The logo must be 512 KB or smaller." : isApiError(err) && err.reason === "logo_type" ? "Use a PNG or JPEG logo." : "The logo couldn't be saved."))
-        .finally(() => setBusy(false));
-    };
-    reader.readAsDataURL(file);
+    readLogoFile(file).then(
+      (dataUrl) => {
+        setBusy(true);
+        void uploadBrandingLogo(dataUrl)
+          .then((result) => {
+            queryClient.setQueryData(BRANDING_KEY, result);
+            void queryClient.invalidateQueries({ queryKey: BRANDING_KEY });
+            toast.success("Logo saved.");
+          })
+          .catch((err: unknown) => toast.error(isApiError(err) && err.reason === "logo_too_large" ? "The logo must be 512 KB or smaller." : isApiError(err) && err.reason === "logo_type" ? "Use a PNG or JPEG logo." : "The logo couldn't be saved."))
+          .finally(() => setBusy(false));
+      },
+      (err: Error) => toast.error(err.message),
+    );
   };
 
   const remove = () => {

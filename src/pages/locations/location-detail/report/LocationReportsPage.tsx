@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/layout/shared/data-display";
 import { EmptyState, ErrorState, PageSkeleton } from "@/components/layout/shared/feedback/states";
 import { LocationHeader, LocationNavigation } from "@/components/location/location-workspace";
 import { ReportsList } from "@/components/report/reports-list";
+import { ClientLinkPanel } from "@/components/white-label/client-link-panel";
 import { Button } from "@/components/ui/button";
 import { useRequiredParams } from "@/hooks/use-required-params";
 import { useLocation } from "@/lib/locations/use-locations";
@@ -45,6 +46,7 @@ function LocationReportsPage() {
       />
       <LocationNavigation locationId={data.location_id} activeSection="reports" />
       <PageHeader title="Reports" description={`Reports generated for ${data.name}. All reports are also under Reports in the menu.`} />
+      <ClientLinkPanel locationId={data.location_id} />
       <ReportsList locationId={data.location_id} reportPath={(reportId) => `/locations/${data.location_id}/reports/${reportId}`} />
     </AppShell>
   );

@@ -107,6 +107,7 @@ export const router = createBrowserRouter([
           { path: "reports", lazy: () => import("@/pages/reports/ReportsIndexPage").then(page) },
           { path: "reports/create", lazy: () => import("@/pages/reports/ReportsCreatePage").then(page) },
           { path: "reports/scheduled", lazy: () => import("@/pages/reports/ReportsScheduledPage").then(page) },
+          { path: "reports/client-links", lazy: () => import("@/pages/white-label/ClientLinksPage").then(page) },
           { path: "reports/:reportId", lazy: () => import("@/pages/reports/ReportDetailPage").then(page) },
           { path: "clients", lazy: () => import("@/pages/clients/ClientsIndexPage").then(page) },
           {

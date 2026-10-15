@@ -1,0 +1,187 @@
+/*
+ * White-label client page. The app's design system (tokens, type, components) with the agency's colours
+ * applied at runtime (`--primary`, `--accent-2`, set from the branding), and a little depth: raised cards,
+ * key-cap rank tiles and a tilted grid. Motion is skipped for people who prefer less of it.
+ */
+@import "../styles.css";
+
+:root {
+  /* Overridden from the agency's branding in main.tsx. */
+  --accent-2: var(--brand-accent);
+  --canvas-glow: color-mix(in oklch, var(--primary) 10%, transparent);
+  --lift-shadow:
+    0 1px 0 0 rgb(255 255 255 / 0.9) inset,
+    0 1px 2px 0 rgb(15 23 42 / 0.06),
+    0 10px 28px -14px rgb(15 23 42 / 0.22),
+    0 28px 56px -36px color-mix(in oklch, var(--primary) 45%, transparent);
+  --lift-shadow-hover:
+    0 1px 0 0 rgb(255 255 255 / 0.9) inset,
+    0 2px 4px 0 rgb(15 23 42 / 0.06),
+    0 18px 40px -16px rgb(15 23 42 / 0.28),
+    0 36px 64px -36px color-mix(in oklch, var(--primary) 55%, transparent);
+}
+
+body {
+  background:
+    radial-gradient(1200px 520px at 15% -10%, var(--canvas-glow), transparent 70%),
+    radial-gradient(900px 480px at 100% 0%, color-mix(in oklch, var(--accent-2) 7%, transparent), transparent 70%),
+    var(--background);
+  background-attachment: fixed;
+}
+
+@layer components {
+  /* A raised card: soft top highlight, layered shadow tinted with the agency colour. */
+  .card-3d {
+    position: relative;
+    border: 1px solid color-mix(in oklch, var(--border) 85%, white);
+    border-radius: 1rem;
+    background: linear-gradient(180deg, #fff 0%, color-mix(in oklch, #fff 94%, var(--primary)) 100%);
+    box-shadow: var(--lift-shadow);
+  }
+
+  .card-lift {
+    transition:
+      transform 220ms cubic-bezier(0.2, 0.7, 0.2, 1),
+      box-shadow 220ms ease;
+  }
+  .card-lift:hover,
+  .card-lift:focus-visible {
+    transform: translateY(-3px);
+    box-shadow: var(--lift-shadow-hover);
+  }
+
+  /* The hero: the agency colour with depth (light from the top left). */
+  .hero-3d {
+    position: relative;
+    overflow: hidden;
+    border-radius: 1.25rem;
+    color: var(--primary-foreground);
+    background:
+      radial-gradient(600px 260px at 0% 0%, rgb(255 255 255 / 0.22), transparent 70%),
+      radial-gradient(500px 300px at 100% 120%, color-mix(in oklch, var(--accent-2) 55%, transparent), transparent 70%),
+      linear-gradient(135deg, color-mix(in oklch, var(--primary) 88%, white) 0%, var(--primary) 45%, color-mix(in oklch, var(--primary) 70%, black) 100%);
+    box-shadow:
+      0 1px 0 0 rgb(255 255 255 / 0.25) inset,
+      0 -2px 0 0 rgb(0 0 0 / 0.12) inset,
+      0 24px 48px -24px color-mix(in oklch, var(--primary) 70%, transparent);
+  }
+
+  /* A small bevelled disc for icons. */
+  .bevel {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    color: var(--primary);
+    background: linear-gradient(180deg, #fff, color-mix(in oklch, var(--primary) 12%, white));
+    box-shadow:
+      0 1px 0 0 #fff inset,
+      0 -1px 0 0 color-mix(in oklch, var(--primary) 18%, transparent) inset,
+      0 4px 10px -4px color-mix(in oklch, var(--primary) 45%, transparent);
+  }
+
+  /* The tab track (pressed in) and the active tab (raised out of it). */
+  .track-inset {
+    background: color-mix(in oklch, var(--primary) 6%, var(--surface-strong));
+    box-shadow:
+      0 1px 2px 0 rgb(15 23 42 / 0.08) inset,
+      0 1px 0 0 rgb(255 255 255 / 0.8);
+  }
+  .tab-raised[data-state="active"],
+  .tab-raised[aria-current="true"] {
+    color: var(--primary);
+    background: linear-gradient(180deg, #fff, color-mix(in oklch, #fff 92%, var(--primary)));
+    box-shadow:
+      0 1px 0 0 #fff inset,
+      0 1px 2px rgb(15 23 42 / 0.1),
+      0 6px 14px -8px color-mix(in oklch, var(--primary) 60%, transparent);
+  }
+
+  /* Rank tiles look like key caps: a lit top and a darker lip below. */
+  .keycap {
+    border-radius: 0.5rem;
+    box-shadow:
+      0 1px 0 0 rgb(255 255 255 / 0.45) inset,
+      0 3px 0 0 var(--cap-lip, rgb(0 0 0 / 0.25)),
+      0 6px 10px -4px rgb(0 0 0 / 0.3);
+    transition:
+      transform 160ms ease,
+      box-shadow 160ms ease;
+  }
+  .keycap:hover,
+  .keycap:focus-visible {
+    transform: translateY(-2px);
+    box-shadow:
+      0 1px 0 0 rgb(255 255 255 / 0.5) inset,
+      0 5px 0 0 var(--cap-lip, rgb(0 0 0 / 0.25)),
+      0 12px 16px -6px rgb(0 0 0 / 0.35);
+  }
+
+  /* The grid board leans back a little and straightens on hover/focus so every number stays readable. */
+  .board-stage {
+    perspective: 1100px;
+  }
+  .board-tilt {
+    transform: rotateX(16deg);
+    transform-origin: 50% 100%;
+    transition: transform 420ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  .board-stage:hover .board-tilt,
+  .board-stage:focus-within .board-tilt {
+    transform: rotateX(0deg);
+  }
+
+  /* A bar with depth (distribution, pillars, competitor scores). */
+  .bar-3d {
+    background: linear-gradient(180deg, color-mix(in oklch, var(--bar, var(--primary)) 78%, white), var(--bar, var(--primary)));
+    box-shadow:
+      0 1px 0 0 rgb(255 255 255 / 0.4) inset,
+      0 2px 6px -2px color-mix(in oklch, var(--bar, var(--primary)) 60%, transparent);
+  }
+  .bar-track {
+    background: color-mix(in oklch, var(--primary) 6%, var(--muted));
+    box-shadow: 0 1px 2px 0 rgb(15 23 42 / 0.08) inset;
+  }
+
+  .fade-up {
+    animation: fade-up 420ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-lift,
+  .keycap,
+  .board-tilt {
+    transition: none;
+  }
+  .card-lift:hover,
+  .keycap:hover {
+    transform: none;
+  }
+  .board-tilt {
+    transform: none;
+  }
+  .fade-up {
+    animation: none;
+  }
+}
+
+@media print {
+  body {
+    background: #fff;
+  }
+  .no-print {
+    display: none !important;
+  }
+}

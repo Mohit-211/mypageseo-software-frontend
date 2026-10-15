@@ -69,6 +69,12 @@ export const ENDPOINTS = {
     shareLink: (reportId: string, shareId: string) => `reports/${encodeURIComponent(reportId)}/shares/${encodeURIComponent(shareId)}`,
     email: (reportId: string) => `reports/${encodeURIComponent(reportId)}/email`,
   },
+  whiteLabel: {
+    list: "white-label-links",
+    link: (locationId: string) => `locations/${encodeURIComponent(locationId)}/white-label-link`,
+    rotate: (locationId: string) => `locations/${encodeURIComponent(locationId)}/white-label-link/rotate`,
+    logo: (locationId: string) => `locations/${encodeURIComponent(locationId)}/white-label-link/logo`,
+  },
   places: {
     search: "places/search",
     autocomplete: "places/autocomplete",

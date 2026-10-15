@@ -4,7 +4,10 @@ import { api, unwrapData } from "../client";
 export type Branding = {
   white_label: boolean;
   name: string | null;
+  /** The agency name as saved; `name` falls back to the organization's name when it's empty. */
   agency_name?: string | null;
+  /** Phase 23: linked from the white-label client links. */
+  website_url?: string | null;
   primary_color: string | null;
   secondary_color: string | null;
   footer_text: string | null;
@@ -17,7 +20,7 @@ export type Branding = {
 };
 
 export type BrandingInput = Partial<
-  Pick<Branding, "name" | "primary_color" | "secondary_color" | "footer_text" | "contact_text" | "hide_mypageseo" | "email_sender_name" | "email_reply_to">
+  Pick<Branding, "agency_name" | "website_url" | "primary_color" | "secondary_color" | "footer_text" | "contact_text" | "hide_mypageseo" | "email_sender_name" | "email_reply_to">
 >;
 
 export async function getBranding(signal?: AbortSignal): Promise<Branding> {

@@ -32,6 +32,7 @@ export * from "./staff";
 export * from "./posts";
 export * from "./citations";
 export * from "./organization";
+export * from "./white-label";
 export * from "./support";
 export type * from "./types/auth";
 export type * from "./types/gbp";
