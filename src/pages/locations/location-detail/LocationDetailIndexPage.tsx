@@ -16,6 +16,7 @@ import { useGbpConnect } from "@/lib/gbp/use-gbp-connect";
 import { useLocationOverview } from "@/lib/locations/use-locations";
 import { useRequiredParams } from "@/hooks/use-required-params";
 import { centerDescription } from "@/lib/rankings/format";
+import { ChangeCenterButton } from "@/components/location/change-center-dialog";
 import { BackgroundActivity } from "@/components/location/background-activity";
 import { FirstRunProgress } from "@/components/ranking/first-run-progress";
 import { ReportMenuButton } from "@/components/report/rank-report-button";
@@ -105,7 +106,14 @@ function LocationOverviewPage() {
             unavailable={data.citations?.available === false && data.citations.reason === "no_citations_yet" ? { citation: REPORT_CREATE_ERRORS.no_citations_yet! } : undefined}
           />
         }
-        meta={centerDescription(data.center) ? <p className="text-xs text-muted-foreground">{centerDescription(data.center)} — rankings are measured from here.</p> : undefined}
+        meta={
+          centerDescription(data.center) ? (
+            <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+              {centerDescription(data.center)} — rankings are measured from here.
+              <ChangeCenterButton locationId={data.location_id} />
+            </p>
+          ) : undefined
+        }
       />
 
       <StatusBanner location={data} />

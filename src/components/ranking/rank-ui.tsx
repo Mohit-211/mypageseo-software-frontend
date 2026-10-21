@@ -33,6 +33,7 @@ import {
   formatRunDate,
 } from "@/lib/rankings/format";
 import { GridSettingsButton } from "@/components/ranking/grid-settings-dialog";
+import { ChangeCenterButton } from "@/components/location/change-center-dialog";
 import { BackgroundActivity } from "@/components/location/background-activity";
 import { RankReportButton } from "@/components/report/rank-report-button";
 import { GroupFilter } from "@/components/ranking/keyword-controls";
@@ -376,7 +377,12 @@ export function RankingsPageHeader({
                 {radius ? `, ${formatDistance(radius)} from center to edge` : `, points ${run.config.spacing_km} km apart`}
               </p>
             ) : null}
-            {scope ? <p className="font-medium text-foreground">Measured: {scope}</p> : measuredAround ? <p className="font-medium text-foreground">{measuredAround}</p> : null}
+            {scope || measuredAround ? (
+              <p className="flex flex-wrap items-center gap-x-2 font-medium text-foreground">
+                {scope ? `Measured: ${scope}` : measuredAround}
+                {location.center?.source ? <ChangeCenterButton locationId={locationId} /> : null}
+              </p>
+            ) : null}
             <p className="flex items-center gap-1">
               {RANKINGS_SOURCE_NOTE}
               <InfoTip label="Where are rankings measured from?">{GLOSSARY.businessCenter}</InfoTip>

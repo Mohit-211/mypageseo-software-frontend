@@ -1529,6 +1529,13 @@ Body, one of:
 - The result is saved as the location's lat/lng with `center_source: "manual"`. Rank runs and competitor suggestions use it. Old cached suggestions are dropped.
 - The 2 calls count against the daily Places limit.
 
+**Changing the center after setup (2026-10-21):** add `"rerun": true` to any body above. On a set-up location (onboarding `completed`, or none) the rankings run again around the new center at once:
+- It costs the usual rankings refresh tokens (`tokens.cost.rankings`), checked **before** anything is saved or any Places call is made (**402** `insufficient_tokens` with `balance`, `cost`; the center is not changed).
+- It is **not** held back by the once-per-24 h manual refresh limit (the center really changed), and it starts that interval again like a manual refresh.
+- A run in progress (queued or running) is ended as `failed` with `failure_reason: "superseded: the business center changed"`; its tokens are refunded and its results are not saved. Earlier finished runs keep their own frozen `run.center`.
+- The answer adds `rank_run: { run_id, status, existing, superseded_run_id, next_allowed_at }`. If the run can't be queued after the center was saved (e.g. no keywords, over the call cap) it is `rank_run: null` with `rank_run_error: { reason, message }`; the center stays changed and the next run uses it.
+- During setup `rerun` is ignored (the first run comes from `POST /onboarding/complete`).
+
 ### `GET /api/v1/places/autocomplete?q=&session=&country=|locationId=` (2026-10-01)
 
 City / region / ZIP suggestions for the setup-center picker, from **Google Places Autocomplete (New)** limited to regions and postal codes (`(regions)`) in the country (the location's with `locationId`, else `country`, else the organization's).

@@ -22,7 +22,7 @@ export const GLOSSARY = {
   top3: "The share of searches where the business is in the top 3, the “map pack” Google shows first.",
   change: "Compared with the previous ranking run. A green up arrow means the business moved up (better).",
   businessCenter:
-    "Rankings are measured around the business center: the business's own pin on Google Maps, or, for a service-area business without a public address, the city or ZIP set during setup.",
+    "Rankings are measured around the business center: the business's own pin on Google Maps, or, for a service-area business without a public address, the city or ZIP set during setup. Changing the center re-runs the rankings around the new one.",
   gridSize:
     "How many search points the grid has. 7 × 7 means 49 points in a square around the business; more points give a finer picture of where it ranks.",
   gridRadius:

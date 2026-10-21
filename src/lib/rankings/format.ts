@@ -114,5 +114,5 @@ export const BUCKET_MARKER_CLASS: Record<RankBucket, string> = {
 export function centerDescription(center: { source?: CenterSource | null; label?: string | null } | null | undefined): string | null {
   if (!center?.source) return null;
   if (center.source === "place") return `Measured around: your Google Maps pin${center.label ? `, ${center.label}` : ""}`;
-  return `Measured around: ${center.label ?? "the city or ZIP"} (set during setup)`;
+  return `Measured around: ${center.label ?? "the chosen city or ZIP"}`;
 }

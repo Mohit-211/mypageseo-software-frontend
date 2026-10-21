@@ -192,6 +192,12 @@ export type LocationCenterResult = {
   center_source: "manual" | "place_details" | string;
   center_label: string | null;
   onboarding_step?: LocationOnboardingStep;
+  /**
+   * Sent with `rerun: true` on a set-up location (2026-10-21): the run queued around the new center
+   * (a run in progress was ended, `superseded_run_id`), or null with `rank_run_error` when it couldn't start.
+   */
+  rank_run?: { run_id: string; status: string; existing: boolean; superseded_run_id: string | null; next_allowed_at: string } | null;
+  rank_run_error?: { reason: string | null; message: string };
 };
 
 /** `GET/PUT locations/:id/tracking` → `tracking`. */

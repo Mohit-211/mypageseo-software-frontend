@@ -111,7 +111,7 @@ function GridSettingsDialog({ locationId, onClose }: { locationId: string; onClo
           <DialogTitle>Grid settings</DialogTitle>
           <DialogDescription>
             The grid is the set of points around the business center where rankings are measured: the business's Google Maps pin
-            (or, for a service-area business, the city or ZIP set during setup). Changes apply from the next run.
+            (or the city or ZIP chosen for it; change it with “Change” next to “Measured around”). Grid changes apply from the next run.
           </DialogDescription>
         </DialogHeader>
 

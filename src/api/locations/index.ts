@@ -60,7 +60,10 @@ export async function deleteLocation(locationId: string): Promise<{ deleted: boo
 export async function setLocationCenter(
   locationId: string,
   /** `use_business_location`: the business's own Google Maps position (400 `no_place_id`, 404 `no_business_location`). */
-  input: { query: string } | { place_id: string; session: string } | { use_business_location: true },
+  input: ({ query: string } | { place_id: string; session: string } | { use_business_location: true }) & {
+    /** On a set-up location: also re-run the rankings around the new center now (402 `insufficient_tokens` before anything is saved). */
+    rerun?: boolean;
+  },
 ): Promise<LocationCenterResult> {
   return unwrapData(await api.put(ENDPOINTS.locations.center(locationId), input));
 }
