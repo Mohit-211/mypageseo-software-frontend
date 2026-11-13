@@ -24,6 +24,8 @@ export const LOCATION_SECTIONS = {
   ai: "ai",
   "ai/posts": "ai/posts",
   "ai/replies": "ai/replies",
+  /** Sections: `#replies`, `#restricted`, `#facts` (Facts for the AI), `#images`. */
+  "ai/settings": "ai/settings",
 } as const;
 
 export type LocationSection = keyof typeof LOCATION_SECTIONS;
@@ -47,6 +49,7 @@ export const LOCATION_SECTION_LABELS: Record<LocationSection, string> = {
   ai: "AI Studio",
   "ai/posts": "AI Posts",
   "ai/replies": "AI Review Replies",
+  "ai/settings": "AI Settings",
 };
 
 /** `/locations/:id/<section>` plus an optional `?search` / `#hash` suffix. */
@@ -100,6 +103,7 @@ export const PORTFOLIO_SECTIONS: Record<string, { section: LocationSection; suff
   "/ai": { section: "ai" },
   "/ai/posts": { section: "ai/posts" },
   "/ai/replies": { section: "ai/replies" },
+  "/ai/settings": { section: "ai/settings" },
 };
 
 /** A link split into its path (no trailing slash), `?search` and `#hash`. */

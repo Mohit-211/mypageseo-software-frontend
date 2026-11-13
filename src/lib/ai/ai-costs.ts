@@ -148,7 +148,8 @@ type DraftableReview = Pick<Review, "rating" | "reply_state" | "flag_level" | "d
 /**
  * Tokens `POST reviews/drafts` will spend on these reviews, the way the backend counts them
  * (`generateDrafts` / `draftBatchesOf` in backend `reviews.service.ts`):
- * - only eligible reviews: rated, no reply on Google yet, not flagged suspicious;
+ * - only eligible reviews: rated, no reply on Google yet (a reply waiting for Google's review is one;
+ *   a rejected one isn't), not flagged suspicious;
  * - a current draft (not stale), or one the user wrote or edited, is reused for free unless `regenerate`;
  * - 4–5★ and 1–3★ reviews go in separate batches (different reply rules), each charged per started 10.
  * The old "ceil(selected / 10) × price" estimate missed the last two rules.
@@ -157,7 +158,7 @@ export function estimateReplyDraftCost(reviews: readonly DraftableReview[], per1
   let positive = 0;
   let critical = 0;
   for (const review of reviews) {
-    if (review.rating === null || review.reply_state === "sent" || review.flag_level === "suspicious") continue;
+    if (review.rating === null || review.reply_state === "sent" || review.reply_state === "pending" || review.flag_level === "suspicious") continue;
     const draft = review.draft;
     const reused = !regenerate && draft !== null && (!draft.stale || draft.source === "user" || Boolean(draft.edited));
     if (reused) continue;

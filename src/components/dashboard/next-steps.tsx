@@ -7,6 +7,7 @@ import {
   Link2,
   MapPin,
   MessageSquareHeart,
+  MessageSquareX,
   Newspaper,
   ShieldAlert,
   Sparkles,
@@ -16,7 +17,7 @@ import {
 } from "lucide-react";
 import { preloadPath } from "@/app/route-preload";
 import { IconChip } from "@/components/layout/shared/icon-chip";
-import type { ModuleTone } from "@/components/layout/shared/module-tone";
+import type { ModuleTone, StatusTone } from "@/components/layout/shared/module-tone";
 import { StatusBadge } from "@/components/layout/shared/status-badge";
 import { EmptyState } from "@/components/layout/shared/feedback/states";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -39,8 +40,10 @@ const SOURCE_LOOK: Record<NextStepSource, { icon: LucideIcon; tone: ModuleTone }
   other: { icon: ArrowRight, tone: "dashboard" },
 };
 
-function lookFor(step: NextStep, cta: NextStepCta | null): { icon: LucideIcon; tone: ModuleTone } {
+function lookFor(step: NextStep, cta: NextStepCta | null): { icon: LucideIcon; tone: ModuleTone; statusTone?: StatusTone } {
   const to = cta?.kind === "link" ? cta.to : "";
+  // Phase 25a: replies Google rejected aren't public, a problem like a failed post: a red mark whatever the button opens.
+  if (step.source === "reviews" && step.kind === "reply_rejected") return { icon: MessageSquareX, tone: "reputation", statusTone: "critical" };
   if (to.includes("/ai/")) return { icon: Sparkles, tone: "ai" };
   // "<Competitor> ranks ahead of you" is about a competitor, wherever its button leads (Profile Comparison).
   if (step.source === "ranking" && step.kind === "competitor_ahead") return { icon: Swords, tone: "competitors" };
@@ -120,7 +123,7 @@ function NextStepRow({ step, primary, showLocation, viewer }: { step: NextStep; 
   return (
     <li className="group flex flex-col gap-3 px-4 py-3.5 transition-colors hover:bg-accent/40 sm:flex-row sm:items-center sm:gap-5 sm:px-5">
       <div className="flex min-w-0 flex-1 items-start gap-3">
-        <IconChip icon={look.icon} tone={look.tone} size="md" />
+        <IconChip icon={look.icon} tone={look.tone} statusTone={look.statusTone} size="md" />
         <div className="min-w-0 pt-0.5">
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-semibold text-foreground">
             <span className="min-w-0">{step.title}</span>

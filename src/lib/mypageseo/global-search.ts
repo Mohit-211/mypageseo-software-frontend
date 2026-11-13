@@ -13,6 +13,7 @@ import {
   CircleHelp,
   CreditCard,
   FileText,
+  Lightbulb,
   Link2,
   LifeBuoy,
   Mail,
@@ -205,6 +206,22 @@ export function buildSearchIndex(scope: SearchScope): SearchResult[] {
       haystack: "keywords groups organise organize",
       needsContextMatch: false,
     });
+    // A section of AI Settings that people look for by name (`#facts`).
+    if (locationPages.some((page) => page.entry.id === "ai.settings")) {
+      entries.push({
+        id: "page:ai.settings.facts",
+        group: "pages",
+        title: "Facts for the AI",
+        context: `AI Settings · ${navLocation.businessName}`,
+        to: locationPath(navLocation.id, "ai/settings", "#facts"),
+        icon: Lightbulb,
+        tone: "ai",
+        locationId: navLocation.id,
+        clientId: null,
+        haystack: "facts offers events contests prices ai artificial intelligence",
+        needsContextMatch: false,
+      });
+    }
   }
   for (const page of EXTRA_PAGES) {
     if (page.accountTypes && !page.accountTypes.includes(scope.accountType)) continue;

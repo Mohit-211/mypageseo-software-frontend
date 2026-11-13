@@ -89,6 +89,13 @@ function ctaFor(source: NextStepSource, kind: string, id: string | null, viewer:
         const reply = replyLink(viewer.writing, id);
         return link(reply.label, reply.to);
       }
+      if (kind === "reply_rejected") {
+        // Phase 25a: replies Google didn't publish. AI Review Replies' "Rejected by Google" view drafts
+        // new ones; with AI off they're written on Reviews, and read-only users just look there.
+        const rejectedReviews = locationPath(id, "reputation", "?reply=rejected");
+        if (lookOnly) return link("Open reviews", rejectedReviews);
+        return link("Write new replies", viewer.writing === "ai" ? locationPath(id, "ai/replies", "?filter=rejected") : rejectedReviews);
+      }
       return link("Open reviews", locationPath(id, "reputation"));
     case "citations":
       return link(
@@ -126,6 +133,11 @@ export function nextStepCta(step: NextStep, viewer: NextStepViewer): NextStepCta
  */
 function wordsFor(action: DashboardAction, source: NextStepSource, kind: string): { title: string; detail: string | null } {
   const detail = action.detail?.trim() || null;
+  if (source === "reviews" && kind === "reply_rejected") {
+    // The title as the backend writes it ("Google rejected 2 replies"); its detail says "Open Reviews",
+    // while the button may open AI Review Replies, so the detail names no page.
+    return { title: action.title, detail: "They aren't public. Read Google's reason on each, then write a new reply and send it." };
+  }
   if (source !== "reviews" || kind !== "attention") return { title: action.title, detail };
   const count = /^\s*(\d[\d,]*)/.exec(action.title)?.[1];
   const urgent = count === undefined ? Number.NaN : Number(count.replace(/,/g, ""));

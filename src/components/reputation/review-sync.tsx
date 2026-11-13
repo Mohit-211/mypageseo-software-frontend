@@ -8,6 +8,7 @@ import { useNow } from "@/hooks/use-now";
 import { useWriteBlock } from "@/lib/billing/write-block";
 import { formatDateTime, formatRelative, formatTime } from "@/lib/datetime";
 import { reviewErrorMessage } from "@/lib/reviews/review-errors";
+import { invalidateReviewLookups } from "@/lib/reviews/review-spotlight";
 import { reviewsKey } from "@/lib/reviews/use-reviews";
 
 /** "Checked with Google 3 hours ago" under a reviews page title. */
@@ -57,7 +58,8 @@ function RefreshReviewsButtonEditor({ locationId, summary }: { locationId: strin
         );
     },
     onError: (err) => toast.error(reviewErrorMessage(err, "Reviews couldn't be checked.").message),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: reviewsKey(locationId) }),
+    // Google may have changed any review, the one opened above the list (`?review=`) included.
+    onSettled: () => Promise.all([queryClient.invalidateQueries({ queryKey: reviewsKey(locationId) }), invalidateReviewLookups(queryClient, locationId)]),
   });
 
   return (

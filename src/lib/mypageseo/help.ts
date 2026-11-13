@@ -91,7 +91,7 @@ const CATEGORIES: HelpCategory[] = [
         body: [
           "Everything in MyPageSEO is about a location: one business on Google Maps. Rankings, keywords, your Google Business Profile (GBP), reviews, citations and competitors are shown for one location at a time.",
           "The location switcher in the sidebar shows which location you're looking at. Open it to search your locations, jump to another one or add a new one. On a phone, it's in the menu.",
-          "Under the switcher are that location's pages: Overview, Keywords, Rankings, GBP, Reputation, Citations and Competitors. The AI section holds AI Studio, AI Posts and AI Review Replies.",
+          "Under the switcher are that location's pages: Overview, Keywords, Rankings, GBP, Reputation, Citations and Competitors. The AI section holds AI Studio, AI Posts, AI Review Replies and AI Settings.",
           "The Workspace section holds White Label and Clients for agencies, and Reports for businesses.",
         ],
         link: { label: "Open the dashboard", to: "/dashboard" },
@@ -290,7 +290,7 @@ const CATEGORIES: HelpCategory[] = [
   {
     id: "ai",
     label: "AI",
-    description: "AI Studio, AI Posts and AI Review Replies.",
+    description: "AI Studio, AI Posts, AI Review Replies and AI Settings.",
     articles: [
       {
         id: "help_ai_studio",
@@ -318,6 +318,17 @@ const CATEGORIES: HelpCategory[] = [
         summary: "Draft replies to many reviews at once.",
         body: ["AI Review Replies drafts a reply to each review you pick. Nothing is sent until you approve it, and you can edit every draft first."],
         link: { label: "Open AI Review Replies", to: "/ai/replies" },
+      },
+      {
+        id: "help_ai_settings",
+        title: "AI Settings and facts for the AI",
+        summary: "House rules, signature, contact line, restricted mode, and the facts the AI may use.",
+        body: [
+          "AI Settings, in the AI section of each location, sets how the AI writes for that business. House rules are standing instructions, like “Never mention prices”. The signature and the contact line are used in AI review replies.",
+          "Restricted mode is on by default for health, legal, financial, insurance and tax businesses: replies name no one, repeat nothing from the review, name no service and use no keywords. Only the account owner can switch it off.",
+          "Facts for the AI are your own facts, offers, events and contests. Prices, percentages, offer dates and staff names in AI text come only from there. AI posts start using them in an upcoming update.",
+        ],
+        link: { label: "Open AI Settings", to: "/ai/settings" },
       },
     ],
   },

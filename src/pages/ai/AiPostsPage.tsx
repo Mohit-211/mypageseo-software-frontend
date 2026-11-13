@@ -21,9 +21,9 @@ import { locationPath } from "@/lib/mypageseo/section-links";
 import { formatPostMoment } from "@/lib/posts/post-format";
 import { AI_POST_SEGMENTS, countAiPosts, isAiPostSegment, sortAiPosts, type AiPostSegment } from "@/lib/posts/post-order";
 import type { PostEditorTarget } from "@/lib/posts/post-seed";
+import { PLANNER_PAUSED_TITLE, autoPostsState } from "@/lib/posts/series-planner";
 import { postErrorText, useAllPosts, usePostSeries, usePostsSummary } from "@/lib/posts/use-posts";
 import { useTracking } from "@/lib/rankings/use-rankings";
-import { byTime, sortRows } from "@/lib/sort";
 import { useSearchUpdater } from "@/lib/url-state";
 import { cn } from "@/lib/utils";
 
@@ -39,7 +39,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * are rewritten to them); `?keyword=` (from Keywords) starts the writer on that keyword; `?new=series`
  * opens the new auto-post dialog; `?show=upcoming|drafts|published|problems` picks the list segment.
  * AI stays visible when it can't run: the banner says why and the AI buttons are disabled with the
- * reason (never hidden). Phase 25 slots (review queue, "Change it", AI settings) are not built yet.
+ * reason (never hidden). While automatic AI posts are paused (the series' `planner` isn't "on"), the
+ * Auto-posts tile says so and never names a next AI post.
  */
 function AiPostsPage() {
   const { location } = useLocationRoute();
@@ -100,12 +101,9 @@ function AiPostsView() {
   );
   const nextUpcoming = useMemo(() => (posts ? sortAiPosts(posts, "upcoming").find((post) => post.scheduled_at)?.scheduled_at : undefined), [posts]);
 
-  const seriesList = series.data?.series ?? [];
-  const activeSeries = seriesList.filter((entry) => entry.active);
-  const nextSlot = sortRows(
-    activeSeries.flatMap((entry) => entry.next_slots),
-    byTime((slot) => slot, "asc"),
-  )[0];
+  // `nextSlot` only comes from series the planner really writes: while it is paused (`planner` isn't
+  // "on"), `next_slots` are just the times a series would use, so the tile says so instead.
+  const { active: activeSeries, pausedBy, nextSlot } = autoPostsState(series.data?.series ?? []);
 
   const keywordParam = params.get("keyword");
   const data = summary.data;
@@ -228,7 +226,15 @@ function AiPostsView() {
           tone="ai"
           loading={series.isPending}
           to="#auto"
-          hint={nextSlot ? `Next AI post ${formatPostMoment(nextSlot, { weekday: true })}` : activeSeries.length ? "No slot coming up" : "None running"}
+          hint={
+            pausedBy
+              ? PLANNER_PAUSED_TITLE
+              : nextSlot
+                ? `Next AI post ${formatPostMoment(nextSlot, { weekday: true })}`
+                : activeSeries.length
+                  ? "No slot coming up"
+                  : "None running"
+          }
         />
       </div>
 

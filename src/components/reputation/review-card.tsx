@@ -1,14 +1,13 @@
-import { useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   AlertTriangle,
-  Check,
+  Ban,
   Copy,
-  CornerDownRight,
   ExternalLink,
+  EyeOff,
   LoaderCircle,
-  MessageSquare,
   MoreHorizontal,
   PenLine,
   Pencil,
@@ -17,6 +16,7 @@ import {
   Sparkles,
   Trash2,
   UserRound,
+  WandSparkles,
 } from "lucide-react";
 import {
   analyzeReviews,
@@ -24,9 +24,13 @@ import {
   deleteReplyDraft,
   draftAppeal,
   generateReplyDrafts,
+  reviseReplyDraft,
   saveReplyDraft,
   sendReplies,
   setReportStatus,
+  type DeclinedInstruction,
+  type DraftCheck,
+  type GoogleReply,
   type Review,
   type ReviewReportStatus,
 } from "@/api";
@@ -46,22 +50,43 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useCanEdit } from "@/hooks/use-access";
-import { estimateAnalysisCost, formatTokens } from "@/lib/ai/ai-costs";
+import { estimateAnalysisCost, formatTokenCount, formatTokens } from "@/lib/ai/ai-costs";
 import { noteAiSuccess } from "@/lib/ai/ai-signal";
 import type { AiStatus } from "@/lib/ai/ai-status";
 import { useToastAiError } from "@/lib/ai/toast-ai-error";
 import { noteAccountError } from "@/lib/billing/account-restriction";
-import { formatDate, formatDateTime, formatRelative } from "@/lib/datetime";
-import { reviewErrorMessage } from "@/lib/reviews/review-errors";
+import { formatDateTime } from "@/lib/datetime";
+import {
+  asFailedSend,
+  asSentReview,
+  canReviseDraft,
+  hasHardFinding,
+  mergeSendFindings,
+  publicReplyText,
+  rejectedReply,
+  whenLabel,
+  withGoogleReply,
+  withoutDraft,
+  withoutReply,
+} from "@/lib/reviews/draft-view";
+import { sendBlockedByAuthorization } from "@/lib/reviews/reply-authorization-copy";
+import { REPLY_MAX_BYTES, declinedSummary, sendBlockFromError, sortChecks, utf8Length, type SendBlock } from "@/lib/reviews/reply-checks";
+import { putReviewInCache, updateReviewInCache } from "@/lib/reviews/review-cache";
+import { SEND_BLOCK_COPY, reviewErrorMessage, reviseErrorNotice, type InlineNotice } from "@/lib/reviews/review-errors";
 import { nameHash, reviewerInitials } from "@/lib/reviews/review-metrics";
+import { scrollToReplyAuthorization } from "@/lib/reviews/review-spotlight";
+import { SENT_REPLIES_NOTE, noteReplyAuthorizationRequired, sendFailureText } from "@/lib/reviews/send-results";
+import { useReplyAuthorization } from "@/lib/reviews/use-reply-authorization";
 import { reviewsKey } from "@/lib/reviews/use-reviews";
 import { cn } from "@/lib/utils";
+import { ChangeItBox } from "./change-it";
+import { DraftFindings, DraftNote, DraftProvenance, DraftText, VerificationBadge } from "./draft-checks";
+import { RejectedReply, ReplyOnGoogle, ReplyStateBadge } from "./reply-state";
 import { ReviewStars } from "./review-stars";
+import { GoogleReplyDialog, SendAnywayDialog } from "./send-blocked-dialog";
 
 /** Google's Reviews Management Tool (Google has no API to report a review). */
 const GOOGLE_REPORT_URL = "https://support.google.com/business/workflow/16726127";
-
-const MAX_REPLY = 4000;
 
 const REPORT_STATUS_LABEL: Record<ReviewReportStatus, string> = {
   not_reported: "Not reported",
@@ -98,8 +123,15 @@ const SEND_REASON: Record<string, string> = {
   no_draft: "There's no reply to send.",
   already_replied: "It already has a reply.",
   deleted_on_google: "The review is no longer on Google.",
+  not_found: "This review isn't here anymore. Reload the page.",
   google_error: "Google didn't accept the reply. Try again.",
 };
+
+/** Results of a send of one that the checks or Google held back (as a send of several reports them): shown like the 422 / 409 answers. */
+const HELD_BACK = new Set(["checks_failed", "needs_review", "reply_changed_on_google"]);
+
+/** A send skipped because there is nothing left to send here (the card needn't stay on screen for it). */
+const NOTHING_TO_SEND = new Set(["no_draft", "already_replied", "deleted_on_google", "not_found"]);
 
 const SENTIMENT_TONE: Record<string, "success" | "warning" | "neutral"> = { positive: "success", negative: "warning", mixed: "neutral", neutral: "neutral" };
 const SEVERITY_TONE: Record<string, "critical" | "warning" | "neutral"> = { high: "critical", medium: "warning", low: "neutral" };
@@ -117,22 +149,23 @@ const AVATAR_TONES = [
 /** A soft violet button for AI actions inside busy cards (the solid violet is kept for page-level AI actions). */
 const AI_SOFT_BUTTON = "border-ai/30 bg-ai-surface text-ai hover:border-ai/50 hover:bg-ai-surface hover:text-ai-hover";
 
-function replyText(reply: Review["reply"]): string | null {
-  if (!reply) return null;
-  return typeof reply === "string" ? reply : reply.comment;
+/** Said wherever the length counter is: Google's limit is 4,096 bytes of UTF-8, not characters. */
+const BYTES_HINT = "Google counts some characters, like emoji, as more than one.";
+
+/** Why a reply can't be saved or sent as it is (empty, or over Google's 4,096 bytes), or null. */
+function lengthProblem(text: string): string | null {
+  const value = text.trim();
+  if (!value) return "Write a reply first.";
+  if (utf8Length(value) > REPLY_MAX_BYTES) {
+    return `This reply is longer than Google allows. Shorten it until the counter shows ${REPLY_MAX_BYTES.toLocaleString()} or less.`;
+  }
+  return null;
 }
 
-const DAY_MS = 86_400_000;
+type BusyKey = "send" | "save" | "discard" | "ai" | "revise" | "analyze" | "appeal" | "status" | "remove";
 
-/** "3 days ago" within a week (when `now` is known), otherwise "Oct 2, 2026". */
-function whenLabel(iso: string | null, now: number | undefined): string {
-  if (!iso) return "";
-  const time = Date.parse(iso);
-  if (now !== undefined && Number.isFinite(time) && now - time < 7 * DAY_MS) return formatRelative(iso, now);
-  return formatDate(iso, "");
-}
-
-type BusyKey = "send" | "save" | "discard" | "ai" | "analyze" | "appeal" | "status" | "remove";
+/** What a held-back send of this review found, for the text it sent (shown while the saved draft still has that text). */
+type SendHold = { text: string; kind: "checks_failed" | "confirm_warnings_required"; findings: DraftCheck[] };
 
 export type ReviewCardProps = {
   locationId: string;
@@ -147,29 +180,77 @@ export type ReviewCardProps = {
   now?: number;
   /** Leave out the "Needs reply" pill (the list shows only unanswered reviews, so it would repeat on every card). */
   hideNeedsReply?: boolean;
+  /**
+   * The card asks its list to keep it on screen while the user works on it (`review`: the review as
+   * the card last knows it), and lets it go (null) once it's sent or its draft discarded. A list read
+   * again may no longer have it: a reply saved in "No reply yet" is a draft now, and a send held back
+   * ("Send anyway?", "Google already has a reply", the highlighted parts) must not vanish with its card.
+   */
+  onHold?: (review: Review | null) => void;
   className?: string;
 };
 
-/** One review: the rating, the text, its checks and AI analysis, the reply (or the AI draft to check) and, when it applies, a removal request. */
-export function ReviewCard({ locationId, review, ai, selectable = false, selected = false, onSelect, now, hideNeedsReply = false, className }: ReviewCardProps) {
+/**
+ * One review: the rating, the text, its checks and AI analysis, the reply (or the draft to check, with
+ * what the reply checks found: Phase 25a) and, when it applies, a removal request.
+ *
+ * A saved draft shows as it would be sent, its findings highlighted and listed ("read"); "Edit" opens
+ * the text ("edit", with Google's byte counter); "Change it" asks the AI for a change. Send runs every
+ * check again: a hard finding is shown on the draft, warnings ask "Send anyway?", a reply already on
+ * Google opens a choice, and an agency without its client's authorization is pointed to the banner.
+ */
+export function ReviewCard({ locationId, review, ai, selectable = false, selected = false, onSelect, now, hideNeedsReply = false, onHold, className }: ReviewCardProps) {
   const queryClient = useQueryClient();
   const toastAiError = useToastAiError();
   const canEdit = useCanEdit();
+  const authorization = useReplyAuthorization(locationId, canEdit);
+  const uid = useId();
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState<string | null>(null);
   const [busy, setBusy] = useState<BusyKey | null>(null);
+  const [changing, setChanging] = useState(false);
+  const [declined, setDeclined] = useState<{ text: string; parts: DeclinedInstruction[] } | null>(null);
+  const [hold, setHold] = useState<SendHold | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [onGoogle, setOnGoogle] = useState<{ open: boolean; reply: GoogleReply | null; draftText: string }>({ open: false, reply: null, draftText: "" });
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [reportUrl, setReportUrl] = useState(GOOGLE_REPORT_URL);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // When the "Change it" box closes, focus goes back to its button (which is rendered again then).
+  const refocusChangeIt = useRef(false);
+  const articleRef = useRef<HTMLElement>(null);
+  const sendRef = useRef<HTMLButtonElement>(null);
+  // Set as an action ends: once its outcome is on screen, focus goes to the card when the control
+  // that had it is gone or switched off (Discard, Save, a send the checks held back…), so keyboard
+  // and screen-reader users stay on this review instead of restarting at the top of the page.
+  const settleFocus = useRef(false);
+  useEffect(() => {
+    if (!settleFocus.current) return;
+    settleFocus.current = false;
+    const active = document.activeElement;
+    if (!active || active === document.body || (active instanceof HTMLButtonElement && active.disabled)) articleRef.current?.focus({ preventScroll: true });
+  });
 
-  const published = replyText(review.reply);
   const draft = review.draft;
-  const draftText = text ?? draft?.text ?? (editing ? (published ?? "") : "");
-  const showEditor = canEdit && (editing || review.reply_state === "draft" || review.reply_state === "failed");
+  const deleted = Boolean(review.deleted_on_google_at);
+  const publicReply = publicReplyText(review);
+  const rejected = rejectedReply(review);
+  const hasDraft = Boolean(draft?.text);
+  // The draft area: the saved draft with its checks ("read"), or the text being written ("edit").
+  const writing = canEdit && !deleted && (editing || hasDraft);
+  const editMode = writing && (editing || !hasDraft);
+  const draftText = text ?? draft?.text ?? (editing ? (publicReply ?? "") : "");
+  const trimmed = draftText.trim();
+  const bytes = utf8Length(trimmed);
+  const overLimit = bytes > REPLY_MAX_BYTES;
+  // The text on screen isn't the saved draft (Send saves it first, and the save runs the checks again).
+  const changed = text !== null && trimmed !== (draft?.text ?? "").trim();
   const aiDraft = Boolean(draft && draft.source === "ai" && !draft.edited);
   const suspicious = review.flag_level === "suspicious";
   const reviewer = review.reviewer?.is_anonymous ? "Anonymous" : (review.reviewer?.display_name ?? "A Google user");
   const edited = review.update_time && review.create_time && review.update_time !== review.create_time;
   const replyCost = ai.costs.reply_drafts_per_10;
+  const balance = ai.balance === undefined ? {} : { balance: ai.balance };
   const analysisCost = estimateAnalysisCost([review], ai.costs.analysis_per_10, Boolean(review.analysis));
   const canAnalyze = Boolean(review.comment?.trim()) && (!review.analysis || review.analysis.stale);
   const skipReason = review.ai_reply_skip_reason ? (SKIP_REASON[review.ai_reply_skip_reason] ?? null) : null;
@@ -177,9 +258,66 @@ export function ReviewCard({ locationId, review, ai, selectable = false, selecte
   // A read-only or suspended account: the backend also refuses sending and removing a reply (both
   // need billing). Saving a draft still works.
   const accountBlocked = ai.blockedBy === "subscription" || ai.blockedBy === "suspended";
-  const accountReason = ai.blockedBy === "suspended" ? "This account is suspended." : "Sending replies needs an active subscription.";
   // The appeal changed since it was drafted: a new draft is charged only because the review changed.
   const canRedraftAppeal = Boolean(review.appeal?.stale && review.appeal_eligible);
+
+  // What the checks found on the saved draft, plus what a send of the same text found.
+  const holdApplies = Boolean(hold && draft && hold.text === draft.text);
+  const checks = mergeSendFindings(draft?.checks, holdApplies ? hold?.findings : null);
+  // "We left out: …" stays until the draft changes.
+  const declinedParts = declined && draft && declined.text === draft.text ? declined.parts : null;
+  const revisable = canReviseDraft(review);
+  const findingId = (index: number) => `${uid}-finding-${index}`;
+  const counterId = `${uid}-length`;
+  const lengthErrorId = `${uid}-too-long`;
+  const reasonId = `${uid}-send-reason`;
+  const aiReasonId = `${uid}-ai-off`;
+  const appealReasonId = `${uid}-ai-off-appeal`;
+
+  // The draft's action row (Send…) is on screen, and whether it has an AI button ("Change it", "New AI draft").
+  const changeItOpen = changing && !editMode && revisable;
+  const aiInRow = !changeItOpen && ((!editMode && revisable) || review.ai_reply_eligible);
+  // Disabled AI buttons say why once, in words under them (a disabled button shows no tooltip and
+  // isn't read out). The account's reason covers sending and AI in one line.
+  const accountReason =
+    ai.blockedBy === "suspended"
+      ? "This account is suspended."
+      : aiInRow
+        ? "Sending replies and AI need an active subscription."
+        : "Sending replies needs an active subscription.";
+  const aiOffReason = aiBlocked && ai.reason ? ai.reason : null;
+
+  // Why Send is off, the most lasting reason first. Shown under the buttons: a disabled button shows no tooltip.
+  const sendBlockedReason = accountBlocked
+    ? accountReason
+    : authorization.blocked
+      ? sendBlockedByAuthorization(authorization.grantMethod)
+      : editMode && overLimit
+        ? lengthProblem(draftText)
+        : !changed && hasHardFinding(checks)
+          ? editMode
+            ? "Fix what the checks found first, then save."
+            : "Fix the highlighted parts first."
+          : null;
+  // Send can be pressed for this text. While anything on the card runs, it stays focusable (aria-disabled),
+  // so keyboard focus isn't dropped while a send is answered (a dialog may follow and hand focus back to it).
+  const sendable = Boolean(trimmed) && sendBlockedReason === null;
+  // Over Google's limit the reason is already the message under the field: point Send there, don't repeat it.
+  const reasonUnderField = editMode && overLimit && !accountBlocked && !authorization.blocked;
+
+  const helperText = publicReply
+    ? "Sending replaces your reply on Google."
+    : editMode
+      ? draft
+        ? "Change the text, then save or send it."
+        : "Nothing is published until you send it."
+      : aiDraft && draft?.verification === "unavailable"
+        ? "The AI double-check couldn't run: read it carefully before sending."
+        : aiDraft && draft?.verification === "flagged"
+          ? "The double-check raised something: see the notes below."
+          : aiDraft
+            ? "Check it and change anything you like before sending."
+            : "Nothing is published until you send it.";
 
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: reviewsKey(locationId) });
@@ -203,101 +341,353 @@ export function ReviewCard({ locationId, review, ai, selectable = false, selecte
       return false;
     } finally {
       setBusy(null);
+      settleFocus.current = true;
       refresh();
     }
   };
 
-  const save = () => {
-    const value = draftText.trim();
-    if (!value || value.length > MAX_REPLY) {
-      toast.error("A reply needs 1 to 4,000 characters.");
-      return Promise.resolve(false);
-    }
-    return run("save", () => saveReplyDraft(locationId, review.review_id, value), { fallback: "The reply couldn't be saved.", success: "Draft saved." });
+  /** Keeps this card on screen while the user works on it, showing `latest` (its list may be read again without it). */
+  const keep = (latest: Review) => onHold?.(latest);
+  /** Sent, or its draft discarded: the list shows the review as it really is again (or not, if it no longer matches). */
+  const release = () => onHold?.(null);
+
+  const closeEditor = () => {
+    setText(null);
+    setEditing(false);
   };
 
-  const send = async () => {
-    // Save first when there's no saved draft or the text was changed, so Google gets what's on screen.
-    if (!draft || (text !== null && text.trim() !== draft.text)) {
-      const value = draftText.trim();
-      if (!value || value.length > MAX_REPLY) {
-        toast.error("A reply needs 1 to 4,000 characters.");
+  /** Saves the text on screen; `PUT …/draft` runs the reply checks again, so the card re-renders them from the answer. */
+  const save = async () => {
+    const problem = lengthProblem(draftText);
+    if (problem) {
+      toast.error(problem);
+      return;
+    }
+    setBusy("save");
+    try {
+      const saved = await saveReplyDraft(locationId, review.review_id, trimmed);
+      putReviewInCache(queryClient, locationId, saved);
+      // A reply saved in "No reply yet" (or over a rejected one) is a draft now: it stays here, checks and all.
+      keep(saved);
+      closeEditor();
+      toast.success("Draft saved.", hasHardFinding(saved.draft?.checks) ? { description: "Fix the highlighted parts before sending." } : undefined);
+    } catch (err) {
+      // Not a useMutation, so tell the account banner about a 402/403 here (toastAiError does for AI).
+      noteAccountError(err);
+      toast.error(reviewErrorMessage(err, "The reply couldn't be saved.").message);
+    } finally {
+      setBusy(null);
+      settleFocus.current = true;
+      refresh();
+    }
+  };
+
+  /** A send the checks or Google held back (`latest`: the review as the send left it): the findings on the draft, or a dialog. */
+  const showHold = (block: SendBlock, sentText: string, latest: Review) => {
+    if (block.kind === "checks_failed" || block.kind === "confirm_warnings_required") {
+      setHold({ text: sentText, kind: block.kind, findings: block.findings });
+      if (block.kind === "checks_failed") closeEditor();
+      else setConfirmOpen(true);
+      keep(latest);
+      return;
+    }
+    if (block.kind === "reply_changed_on_google") {
+      // Google's reply is stored now and comes back on the review: show it, keep the draft.
+      const withGoogle = block.review ?? withGoogleReply(latest, block.googleReply);
+      putReviewInCache(queryClient, locationId, withGoogle);
+      keep(withGoogle);
+      setOnGoogle({ open: true, reply: block.googleReply, draftText: sentText });
+      return;
+    }
+    // `reply_authorization_required` is answered by noteReplyAuthorizationRequired before this.
+    keep(latest);
+  };
+
+  /**
+   * Sends the draft (saved first when the text on screen changed). Every check runs again on the text
+   * sent; `confirmWarnings` is "Send anyway" after a 409 `confirm_warnings_required`. Whatever doesn't
+   * go out keeps the card on screen with what to do next: a hand-written reply is never dropped.
+   */
+  const send = async (options: { confirmWarnings?: boolean } = {}) => {
+    let sentText = draft?.text ?? "";
+    // The review as this send leaves it (the saved text, when the text on screen was saved first).
+    let latest = review;
+    setBusy("send");
+    try {
+      if (!draft || changed) {
+        const problem = lengthProblem(draftText);
+        if (problem) {
+          toast.error(problem);
+          return;
+        }
+        let saved: Review;
+        try {
+          saved = await saveReplyDraft(locationId, review.review_id, trimmed);
+        } catch (err) {
+          noteAccountError(err);
+          toast.error(reviewErrorMessage(err, "The reply couldn't be saved.").message);
+          return;
+        }
+        putReviewInCache(queryClient, locationId, saved);
+        latest = saved;
+        sentText = saved.draft?.text ?? trimmed;
+        closeEditor();
+        // The save ran the checks again, and a hard finding is never sent: show it rather than sending.
+        if (hasHardFinding(saved.draft?.checks)) {
+          setHold({ text: sentText, kind: "checks_failed", findings: [] });
+          keep(saved);
+          return;
+        }
+      }
+      const result = await sendReplies(locationId, [review.review_id], options);
+      const outcome = result.results.find((item) => item.review_id === review.review_id) ?? result.results[0];
+      if (outcome?.status === "skipped" && outcome.reason && HELD_BACK.has(outcome.reason)) {
+        showHold(
+          outcome.reason === "reply_changed_on_google"
+            ? { kind: "reply_changed_on_google", googleReply: outcome.google_reply ?? null, review: null }
+            : { kind: outcome.reason === "checks_failed" ? "checks_failed" : "confirm_warnings_required", findings: outcome.findings ?? [] },
+          sentText,
+          latest,
+        );
         return;
       }
-      setBusy("send");
-      try {
-        await saveReplyDraft(locationId, review.review_id, value);
-      } catch (err) {
-        setBusy(null);
+      if (outcome && outcome.status !== "sent") {
+        // A failed send's reason is Google's error message: never shown as it is.
+        toast.error(outcome.status === "failed" ? sendFailureText(outcome.reason) : (SEND_REASON[outcome.reason ?? ""] ?? "The reply wasn't sent."));
+        if (outcome.status === "failed") {
+          // The draft is kept with the error ("Not sent."), here to send again.
+          const failed = asFailedSend(latest, outcome.reason ?? null);
+          putReviewInCache(queryClient, locationId, failed);
+          keep(failed);
+        } else if (outcome.reason && NOTHING_TO_SEND.has(outcome.reason)) release();
+        else keep(latest);
+        return;
+      }
+      // Google reviews every reply first: the review is `pending` until the list is read again.
+      updateReviewInCache(queryClient, locationId, review.review_id, (current) => asSentReview(current, sentText));
+      setHold(null);
+      setDeclined(null);
+      closeEditor();
+      release();
+      toast.success("Reply sent to Google", { description: SENT_REPLIES_NOTE });
+    } catch (err) {
+      // An agency without its client's authorization: the page's banner says who can give it (one toast for the page).
+      if (noteReplyAuthorizationRequired(queryClient, locationId, err)) {
+        keep(latest);
+        return;
+      }
+      const block = sendBlockFromError(err);
+      if (block) showHold(block, sentText, latest);
+      else {
         noteAccountError(err);
-        toast.error(reviewErrorMessage(err, "The reply couldn't be saved.").message);
-        return;
+        toast.error(reviewErrorMessage(err, "The reply couldn't be sent.").message);
+        // The text was saved first: it stays here to send again.
+        if (latest !== review) keep(latest);
       }
-    }
-    const ok = await run(
-      "send",
-      async () => {
-        const result = await sendReplies(locationId, [review.review_id]);
-        const outcome = result.results[0];
-        if (outcome && outcome.status !== "sent") throw new Error(outcome.reason ? (SEND_REASON[outcome.reason] ?? outcome.reason) : "The reply wasn't sent.");
-      },
-      { fallback: "The reply couldn't be sent.", success: "Reply published on Google." },
-    );
-    if (ok) {
-      setText(null);
-      setEditing(false);
+    } finally {
+      setBusy(null);
+      settleFocus.current = true;
+      refresh();
     }
   };
 
-  const draftWithAi = () =>
-    void run("ai", () => generateReplyDrafts(locationId, [review.review_id], Boolean(draft)), {
-      fallback: "The AI draft couldn't be made.",
-      success: draft ? "New AI draft ready to check." : "AI draft ready to check.",
-      ai: true,
-    }).then((ok) => {
-      if (ok) {
-        setText(null);
-        setEditing(false);
+  /** Deletes the saved draft (`success`: a toast to show after). Focus stays on the card. */
+  const discard = async (success?: string) => {
+    setBusy("discard");
+    let discarded = false;
+    try {
+      await deleteReplyDraft(locationId, review.review_id);
+      updateReviewInCache(queryClient, locationId, review.review_id, withoutDraft);
+      closeEditor();
+      setHold(null);
+      setDeclined(null);
+      discarded = true;
+      if (success) toast.success(success);
+    } catch (err) {
+      noteAccountError(err);
+      toast.error(reviewErrorMessage(err, "The draft couldn't be discarded.").message);
+    } finally {
+      setBusy(null);
+      settleFocus.current = true;
+      if (discarded) {
+        // Let the card go only once the list has been read again: if the review still belongs in this
+        // view it simply stays in its slot (focus with it); if not, it leaves then. Letting go first
+        // made a kept card vanish and come back, and focus jump to the next review.
+        void Promise.all([
+          queryClient.invalidateQueries({ queryKey: reviewsKey(locationId) }),
+          queryClient.invalidateQueries({ queryKey: ["billing"] }),
+        ]).finally(release);
+      } else {
+        refresh();
       }
-    });
+    }
+  };
 
+  /** A new AI draft (`regenerate` when one exists). */
+  const draftWithAi = async () => {
+    setBusy("ai");
+    try {
+      const result = await generateReplyDrafts(locationId, [review.review_id], Boolean(draft));
+      for (const item of result.drafts ?? []) putReviewInCache(queryClient, locationId, item);
+      noteAiSuccess();
+      const drafted = (result.drafts ?? []).find((item) => item.review_id === review.review_id);
+      const skipped = result.skipped?.find((item) => item.review_id === review.review_id);
+      if (skipped && !drafted) {
+        toast.info(SKIP_REASON[skipped.reason] ?? "AI didn't draft a reply to this review.");
+        return;
+      }
+      // The new draft stays here to check, even in a list of reviews without one.
+      if (drafted) keep(drafted);
+      closeEditor();
+      setHold(null);
+      setDeclined(null);
+      toast.success(draft ? "New AI draft ready to check." : "AI draft ready to check.");
+    } catch (err) {
+      toastAiError(err, { fallback: "The AI draft couldn't be made." });
+    } finally {
+      setBusy(null);
+      settleFocus.current = true;
+      refresh();
+    }
+  };
+
+  const closeChangeIt = () => {
+    refocusChangeIt.current = true;
+    setChanging(false);
+  };
+
+  /**
+   * "Change it": the AI rewrites the draft as asked (one reply draft's tokens). Resolves with a notice
+   * for the box (it stays open), or null: done (the box closes), or an AI error shown as a toast.
+   */
+  const revise = async (instructions: string): Promise<InlineNotice | null> => {
+    setBusy("revise");
+    try {
+      const answer = await reviseReplyDraft(locationId, review.review_id, instructions);
+      const rewritten = answer.review?.review_id ? answer.review : answer.draft ? { ...review, draft: answer.draft } : null;
+      if (rewritten) {
+        putReviewInCache(queryClient, locationId, rewritten);
+        // A failed send rewritten is a draft again: it stays here.
+        keep(rewritten);
+      }
+      noteAiSuccess();
+      const parts = answer.declined_instructions ?? [];
+      const nextText = answer.review?.draft?.text ?? answer.draft?.text ?? "";
+      setDeclined(parts.length > 0 ? { text: nextText, parts } : null);
+      setHold(null);
+      closeChangeIt();
+      toast.success("Draft rewritten", answer.tokens_spent ? { description: `${formatTokenCount(answer.tokens_spent)} used.` } : undefined);
+      return null;
+    } catch (err) {
+      // All of it left out, a change already running, the draft changed meanwhile (reloaded below)…
+      const notice = reviseErrorNotice(err);
+      if (notice) return notice;
+      toastAiError(err, { fallback: "The draft couldn't be rewritten" });
+      return null;
+    } finally {
+      setBusy(null);
+      refresh();
+    }
+  };
+
+  // Each answer goes into the cache as well: a review opened above the list (`?review=`) isn't looked up again.
   const analyze = () =>
-    void run("analyze", () => analyzeReviews(locationId, [review.review_id], Boolean(review.analysis)), {
-      fallback: "The review couldn't be analyzed.",
-      success: "Analysis added to the review.",
-      ai: true,
-    });
+    void run(
+      "analyze",
+      async () => {
+        const result = await analyzeReviews(locationId, [review.review_id], Boolean(review.analysis));
+        for (const item of result.reviews ?? []) putReviewInCache(queryClient, locationId, item);
+      },
+      { fallback: "The review couldn't be analyzed.", success: "Analysis added to the review.", ai: true },
+    );
 
   const draftRemovalRequest = () =>
     void run(
       "appeal",
       async () => {
         const result = await draftAppeal(locationId, review.review_id);
+        putReviewInCache(queryClient, locationId, result.review);
         if (result.report_url) setReportUrl(result.report_url);
       },
       { fallback: "The removal request couldn't be drafted.", success: "Removal request drafted. Copy it into Google's tool.", ai: true },
     );
 
-  const menuItems = canEdit
-    ? [
-        canAnalyze ? "analyze" : null,
-        review.appeal_eligible && !review.appeal && !suspicious ? "appeal" : null,
-        published ? "remove" : null,
-      ].filter((item): item is "analyze" | "appeal" | "remove" => item !== null)
-    : [];
+  const recordReportStatus = (status: ReviewReportStatus) =>
+    void run("status", async () => putReviewInCache(queryClient, locationId, await setReportStatus(locationId, review.review_id, status)), {
+      fallback: "The status couldn't be saved.",
+      success: "Saved.",
+    });
+
+  const removeReply = () =>
+    void run(
+      "remove",
+      async () => {
+        await deleteReply(locationId, review.review_id);
+        updateReviewInCache(queryClient, locationId, review.review_id, withoutReply);
+      },
+      { fallback: "The reply couldn't be removed.", success: "Reply removed from Google." },
+    );
+
+  // A review deleted on Google gets no reply actions (analysis, removal requests and replies all need it on Google).
+  const menuItems =
+    canEdit && !deleted
+      ? [
+          canAnalyze ? "analyze" : null,
+          review.appeal_eligible && !review.appeal && !suspicious ? "appeal" : null,
+          publicReply || review.reply_state === "rejected" ? "remove" : null,
+        ].filter((item): item is "analyze" | "appeal" | "remove" => item !== null)
+      : [];
+
+  /**
+   * As "Send anyway?" or "Google already has a reply" closes, whichever way: back on Send when it can
+   * be pressed, else on the card. False when the card has gone (sent, and no longer in the view): the
+   * list then puts focus on the card in its place.
+   */
+  const returnFocus = (): boolean => {
+    const button = sendRef.current;
+    if (button?.isConnected && !button.disabled && button.getAttribute("aria-disabled") !== "true") {
+      button.focus({ preventScroll: true });
+      return true;
+    }
+    const card = articleRef.current;
+    if (!card?.isConnected) return false;
+    card.focus({ preventScroll: true });
+    return true;
+  };
+
+  const sendButton = (
+    <Button
+      ref={sendRef}
+      size="sm"
+      disabled={!sendable}
+      aria-disabled={(sendable && busy !== null) || undefined}
+      aria-describedby={sendBlockedReason ? (reasonUnderField ? lengthErrorId : reasonId) : undefined}
+      aria-busy={busy === "send" || undefined}
+      className="aria-disabled:opacity-50"
+      onClick={() => {
+        if (busy === null) void send();
+      }}
+    >
+      {busy === "send" ? <LoaderCircle aria-hidden className="animate-spin" /> : <Send aria-hidden />}
+      Send reply
+    </Button>
+  );
 
   return (
     <article
+      ref={articleRef}
+      // Focus comes here when the control that had it goes (a sent reply, a discarded draft, a dialog closing).
+      tabIndex={-1}
       aria-label={`Review by ${reviewer}`}
       className={cn(
-        "relative min-w-0 rounded-xl border bg-card p-4 shadow-card transition-[border-color,box-shadow] sm:p-5",
+        "relative min-w-0 rounded-xl border bg-card p-4 shadow-card outline-hidden transition-[border-color,box-shadow] focus-visible:ring-2 focus-visible:ring-ring sm:p-5",
         suspicious ? "border-critical/30" : review.flag_level === "attention" ? "border-warning/45" : "border-border",
         selected && "border-primary/50 ring-2 ring-primary/20",
         className,
       )}
     >
       <div className="flex gap-3 sm:gap-4">
-        {selectable && canEdit && onSelect ? (
+        {selectable && canEdit && onSelect && !deleted ? (
           // The label pads the 16px box out to a 36px target.
           <label className="-my-2 -ml-2 grid size-9 shrink-0 cursor-pointer place-items-center rounded-lg sm:mt-0.5">
             <Checkbox checked={selected} onCheckedChange={(value) => onSelect(value === true)} aria-label={`Select the review by ${reviewer}`} />
@@ -320,7 +710,7 @@ export function ReviewCard({ locationId, review, ai, selectable = false, selecte
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
-              {hideNeedsReply && review.reply_state === "none" ? null : <ReplyStateBadge review={review} aiDraft={aiDraft} />}
+              {hideNeedsReply && review.reply_state === "none" && !deleted ? null : <ReplyStateBadge review={review} aiDraft={aiDraft} />}
               {suspicious ? (
                 <StatusBadge tone="critical" icon={ShieldAlert} size="sm">
                   Suspicious indicators
@@ -411,152 +801,306 @@ export function ReviewCard({ locationId, review, ai, selectable = false, selecte
 
           {review.analysis ? <AnalysisPanel analysis={review.analysis} /> : null}
 
-          {/* The reply: published, being written, or waiting as a draft. */}
-          {published && !showEditor ? (
-            <div className="mt-4 rounded-lg border-l-[3px] border-primary/60 bg-surface-strong px-3.5 py-2.5">
-              <p className="flex flex-wrap items-center gap-x-1.5 text-xs font-semibold text-foreground">
-                <CornerDownRight aria-hidden className="size-3.5 text-primary" />
-                Your reply
-                {review.sent_at ? (
-                  <time dateTime={review.sent_at} title={formatDateTime(review.sent_at)} className="font-normal text-muted-foreground">
-                    · {whenLabel(review.sent_at, now)}
-                  </time>
-                ) : null}
-              </p>
-              <p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-foreground">{published}</p>
-            </div>
+          {/* The reply on Google: published, or waiting for Google's review (Phase 25a). */}
+          {publicReply && !(editMode && !hasDraft) ? (
+            <ReplyOnGoogle review={review} text={publicReply} now={now}>
+              {canEdit && !deleted && !writing ? (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Button size="sm" variant="ghost" className="-ml-2" onClick={() => setEditing(true)}>
+                    <Pencil aria-hidden /> Edit reply
+                  </Button>
+                </div>
+              ) : null}
+            </ReplyOnGoogle>
           ) : null}
 
-          {review.reply_state === "failed" && review.send_error && canEdit ? (
+          {/* Google rejected the last reply: it isn't public, and a new one can be written and sent. */}
+          {rejected && review.reply_state === "rejected" ? (
+            <RejectedReply rejected={rejected} canReply={canEdit && !deleted}>
+              {canEdit && !deleted && !writing ? (
+                <>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {review.ai_reply_eligible ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className={AI_SOFT_BUTTON}
+                        disabled={busy !== null || aiBlocked}
+                        title={aiBlocked ? ai.reason : undefined}
+                        aria-describedby={aiOffReason ? aiReasonId : undefined}
+                        aria-busy={busy === "ai" || undefined}
+                        onClick={() => void draftWithAi()}
+                      >
+                        {busy === "ai" ? <LoaderCircle aria-hidden className="animate-spin" /> : <Sparkles aria-hidden />}
+                        New reply with AI
+                        <AiCostChip tokens={replyCost} {...balance} className="-mr-1" />
+                      </Button>
+                    ) : null}
+                    <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => setEditing(true)}>
+                      <Pencil aria-hidden /> Write a new reply
+                    </Button>
+                  </div>
+                  {review.ai_reply_eligible && aiOffReason ? <AiOffNote id={aiReasonId} reason={aiOffReason} className="mt-2" /> : null}
+                </>
+              ) : null}
+            </RejectedReply>
+          ) : null}
+
+          {deleted ? (
+            <DraftNote tone="neutral" icon={EyeOff} className="mt-4">
+              This review is no longer on Google, so it can't get a reply.
+            </DraftNote>
+          ) : null}
+
+          {review.reply_state === "failed" && review.send_error && canEdit && !deleted ? (
             <p role="alert" className="mt-4 flex items-start gap-2 rounded-lg border border-critical/25 bg-critical-surface px-3 py-2 text-sm text-critical">
               <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0" />
               <span>
-                <span className="font-semibold">Not sent.</span> {review.send_error}
+                {/* The backend stores Google's error message: said in plain words. */}
+                <span className="font-semibold">Not sent.</span> {sendFailureText(review.send_error)}
               </span>
             </p>
           ) : null}
 
-          {!canEdit ? null : showEditor ? (
-            <div className={cn("mt-4 rounded-xl border p-3 sm:p-4", aiDraft ? "border-ai/30 bg-ai-surface/60" : "border-border bg-surface-strong")}>
+          {writing ? (
+            <div className={cn("mt-4 rounded-xl border p-3 sm:p-4", aiDraft && !editMode ? "border-ai/30 bg-ai-surface/60" : "border-border bg-surface-strong")}>
               <div className="mb-2.5 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs">
-                {aiDraft ? (
-                  <AiBadge label="AI draft" />
-                ) : draft ? (
-                  <StatusBadge tone="neutral" icon={PenLine} size="sm">
-                    Your draft
-                  </StatusBadge>
+                {draft ? (
+                  draft.source === "ai" ? (
+                    <AiBadge label="AI draft" variant={draft.edited ? "soft" : "solid"} />
+                  ) : (
+                    <StatusBadge tone="neutral" icon={PenLine} size="sm">
+                      Your draft
+                    </StatusBadge>
+                  )
                 ) : (
-                  <span className="font-semibold text-foreground">{published ? "Edit your reply" : "Your reply"}</span>
+                  <span className="font-semibold text-foreground">{publicReply ? "Edit your reply" : rejected ? "Your new reply" : "Your reply"}</span>
                 )}
-                <span className="text-muted-foreground">
-                  {published
-                    ? "Sending replaces your reply on Google."
-                    : aiDraft
-                      ? "Check it and change anything you like before sending."
-                      : "Nothing is published until you send it."}
-                </span>
+                {draft?.source === "ai" && draft.edited ? (
+                  <StatusBadge tone="neutral" icon={PenLine} size="sm">
+                    Edited by you
+                  </StatusBadge>
+                ) : null}
+                {/* The double-check was made on the AI's text; an edited text is checked when it's sent. */}
+                {aiDraft && draft?.verification ? <VerificationBadge verification={draft.verification} /> : null}
                 {draft?.stale ? (
                   <StatusBadge tone="warning" size="sm">
                     The review changed since this draft
                   </StatusBadge>
                 ) : null}
+                <span className="text-muted-foreground">{helperText}</span>
               </div>
-              <Textarea
-                aria-label={`Reply to ${reviewer}`}
-                rows={4}
-                maxLength={MAX_REPLY}
-                value={draftText}
-                placeholder="Write a reply…"
-                onChange={(event) => setText(event.target.value)}
-                className="bg-card"
-              />
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <Button
-                  size="sm"
-                  disabled={busy !== null || !draftText.trim() || accountBlocked}
-                  title={accountBlocked ? accountReason : undefined}
-                  aria-busy={busy === "send" || undefined}
-                  onClick={() => void send()}
-                >
-                  {busy === "send" ? <LoaderCircle aria-hidden className="animate-spin" /> : <Send aria-hidden />}
-                  Send reply
-                </Button>
-                <Button size="sm" variant="outline" disabled={busy !== null || text === null} onClick={() => void save().then((ok) => ok && setText(null))}>
-                  {busy === "save" ? <LoaderCircle aria-hidden className="animate-spin" /> : null}
-                  Save draft
-                </Button>
-                {draft ? (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={busy !== null}
-                    onClick={() =>
-                      void run("discard", () => deleteReplyDraft(locationId, review.review_id), { fallback: "The draft couldn't be discarded." }).then((ok) => {
-                        if (ok) {
-                          setText(null);
-                          setEditing(false);
-                        }
-                      })
-                    }
-                  >
-                    Discard draft
-                  </Button>
-                ) : (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      setText(null);
-                      setEditing(false);
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                )}
+
+              {rejected && review.reply_state !== "rejected" ? (
+                <DraftNote tone="critical" icon={Ban} className="mb-2.5">
+                  Your last reply was rejected by Google: {rejected.reason ?? "Google didn't say why."}
+                </DraftNote>
+              ) : null}
+              {draft?.recommendation === "no_public_reply" ? (
+                <DraftNote tone="info" className="mb-2.5">
+                  For this review you may prefer not to reply publicly. The draft is one short line that confirms nothing.
+                </DraftNote>
+              ) : null}
+
+              {editMode ? (
+                <>
+                  <Textarea
+                    ref={textareaRef}
+                    aria-label={`Reply to ${reviewer}`}
+                    aria-describedby={overLimit ? `${counterId} ${lengthErrorId}` : counterId}
+                    aria-invalid={overLimit || undefined}
+                    rows={4}
+                    // Opened by a click ("Write a reply", "Edit"…), so the field takes the focus.
+                    autoFocus={editing}
+                    value={draftText}
+                    placeholder="Write a reply…"
+                    onChange={(event) => setText(event.target.value)}
+                    className="bg-card"
+                  />
+                  <div className="mt-1.5 flex flex-wrap items-start gap-x-3 gap-y-1">
+                    {overLimit ? (
+                      <p id={lengthErrorId} role="alert" className="min-w-0 flex-1 text-xs font-medium text-critical">
+                        {lengthProblem(draftText)}
+                      </p>
+                    ) : null}
+                    <p
+                      id={counterId}
+                      title={`Bytes. ${BYTES_HINT}`}
+                      className={cn(
+                        "ml-auto text-xs tabular-nums",
+                        overLimit ? "font-semibold text-critical" : bytes > REPLY_MAX_BYTES * 0.9 ? "text-warning-foreground" : "text-muted-foreground",
+                      )}
+                    >
+                      {bytes.toLocaleString()} / {REPLY_MAX_BYTES.toLocaleString()}
+                      <span className="sr-only"> bytes. {BYTES_HINT}</span>
+                    </p>
+                  </div>
+                </>
+              ) : draft ? (
+                <>
+                  <div className="rounded-lg border border-border bg-card px-3 py-2.5">
+                    <DraftText text={draft.text} checks={checks} findingId={findingId} />
+                  </div>
+                  <DraftProvenance draft={draft} className="mt-2" />
+                </>
+              ) : null}
+
+              {holdApplies && hold?.kind === "checks_failed" ? (
+                <DraftNote tone="critical" role="alert" className="mt-3">
+                  {SEND_BLOCK_COPY.checks_failed}
+                </DraftNote>
+              ) : holdApplies && hold?.kind === "confirm_warnings_required" && !confirmOpen ? (
+                <DraftNote tone="warning" className="mt-3">
+                  {SEND_BLOCK_COPY.confirm_warnings_required}
+                </DraftNote>
+              ) : null}
+
+              {draft ? (
+                <DraftFindings
+                  checks={checks}
+                  findingId={editMode ? undefined : findingId}
+                  caption={editMode ? "On the saved draft. The checks run again when you save." : undefined}
+                  className="mt-3"
+                />
+              ) : null}
+
+              {declinedParts && !editMode ? (
+                <DraftNote tone="info" className="mt-3">
+                  We left out: {declinedSummary(declinedParts)}.
+                </DraftNote>
+              ) : null}
+
+              {changeItOpen ? (
+                <ChangeItBox
+                  reviewer={reviewer}
+                  cost={replyCost}
+                  {...balance}
+                  canRun={ai.canRun}
+                  reason={ai.reason}
+                  pending={busy === "revise"}
+                  onSubmit={revise}
+                  onCancel={closeChangeIt}
+                  className="mt-3"
+                />
+              ) : (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {sendButton}
+                  {editMode ? (
+                    <>
+                      <Button size="sm" variant="outline" disabled={busy !== null || !changed || lengthProblem(draftText) !== null} onClick={() => void save()}>
+                        {busy === "save" ? <LoaderCircle aria-hidden className="animate-spin" /> : null}
+                        Save draft
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={busy !== null}
+                        onClick={() => {
+                          // The editor and this button go: focus stays on the card.
+                          settleFocus.current = true;
+                          closeEditor();
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => setEditing(true)}>
+                        <Pencil aria-hidden /> Edit
+                      </Button>
+                      {revisable ? (
+                        <Button
+                          ref={(node) => {
+                            if (node && refocusChangeIt.current) {
+                              refocusChangeIt.current = false;
+                              node.focus();
+                            }
+                          }}
+                          size="sm"
+                          variant="outline"
+                          className={AI_SOFT_BUTTON}
+                          disabled={busy !== null || aiBlocked}
+                          title={aiBlocked ? ai.reason : "Tell the AI what to change in this draft"}
+                          aria-describedby={aiOffReason ? (accountBlocked ? reasonId : aiReasonId) : undefined}
+                          aria-expanded={false}
+                          onClick={() => setChanging(true)}
+                        >
+                          <WandSparkles aria-hidden /> Change it
+                          <AiCostChip tokens={replyCost} {...balance} className="-mr-1" />
+                        </Button>
+                      ) : null}
+                      <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => void discard()}>
+                        {busy === "discard" ? <LoaderCircle aria-hidden className="animate-spin" /> : null}
+                        Discard draft
+                      </Button>
+                    </>
+                  )}
+                  {review.ai_reply_eligible ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className={cn("sm:ml-auto", AI_SOFT_BUTTON)}
+                      disabled={busy !== null || aiBlocked}
+                      title={aiBlocked ? ai.reason : undefined}
+                      aria-describedby={aiOffReason ? (accountBlocked ? reasonId : aiReasonId) : undefined}
+                      aria-busy={busy === "ai" || undefined}
+                      onClick={() => void draftWithAi()}
+                    >
+                      {busy === "ai" ? <LoaderCircle aria-hidden className="animate-spin" /> : <Sparkles aria-hidden />}
+                      {draft ? "New AI draft" : "Draft with AI"}
+                      <span className="font-medium">· {formatTokens(replyCost)}</span>
+                    </Button>
+                  ) : null}
+                </div>
+              )}
+
+              {sendBlockedReason && !reasonUnderField && !changeItOpen ? (
+                <p id={reasonId} className="mt-2 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+                  <span>{sendBlockedReason}</span>
+                  {authorization.blocked && !accountBlocked ? (
+                    // An inline link in small print: the invisible hit area makes it about 40px tall (as "Withdraw").
+                    <Button
+                      variant="link"
+                      size="sm"
+                      className="relative h-auto p-0 text-xs after:absolute after:-inset-x-1.5 after:-inset-y-1 after:content-[''] pointer-coarse:after:-inset-y-3"
+                      onClick={() => scrollToReplyAuthorization()}
+                    >
+                      Show me
+                    </Button>
+                  ) : null}
+                </p>
+              ) : null}
+              {/* The account's reason above covers AI too. */}
+              {aiInRow && aiOffReason && !accountBlocked ? <AiOffNote id={aiReasonId} reason={aiOffReason} className="mt-2" /> : null}
+            </div>
+          ) : canEdit && !deleted && !publicReply && review.reply_state !== "rejected" ? (
+            <div className="mt-4">
+              <div className="flex flex-wrap items-center gap-2">
                 {review.ai_reply_eligible ? (
                   <Button
                     size="sm"
                     variant="outline"
-                    className={cn("sm:ml-auto", AI_SOFT_BUTTON)}
+                    className={AI_SOFT_BUTTON}
                     disabled={busy !== null || aiBlocked}
                     title={aiBlocked ? ai.reason : undefined}
-                    onClick={draftWithAi}
+                    aria-describedby={aiOffReason ? aiReasonId : undefined}
+                    aria-busy={busy === "ai" || undefined}
+                    onClick={() => void draftWithAi()}
                   >
                     {busy === "ai" ? <LoaderCircle aria-hidden className="animate-spin" /> : <Sparkles aria-hidden />}
-                    {draft ? "New AI draft" : "Draft with AI"}
-                    <span className="font-medium">· {formatTokens(replyCost)}</span>
+                    Reply with AI
+                    <AiCostChip tokens={replyCost} {...balance} className="-mr-1" />
                   </Button>
                 ) : null}
-              </div>
-            </div>
-          ) : published ? (
-            <div className="mt-2 flex flex-wrap gap-2">
-              <Button size="sm" variant="ghost" className="-ml-2" onClick={() => setEditing(true)}>
-                <Pencil aria-hidden /> Edit reply
-              </Button>
-            </div>
-          ) : (
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              {review.ai_reply_eligible ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className={AI_SOFT_BUTTON}
-                  disabled={busy !== null || aiBlocked}
-                  title={aiBlocked ? ai.reason : undefined}
-                  onClick={draftWithAi}
-                >
-                  {busy === "ai" ? <LoaderCircle aria-hidden className="animate-spin" /> : <Sparkles aria-hidden />}
-                  Reply with AI
-                  <AiCostChip tokens={replyCost} {...(ai.balance === undefined ? {} : { balance: ai.balance })} className="-mr-1" />
+                <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+                  <Pencil aria-hidden /> Write a reply
                 </Button>
-              ) : null}
-              <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
-                <Pencil aria-hidden /> Write a reply
-              </Button>
-              {!review.ai_reply_eligible && skipReason && !suspicious ? <span className="text-xs text-muted-foreground">{skipReason}</span> : null}
+                {!review.ai_reply_eligible && skipReason && !suspicious ? <span className="text-xs text-muted-foreground">{skipReason}</span> : null}
+              </div>
+              {review.ai_reply_eligible && aiOffReason ? <AiOffNote id={aiReasonId} reason={aiOffReason} className="mt-2" /> : null}
             </div>
-          )}
+          ) : null}
 
           {/* Removal request: Google has no reporting API, so copy the text, open Google's tool, record the outcome. */}
           {review.appeal && canEdit ? (
@@ -575,74 +1119,87 @@ export function ReviewCard({ locationId, review, ai, selectable = false, selecte
                 ) : null}
               </div>
               <p className="mt-2.5 whitespace-pre-line rounded-lg border border-border bg-card p-3 text-sm leading-relaxed text-foreground">{review.appeal.text}</p>
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                {/* An outdated request: AI drafts it again from the review as it is now (charged, as any draft). */}
-                {canRedraftAppeal ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className={AI_SOFT_BUTTON}
-                    disabled={busy !== null || aiBlocked}
-                    title={aiBlocked ? ai.reason : undefined}
-                    aria-busy={busy === "appeal" || undefined}
-                    onClick={draftRemovalRequest}
-                  >
-                    {busy === "appeal" ? <LoaderCircle aria-hidden className="animate-spin" /> : <Sparkles aria-hidden />}
-                    Redraft
-                    <span className="font-medium">· {formatTokens(ai.costs.appeal)}</span>
-                  </Button>
-                ) : null}
+              {/* Gone from Google (removed after the report, or deleted): the request stays as a record, with nothing left to do. */}
+              {deleted ? null : (
+                <>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {/* An outdated request: AI drafts it again from the review as it is now (charged, as any draft). */}
+                    {canRedraftAppeal ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className={AI_SOFT_BUTTON}
+                        disabled={busy !== null || aiBlocked}
+                        title={aiBlocked ? ai.reason : undefined}
+                        aria-describedby={aiOffReason ? appealReasonId : undefined}
+                        aria-busy={busy === "appeal" || undefined}
+                        onClick={draftRemovalRequest}
+                      >
+                        {busy === "appeal" ? <LoaderCircle aria-hidden className="animate-spin" /> : <Sparkles aria-hidden />}
+                        Redraft
+                        <span className="font-medium">· {formatTokens(ai.costs.appeal)}</span>
+                      </Button>
+                    ) : null}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        void navigator.clipboard.writeText(review.appeal?.text ?? "").then(
+                          () => toast.success("Copied. Paste it into Google's report tool."),
+                          () => toast.error("Couldn't copy. Select the text and copy it instead."),
+                        )
+                      }
+                    >
+                      <Copy aria-hidden /> Copy
+                    </Button>
+                    <Button asChild size="sm" variant="outline">
+                      <a href={reportUrl} target="_blank" rel="noreferrer">
+                        <ExternalLink aria-hidden /> Open Google's report tool
+                      </a>
+                    </Button>
+                    <Select value={review.report_status} onValueChange={(value) => recordReportStatus(value as ReviewReportStatus)}>
+                      <SelectTrigger className="h-8 w-full text-[13px] sm:w-52" aria-label="What happened on Google">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(Object.keys(REPORT_STATUS_LABEL) as ReviewReportStatus[]).map((status) => (
+                          <SelectItem key={status} value={status}>
+                            {REPORT_STATUS_LABEL[status]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {canRedraftAppeal ? "The review changed after this was drafted: redraft it before you paste it. " : null}
+                    Google can't take reports automatically: paste this into Google's tool, then record what happened.
+                  </p>
+                  {canRedraftAppeal && aiOffReason ? <AiOffNote id={appealReasonId} reason={aiOffReason} className="mt-1.5" /> : null}
+                </>
+              )}
+            </div>
+          ) : suspicious && review.appeal_eligible && canEdit && !deleted ? (
+            <div className="mt-4 rounded-xl border border-critical/20 bg-critical-surface/60 p-3 sm:p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <ShieldAlert aria-hidden className="hidden size-5 shrink-0 text-critical sm:block" />
+                <p className="min-w-0 flex-1 text-sm text-foreground">
+                  <span className="font-semibold">This review may break Google's rules.</span> Rather than replying, ask Google to remove it. AI drafts the request for you to paste into Google's tool.
+                </p>
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() =>
-                    void navigator.clipboard.writeText(review.appeal?.text ?? "").then(
-                      () => toast.success("Copied. Paste it into Google's report tool."),
-                      () => toast.error("Couldn't copy. Select the text and copy it instead."),
-                    )
-                  }
+                  className={AI_SOFT_BUTTON}
+                  disabled={busy !== null || aiBlocked}
+                  title={aiBlocked ? ai.reason : undefined}
+                  aria-describedby={aiOffReason ? appealReasonId : undefined}
+                  onClick={draftRemovalRequest}
                 >
-                  <Copy aria-hidden /> Copy
+                  {busy === "appeal" ? <LoaderCircle aria-hidden className="animate-spin" /> : <Sparkles aria-hidden />}
+                  Draft removal request
+                  <span className="font-medium">· {formatTokens(ai.costs.appeal)}</span>
                 </Button>
-                <Button asChild size="sm" variant="outline">
-                  <a href={reportUrl} target="_blank" rel="noreferrer">
-                    <ExternalLink aria-hidden /> Open Google's report tool
-                  </a>
-                </Button>
-                <Select
-                  value={review.report_status}
-                  onValueChange={(value) =>
-                    void run("status", () => setReportStatus(locationId, review.review_id, value as ReviewReportStatus), { fallback: "The status couldn't be saved.", success: "Saved." })
-                  }
-                >
-                  <SelectTrigger className="h-8 w-full text-[13px] sm:w-52" aria-label="What happened on Google">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(Object.keys(REPORT_STATUS_LABEL) as ReviewReportStatus[]).map((status) => (
-                      <SelectItem key={status} value={status}>
-                        {REPORT_STATUS_LABEL[status]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </div>
-              <p className="mt-2 text-xs text-muted-foreground">
-                {canRedraftAppeal ? "The review changed after this was drafted: redraft it before you paste it. " : null}
-                Google can't take reports automatically: paste this into Google's tool, then record what happened.
-              </p>
-            </div>
-          ) : suspicious && review.appeal_eligible && canEdit ? (
-            <div className="mt-4 flex flex-col gap-3 rounded-xl border border-critical/20 bg-critical-surface/60 p-3 sm:flex-row sm:items-center sm:p-4">
-              <ShieldAlert aria-hidden className="hidden size-5 shrink-0 text-critical sm:block" />
-              <p className="min-w-0 flex-1 text-sm text-foreground">
-                <span className="font-semibold">This review may break Google's rules.</span> Rather than replying, ask Google to remove it. AI drafts the request for you to paste into Google's tool.
-              </p>
-              <Button size="sm" variant="outline" className={AI_SOFT_BUTTON} disabled={busy !== null || aiBlocked} title={aiBlocked ? ai.reason : undefined} onClick={draftRemovalRequest}>
-                {busy === "appeal" ? <LoaderCircle aria-hidden className="animate-spin" /> : <Sparkles aria-hidden />}
-                Draft removal request
-                <span className="font-medium">· {formatTokens(ai.costs.appeal)}</span>
-              </Button>
+              {aiOffReason ? <AiOffNote id={appealReasonId} reason={aiOffReason} className="mt-2 sm:justify-end" /> : null}
             </div>
           ) : null}
         </div>
@@ -656,10 +1213,38 @@ export function ReviewCard({ locationId, review, ai, selectable = false, selecte
         confirmLabel="Remove reply"
         onConfirm={() => {
           setConfirmRemove(false);
-          void run("remove", () => deleteReply(locationId, review.review_id), { fallback: "The reply couldn't be removed.", success: "Reply removed from Google." });
+          removeReply();
         }}
       />
+      <SendAnywayDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        findings={hold?.kind === "confirm_warnings_required" ? sortChecks(hold.findings) : []}
+        onSendAnyway={() => void send({ confirmWarnings: true })}
+        onEdit={() => setEditing(true)}
+        focusEditor={() => textareaRef.current?.focus()}
+        returnFocus={returnFocus}
+      />
+      <GoogleReplyDialog
+        open={onGoogle.open}
+        onOpenChange={(open) => setOnGoogle((current) => ({ ...current, open }))}
+        googleReply={onGoogle.reply}
+        draftText={onGoogle.draftText}
+        onReplace={() => void send()}
+        onDelete={() => void discard("Draft deleted. The reply on Google stays as it is.")}
+        returnFocus={returnFocus}
+      />
     </article>
+  );
+}
+
+/** Why the AI buttons above are off, in words: a disabled button shows no tooltip and isn't read out. */
+function AiOffNote({ id, reason, className }: { id: string; reason: string; className?: string }) {
+  return (
+    <p id={id} className={cn("flex items-start gap-1.5 text-xs text-muted-foreground", className)}>
+      <Sparkles aria-hidden className="mt-px size-3.5 shrink-0 text-ai" />
+      <span>{reason}</span>
+    </p>
   );
 }
 
@@ -675,40 +1260,6 @@ function ReviewerAvatar({ name, anonymous }: { name: string | null; anonymous: b
       {anonymous ? <UserRound className="size-5" /> : reviewerInitials(name)}
     </span>
   );
-}
-
-/** Where the reply stands, as one pill. Suspicious reviews skip "Needs reply": they should be reported, not answered. */
-function ReplyStateBadge({ review, aiDraft }: { review: Review; aiDraft: boolean }) {
-  switch (review.reply_state) {
-    case "sent":
-      return (
-        <StatusBadge tone="success" icon={Check} size="sm">
-          Replied
-        </StatusBadge>
-      );
-    case "failed":
-      return (
-        <StatusBadge tone="critical" icon={AlertTriangle} size="sm">
-          Not sent
-        </StatusBadge>
-      );
-    case "draft":
-      return aiDraft ? (
-        <StatusBadge tone="ai" icon={Sparkles} size="sm">
-          AI draft ready
-        </StatusBadge>
-      ) : (
-        <StatusBadge tone="info" icon={PenLine} size="sm">
-          Draft saved
-        </StatusBadge>
-      );
-    default:
-      return review.flag_level === "suspicious" ? null : (
-        <StatusBadge tone="warning" icon={MessageSquare} size="sm">
-          Needs reply
-        </StatusBadge>
-      );
-  }
 }
 
 function AnalysisPanel({ analysis }: { analysis: NonNullable<Review["analysis"]> }) {

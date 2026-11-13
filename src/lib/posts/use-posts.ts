@@ -241,18 +241,8 @@ const UPLOAD_ERRORS: Record<string, string> = {
   media_in_use: "A post that isn't published yet uses this photo.",
 };
 
-const SERIES_ERRORS: Record<string, string> = {
-  insufficient_tokens: "Not enough tokens",
-  ai_not_configured: "AI isn't switched on yet",
-  ai_budget_reached: "AI was paused for the day",
-  ai_failed: "The AI didn't answer",
-  gbp_not_connected: "The location isn't connected to Google",
-  ai_not_compliant: "The AI draft didn't meet Google's post rules (no tokens were used)",
-};
-
-export function seriesErrorText(code: string): string {
-  return SERIES_ERRORS[code] ?? "A post couldn't be made";
-}
+/** A series history entry's `reason` in words. Moved to `series-planner.ts`; re-exported for older imports. */
+export { seriesErrorText } from "./series-planner";
 
 /** What a failed or rejected post's `error.code` means for the customer. */
 export const POST_FAILURE_COPY: Record<string, string> = {
@@ -335,6 +325,13 @@ export function postErrorText(err: unknown, fallback: string): { message: string
       return { message: "You can't approve posts for this location." };
     case "too_many_series":
       return { message: "A location can have up to 3 active auto-post series." };
+    case "no_slots":
+      // "Write the next post now" on a series with no dates left (409).
+      return { message: "This series has no dates left to post on. Change its days or end date first." };
+    case "failed":
+      // A series post that couldn't be made for a reason without its own code (generate-next answers
+      // 502): nothing was kept, and any tokens it used were refunded. Not Google refusing a change.
+      return { message: "The post couldn't be written. Any tokens it used were refunded. Try again in a moment." };
     case "invalid_input":
       return { message: err.message || "Something in the form isn't valid (for example an unknown time zone)." };
     case "ends_before_start":

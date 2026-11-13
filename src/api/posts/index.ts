@@ -26,7 +26,8 @@ import type {
  * GBP posts (Phase 9) and AI posts / auto-posts (9.1). Errors carry `data.reason`:
  * `post_incomplete` (422, with `issues`), `invalid_status` / `post_changed` (409),
  * `refresh_too_soon` (429), and the AI reasons (`insufficient_tokens`, `ai_not_configured`,
- * `ai_budget_reached`, `ai_failed`).
+ * `ai_budget_reached`, `ai_failed`). Phase 25a: `ai_failed` (502) also means nothing usable came back;
+ * the tokens are refunded either way.
  */
 const posts = (locationId: string) => `locations/${encodeURIComponent(locationId)}/posts`;
 const post = (locationId: string, postId: string) => `${posts(locationId)}/${encodeURIComponent(postId)}`;
@@ -177,7 +178,10 @@ export async function aiPostTopics(
   return unwrapData(await api.post(`${posts(locationId)}/ai-topics`, input, { timeoutMs: 90_000 }));
 }
 
-/** 10–60 s. Either a description (`prompt_hint`) or a saved post to illustrate (`post_id`). */
+/**
+ * 10–60 s. Either a description (`prompt_hint`) or a saved post to illustrate (`post_id`). An image
+ * that can't be stored answers 502 `ai_failed`, refunded (Phase 25a; it used to be a `media_*` error).
+ */
 export async function aiPostImage(
   locationId: string,
   input: ({ prompt_hint: string } | { post_id: string }) & { style?: AiImageStyle },
@@ -222,7 +226,10 @@ export async function previewPostSeries(locationId: string, seriesId: string, co
   return unwrapData(await api.get(`${oneSeries(locationId, seriesId)}/preview`, { query: { count }, ...withSignal(signal) }));
 }
 
-/** Makes the next slot's post now (spends tokens). */
+/**
+ * Makes the next slot's post now (spends tokens), whatever the series' `planner` says. 409 `no_slots`;
+ * a failed run answers 502 with the AI reason (or `failed`) and also becomes the series' `last_error`.
+ */
 export async function generateNextSeriesPost(locationId: string, seriesId: string): Promise<{ series: PostSeries; post: Post }> {
   return unwrapData(await api.post(`${oneSeries(locationId, seriesId)}/generate-next`, undefined, { timeoutMs: 120_000 }));
 }

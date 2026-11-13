@@ -5,6 +5,7 @@ import { ArrowRight, BarChart3, Building2, FileText, LoaderCircle } from "lucide
 import { gbpReportKey } from "@/lib/gbp/use-gbp-report";
 import { LOCATIONS_QUERY_KEY } from "@/lib/locations/use-locations";
 import { locationPath } from "@/lib/mypageseo/section-links";
+import { invalidateReviewLookups } from "@/lib/reviews/review-spotlight";
 import { reviewsKey } from "@/lib/reviews/use-reviews";
 import { hasBackgroundWork, rankingsKey, useRefreshState } from "@/lib/rankings/use-rankings";
 import { useFirstRunCardShown } from "@/lib/rankings/first-data";
@@ -39,6 +40,8 @@ export function BackgroundActivity({
       void queryClient.invalidateQueries({ queryKey: rankingsKey(locationId) });
       void queryClient.invalidateQueries({ queryKey: gbpReportKey(locationId) });
       void queryClient.invalidateQueries({ queryKey: reviewsKey(locationId) });
+      // A review opened from a link (?review=) is cached on its own: refresh it with the lists.
+      void invalidateReviewLookups(queryClient, locationId);
       void queryClient.invalidateQueries({ queryKey: [...LOCATIONS_QUERY_KEY, "overview", locationId] });
     }
     wasBusy.current = busy;

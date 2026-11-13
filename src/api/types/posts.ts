@@ -195,6 +195,12 @@ export type PostSeries = PostSeriesInput & {
   time_zone: string;
   time_zone_source?: "series" | "location" | "default";
   posts_generated: number;
+  /**
+   * Phase 25a: whether the server's auto-post planner runs for this series: `on`, `switched_off` (the
+   * rollout switch is off) or `not_in_pilot`. Unless `on`, nothing is generated for `next_slots` (show
+   * "Automatic AI posts are paused"; "Generate next" still works). Older servers leave it out.
+   */
+  planner?: "on" | "switched_off" | "not_in_pilot";
   next_slots: string[];
   /** The backend model allows an error without a slot time (`slot_at: null`). */
   last_error: { code: string; message: string; slot_at: string | null; at: string } | null;

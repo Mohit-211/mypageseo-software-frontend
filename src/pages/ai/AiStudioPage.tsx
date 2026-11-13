@@ -19,6 +19,7 @@ import { AiFeatureCard } from "@/components/ai/ai-feature-card";
 import { AiNextActions } from "@/components/ai/ai-next-actions";
 import { AiStatusBanner } from "@/components/ai/ai-status-banner";
 import { AiStatusPill } from "@/components/ai/ai-status-pill";
+import { AiSettingsLinks } from "@/components/ai-settings/ai-settings-links";
 import { PageHeader, SectionHeader } from "@/components/layout/shared/data-display";
 import { IconChip } from "@/components/layout/shared/icon-chip";
 import { BuyTokensDialog } from "@/components/layout/shared/token-balance";
@@ -32,6 +33,7 @@ import { formatShortDate } from "@/lib/datetime";
 import { useGbpConnect } from "@/lib/gbp/use-gbp-connect";
 import { useLocationRoute } from "@/lib/locations/location-route-context";
 import { locationPath } from "@/lib/mypageseo/section-links";
+import { PLANNER_PAUSED_TITLE, autoPostsState } from "@/lib/posts/series-planner";
 import { usePostSeries, usePostsSummary } from "@/lib/posts/use-posts";
 import { MAX_KEYWORDS } from "@/lib/rankings/keywords";
 import { useTracking } from "@/lib/rankings/use-rankings";
@@ -98,17 +100,17 @@ function AiStudioPage() {
   });
   const actionsLoading = reviews.isPending || posts.isPending || tracking.isPending;
 
-  // The next auto-post: the soonest upcoming slot of the active series.
-  const activeSeries = series.data?.series.filter((item) => item.active) ?? [];
-  const nextSlot = activeSeries
-    .flatMap((item) => item.next_slots)
-    .filter((slot) => Number.isFinite(Date.parse(slot)))
-    .sort((a, b) => Date.parse(a) - Date.parse(b))[0];
+  // The next auto-post: the soonest slot the planner really writes. While automatic AI posts are
+  // paused (the series' `planner` isn't "on"), no slot is a next post: the stat says they're paused.
+  const { active: activeSeries, pausedBy, nextSlot } = autoPostsState(series.data?.series ?? []);
+  const seriesCount = `${activeSeries.length} of ${series.data?.limit ?? 3} series`;
 
   const postsStat = !postsConnected
     ? "Ideas and drafts work now; publishing needs Google connected"
     : activeSeries.length
-      ? `Auto-posts on${nextSlot ? `: next one ${formatShortDate(nextSlot)}` : ""} · ${activeSeries.length} of ${series.data?.limit ?? 3} series`
+      ? pausedBy
+        ? `${PLANNER_PAUSED_TITLE} · ${seriesCount}`
+        : `Auto-posts on${nextSlot ? `: next one ${formatShortDate(nextSlot)}` : ""} · ${seriesCount}`
       : posts.data
         ? posts.data.stats.published_last_30_days > 0
           ? `${posts.data.stats.published_last_30_days} ${posts.data.stats.published_last_30_days === 1 ? "post" : "posts"} published in the last 30 days`
@@ -259,6 +261,9 @@ function AiStudioPage() {
         </div>
       </section>
 
+      {/* AI Settings and Facts for the AI (free, no tokens): read-only for a client user. */}
+      <AiSettingsLinks locationId={id} canEdit={canEdit} />
+
       {canEdit ? (
         <section id="ai-costs" aria-labelledby="ai-costs-title" className="min-w-0 scroll-mt-20 rounded-xl border border-border bg-card shadow-card">
           {/* The chip sits on the title line (as in Panel), not beside the wrapped description. */}
@@ -365,7 +370,7 @@ const HOW_IT_WORKS: { icon: LucideIcon; title: string; text: ReactNode }[] = [
   {
     icon: RotateCcw,
     title: "Failed requests are refunded",
-    text: "If the AI doesn't answer, your tokens come back on their own. A draft you already have is reused for free.",
+    text: "If the AI doesn't answer, or nothing usable comes back, your tokens come back on their own. A draft you already have is reused for free.",
   },
   {
     icon: BadgeCheck,

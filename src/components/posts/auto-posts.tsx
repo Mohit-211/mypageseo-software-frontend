@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   CalendarClock,
   CheckCircle2,
+  CirclePause,
   Coins,
   Hourglass,
   ImageIcon,
@@ -55,7 +56,19 @@ import { useGbpConnect } from "@/lib/gbp/use-gbp-connect";
 import { formatPostMoment } from "@/lib/posts/post-format";
 import { sortSeries } from "@/lib/posts/post-order";
 import { useToastPostError } from "@/lib/posts/post-toasts";
-import { CTA_LABEL, TONE_LABEL, WEEKDAYS, postErrorText, postsKey, seriesErrorText, useInvalidatePosts, usePostSeries } from "@/lib/posts/use-posts";
+import {
+  PLANNER_PAUSED_TITLE,
+  WRITE_NEXT_POST_LABEL,
+  pausedPlannerOf,
+  plannerPausedReason,
+  plannerPausedText,
+  seriesErrorText,
+  seriesPlanner,
+  seriesProblem,
+  seriesProblemCopy,
+  type PausedPlanner,
+} from "@/lib/posts/series-planner";
+import { CTA_LABEL, TONE_LABEL, WEEKDAYS, postErrorText, postsKey, useInvalidatePosts, usePostSeries } from "@/lib/posts/use-posts";
 import { cn } from "@/lib/utils";
 
 const TIME_OF_DAY = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
@@ -92,6 +105,10 @@ function createBlocker({ ai, gbpConnected, full }: { ai: AiStatus; gbpConnected:
  * New series need AI that can run (`useAiStatus`): while AI is off, a series would skip every slot,
  * so the button stays visible but disabled, with the reason. `photosPublishable: false` turns AI
  * images off by default and warns, since posts with a photo can't publish yet.
+ *
+ * Phase 25a: each series says whether the server's planner writes its posts (`planner`). While it
+ * doesn't, each card says so calmly ("Automatic AI posts are paused"), its slots read "Planned slots
+ * (paused)" rather than "Coming up", and "Write the next post now" still works.
  */
 export function AutoPosts({
   locationId,
@@ -124,6 +141,8 @@ export function AutoPosts({
   const showNew = editing === "new" || (startNew && !autoOpened && canEdit && list.isSuccess && blocker === null);
   const openSeries = editing === "new" ? null : editing;
   const imagesOn = series.some((entry) => entry.active && entry.include_image);
+  // The planner is switched per account, so any series tells a new one's fate too.
+  const pausedPlanner = pausedPlannerOf(series);
 
   const header = (
     <SectionHeader
@@ -208,6 +227,7 @@ export function AutoPosts({
           series={openSeries}
           ai={ai}
           photosPublishable={photosPublishable}
+          pausedPlanner={openSeries ? pausedPlannerOf([openSeries]) : pausedPlanner}
           onClose={() => {
             setEditing(null);
             setAutoOpened(true);
@@ -265,6 +285,10 @@ function SeriesCard({
     enabled: showPreview,
   });
   const perPost = ai.costs.post_draft + (series.include_image ? ai.costs.post_image : 0);
+  const planner = seriesPlanner(series);
+  const plannerOn = planner === "on";
+  // While the planner is paused, an old "AI couldn't run" error says nothing the notice doesn't.
+  const problem = seriesProblem(series);
 
   const run = async (key: string, action: () => Promise<unknown>, success: string) => {
     setBusy(key);
@@ -292,7 +316,7 @@ function SeriesCard({
               <StatusBadge tone={series.active ? "success" : "neutral"} dot size="sm">
                 {series.active ? "Active" : "Paused"}
               </StatusBadge>
-              {series.last_error ? (
+              {problem ? (
                 <StatusBadge tone="warning" icon={AlertTriangle} size="sm">
                   Needs attention
                 </StatusBadge>
@@ -310,35 +334,40 @@ function SeriesCard({
       </div>
 
       <div className="space-y-4 px-4 py-4 sm:px-5">
-        {series.last_error ? (
+        {planner !== "on" ? <PlannerNotice planner={planner} canWriteNow={canEdit && series.active} /> : null}
+        {problem ? (
           <SeriesProblem
-            error={series.last_error}
+            error={problem}
             active={series.active}
+            plannerOn={plannerOn}
             now={now}
             action={
-              series.last_error.code === "insufficient_tokens" && canBuy ? (
+              problem.code === "insufficient_tokens" && canBuy ? (
                 <Button size="sm" variant="outline" onClick={() => setBuying(true)}>
                   <Coins aria-hidden /> Buy tokens
                 </Button>
-              ) : series.last_error.code === "gbp_not_connected" && canEdit && !gbpConnected ? (
+              ) : problem.code === "gbp_not_connected" && canEdit && !gbpConnected ? (
                 <Button size="sm" variant="outline" onClick={() => connect()}>
                   <PlugZap aria-hidden /> Connect Google
                 </Button>
               ) : undefined
             }
-            askOwner={series.last_error.code === "insufficient_tokens" && !canBuy}
+            askOwner={problem.code === "insufficient_tokens" && !canBuy}
           />
         ) : null}
 
         <dl className="grid gap-4 text-sm sm:grid-cols-3">
           <div className="min-w-0">
-            <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Coming up</dt>
+            {/* While the planner is paused nothing is written for these times: never "coming up". */}
+            <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {plannerOn || !series.active ? "Coming up" : "Planned slots (paused)"}
+            </dt>
             <dd className="mt-1.5">
               {series.active && series.next_slots.length > 0 ? (
                 <ul className="space-y-1">
                   {series.next_slots.slice(0, 3).map((slot) => (
-                    <li key={slot} className="flex items-center gap-1.5 text-foreground">
-                      <CalendarClock aria-hidden className="size-3.5 shrink-0 text-ai" />
+                    <li key={slot} className={cn("flex items-center gap-1.5", plannerOn ? "text-foreground" : "text-muted-foreground")}>
+                      <CalendarClock aria-hidden className={cn("size-3.5 shrink-0", plannerOn ? "text-ai" : "text-muted-foreground")} />
                       {formatPostMoment(slot, { weekday: true })}
                     </li>
                   ))}
@@ -401,7 +430,7 @@ function SeriesCard({
           <button
             type="button"
             aria-expanded={showPreview}
-            className="cursor-pointer rounded-sm font-medium text-primary outline-hidden hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+            className="relative cursor-pointer rounded-sm font-medium text-primary outline-hidden hover:underline focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:after:absolute pointer-coarse:after:-inset-x-1.5 pointer-coarse:after:-inset-y-2.5 pointer-coarse:after:content-['']"
             onClick={() => setShowPreview((value) => !value)}
           >
             {showPreview ? "Hide the next topics" : "See the next topics"}
@@ -414,8 +443,9 @@ function SeriesCard({
             <ul className="space-y-1 rounded-lg bg-surface-strong px-3 py-2.5 text-sm">
               {preview.data.slots.map((slot) => (
                 <li key={slot.slot_at} className="text-foreground">
-                  <span className="font-medium">{formatPostMoment(slot.slot_at, { weekday: true })}</span>: “{slot.topic}”{" "}
-                  <span className="text-muted-foreground">(written {formatPostMoment(slot.generates_at)})</span>
+                  <span className="font-medium">{formatPostMoment(slot.slot_at, { weekday: true })}</span>: “{slot.topic}”
+                  {/* Nothing is written on its own while the planner is paused. */}
+                  {plannerOn ? <span className="text-muted-foreground"> (written {formatPostMoment(slot.generates_at)})</span> : null}
                 </li>
               ))}
             </ul>
@@ -434,7 +464,7 @@ function SeriesCard({
               title={ai.reason}
               onClick={() => void run("generate", () => generateNextSeriesPost(locationId, series.series_id), "The next post is written.")}
             >
-              {busy === "generate" ? <LoaderCircle aria-hidden className="animate-spin" /> : <Sparkles aria-hidden />} Write the next post now
+              {busy === "generate" ? <LoaderCircle aria-hidden className="animate-spin" /> : <Sparkles aria-hidden />} {WRITE_NEXT_POST_LABEL}
               <AiCostChip tokens={perPost} balance={ai.balance} />
             </Button>
           ) : null}
@@ -471,33 +501,58 @@ function SeriesCard({
 }
 
 /**
+ * Automatic AI posts are paused for this account (Phase 25a `planner` isn't `on`): a calm notice, not
+ * an error. The series is kept and "Write the next post now" still works.
+ */
+function PlannerNotice({ planner, canWriteNow }: { planner: PausedPlanner; canWriteNow: boolean }) {
+  return (
+    <div className="flex items-start gap-2.5 rounded-lg border border-info/25 bg-info-surface px-3 py-2.5 text-sm text-foreground">
+      <CirclePause aria-hidden className="mt-0.5 size-4 shrink-0 text-info" />
+      <div className="min-w-0">
+        <p className="font-semibold">{PLANNER_PAUSED_TITLE}</p>
+        <p>{plannerPausedText(planner, canWriteNow)}</p>
+      </div>
+    </div>
+  );
+}
+
+/**
  * Why the last slot's post wasn't written, and what happens next, from the backend's rules: the
- * hourly planner retries only ACTIVE series, only for slots still ahead; a slot whose time has passed
- * is skipped and the next one is written about 2 days before its time; resuming a paused series
- * clears the error. `action` fixes the cause where the app can (buy tokens, connect Google).
+ * hourly planner retries only ACTIVE series, only for slots still ahead, and only while it runs for
+ * the account (`planner: on`); a slot whose time has passed is skipped and the next one is written
+ * about 2 days before its time; resuming a paused series clears the error. `action` fixes the cause
+ * where the app can (buy tokens, connect Google).
  */
 function SeriesProblem({
   error,
   active,
+  plannerOn,
   now,
   action,
   askOwner,
 }: {
   error: NonNullable<PostSeries["last_error"]>;
   active: boolean;
+  /** The server's planner writes this series' posts (Phase 25a `planner`). */
+  plannerOn: boolean;
   now: number;
   action: ReactNode;
   /** Not enough tokens and this person can't buy them. */
   askOwner: boolean;
 }) {
+  const copy = seriesProblemCopy(error, now);
   // The backend's model allows an error without a slot time.
   const slotAt: string | null = error.slot_at ?? null;
-  const retrying = active && slotAt !== null && Date.parse(slotAt) > now;
+  const retrying = active && plannerOn && slotAt !== null && Date.parse(slotAt) > now;
   const next = !active
-    ? "Resume the series to try again. Resuming clears this message."
-    : retrying
-      ? "It's tried again every hour until then."
-      : `${slotAt ? "That time has passed. " : ""}The next post is written about 2 days before its time.`;
+    ? plannerOn
+      ? "Resume the series to try again. Resuming clears this message."
+      : "Resuming the series clears this message."
+    : !plannerOn
+      ? "It isn't tried again while automatic AI posts are paused."
+      : retrying
+        ? "It's tried again every hour until then."
+        : `${slotAt ? "That time has passed. " : ""}The next post is written about 2 days before its time.`;
   return (
     <div
       role="alert"
@@ -506,7 +561,8 @@ function SeriesProblem({
       <p className="flex min-w-0 flex-1 items-start gap-2">
         <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0" />
         <span>
-          {seriesErrorText(error.code)}: {slotAt ? `the post for ${formatPostMoment(slotAt, { weekday: true })} wasn't written.` : "a post wasn't written."} {next}
+          <span className="font-semibold">{copy.title}.</span>
+          {copy.detail ? ` ${copy.detail}` : ""} {slotAt ? `The post for ${formatPostMoment(slotAt, { weekday: true })} wasn't written.` : "A post wasn't written."} {next}
           {askOwner ? " Need more? Ask the account owner to add tokens." : ""}
         </span>
       </p>
@@ -557,6 +613,7 @@ function SeriesDialog({
   series,
   ai,
   photosPublishable,
+  pausedPlanner,
   onClose,
 }: {
   locationId: string;
@@ -564,6 +621,8 @@ function SeriesDialog({
   series: PostSeries | null;
   ai: AiStatus;
   photosPublishable: boolean;
+  /** Automatic AI posts are paused for the account (from the series' `planner`), or null. */
+  pausedPlanner: PausedPlanner | null;
   onClose: () => void;
 }) {
   const invalidate = useInvalidatePosts(locationId);
@@ -617,10 +676,15 @@ function SeriesDialog({
       ...(!series || zone !== series.time_zone ? { time_zone: zone.trim() } : {}),
     };
     try {
-      if (series) await updatePostSeries(locationId, series.series_id, input);
-      else await createPostSeries(locationId, input);
+      const saved = series ? await updatePostSeries(locationId, series.series_id, input) : await createPostSeries(locationId, input);
       invalidate();
-      toast.success(series ? "Series updated. Changes apply to posts not written yet." : "Auto-posts are on. The first post is written about 2 days before its time.");
+      toast.success(
+        series
+          ? "Series updated. Changes apply to posts not written yet."
+          : seriesPlanner(saved) === "on"
+            ? "Auto-posts are on. The first post is written about 2 days before its time."
+            : "Series saved. Automatic AI posts are paused for now, so nothing is written on its own yet.",
+      );
       onClose();
     } catch (err) {
       toastError(err, "The series couldn't be saved.");
@@ -799,6 +863,14 @@ function SeriesDialog({
               {series ? "" : " Turning this on is your consent to that spend."}
             </span>
           </p>
+          {pausedPlanner ? (
+            <p className="flex items-start gap-2 rounded-lg border border-info/25 bg-info-surface px-3 py-2.5 text-sm text-foreground">
+              <CirclePause aria-hidden className="mt-0.5 size-4 shrink-0 text-info" />
+              <span>
+                {plannerPausedReason(pausedPlanner)} Until they start, the series is saved but writes and spends nothing on its own.
+              </span>
+            </p>
+          ) : null}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={saving}>

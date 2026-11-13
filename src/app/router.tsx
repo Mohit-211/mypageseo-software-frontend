@@ -68,6 +68,8 @@ const locationPages: RouteObject[] = [
       { index: true, lazy: () => import("@/pages/ai/AiStudioPage").then(page) },
       { path: "posts", lazy: () => import("@/pages/ai/AiPostsPage").then(page) },
       { path: "replies", lazy: () => import("@/pages/ai/AiRepliesPage").then(page) },
+      // How the AI writes for this location, and the facts it may use (Phase 25a).
+      { path: "settings", lazy: () => import("@/pages/ai/AiSettingsPage").then(page) },
     ],
   },
 ];

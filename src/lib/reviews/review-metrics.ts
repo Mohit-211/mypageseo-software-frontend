@@ -4,8 +4,9 @@
  *
  * Backend definitions (backend `src/modules/reviews/services/stats.service.ts`), so the derived
  * numbers stay exact:
- * - `unreplied` = no reply on Google (`reply_state` none, draft or failed);
+ * - `unreplied` = no reply on Google (`reply_state` none, draft, failed or, Phase 25a, rejected);
  * - `drafts_pending` = a draft waits (`reply_state` draft or failed: a failed send keeps its draft);
+ * - `replies_rejected` = Google rejected the reply and nothing new is written yet (`reply_state` rejected);
  * - `flagged` = attention + suspicious flags.
  */
 import type { ReviewsList, ReviewsSummary } from "@/api";
@@ -31,9 +32,12 @@ export function formatPercent(rate: number | null): string {
   return `${Math.round(rate * 100)}%`;
 }
 
-/** Reviews with nothing written yet: no reply and no draft. */
-export function noReplyCount(stats: Pick<Stats, "unreplied" | "drafts_pending">): number {
-  return Math.max(0, stats.unreplied - stats.drafts_pending);
+/**
+ * Reviews with nothing written yet (`reply_state=none`, the "No reply yet" view): no reply, no draft,
+ * and no reply Google rejected (those have their own view). Every "no reply yet" number uses this.
+ */
+export function noReplyCount(stats: Pick<Stats, "unreplied" | "drafts_pending" | "replies_rejected">): number {
+  return Math.max(0, stats.unreplied - stats.drafts_pending - (stats.replies_rejected ?? 0));
 }
 
 /** Reviews flagged for attention (not suspicious). */
@@ -41,10 +45,13 @@ export function attentionCount(stats: Pick<Stats, "flagged" | "suspicious">): nu
   return Math.max(0, stats.flagged - stats.suspicious);
 }
 
-/** Reviews AI would draft now ("Draft all"): the summary's count, else an estimate from the stats. */
+/**
+ * Reviews AI would draft now ("Draft all"): the summary's count, else an estimate from the stats
+ * (servers older than Phase 25a: every unreplied review without a draft; a rejected reply can be redrafted).
+ */
 export function draftableCount(summary: ReviewsSummary): number {
   if (typeof summary.ai?.draftable === "number") return summary.ai.draftable;
-  return summary.stats ? noReplyCount(summary.stats) : 0;
+  return summary.stats ? Math.max(0, summary.stats.unreplied - summary.stats.drafts_pending) : 0;
 }
 
 /** How many reviews arrive per 30 days, from the newest reviews. */

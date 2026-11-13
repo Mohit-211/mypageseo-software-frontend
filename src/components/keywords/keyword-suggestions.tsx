@@ -90,6 +90,9 @@ export function KeywordSuggestions({
   const error = moreError ?? first.error;
   const errorCopy = error ? aiErrorTextFor(error, { free: true, fallback: "The ideas didn't come through" }) : null;
   const limitReached = errorCopy?.reason === "suggestion_limit_reached";
+  // Phase 25a: an answer with nothing usable is `suggestions: []`, "nothing new", not an error (the run
+  // still counts toward today's limit, so `runs_left_today` and `can_suggest_more` are as usual).
+  const nothingNew = !loadingMore && !error && latest !== undefined && latest.suggestions.length === 0;
 
   // Every idea so far, without repeats or keywords already in the list.
   const seen = new Set<string>();
@@ -233,8 +236,13 @@ export function KeywordSuggestions({
             );
           })}
         </ul>
-      ) : first.isSuccess && !loadingMore ? (
+      ) : first.isSuccess && !loadingMore && !nothingNew ? (
         <p className="text-sm text-muted-foreground">Every idea is already in your list.</p>
+      ) : null}
+      {nothingNew ? (
+        <p role="status" className="text-sm text-muted-foreground">
+          No new ideas this time. Try again later or type your own.
+        </p>
       ) : null}
 
       {errorCopy && !first.isPending ? (

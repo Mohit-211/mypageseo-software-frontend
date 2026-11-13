@@ -6,23 +6,22 @@ import { Button } from "@/components/ui/button";
 import { useAiStatus } from "@/lib/ai/ai-status";
 import { locationPath } from "@/lib/mypageseo/section-links";
 import { formatPostMoment } from "@/lib/posts/post-format";
+import { PLANNER_PAUSED_TITLE, autoPostsState, plannerPausedReason, seriesProblem } from "@/lib/posts/series-planner";
 import { usePostSeries } from "@/lib/posts/use-posts";
-import { byTime, sortRows } from "@/lib/sort";
 
 /**
  * A slim AI card on the Posts page: whether auto-posts run for this location, when the next AI post
  * is due, and a way into AI Posts, where auto-posts now live (they used to be a tab here).
+ *
+ * Phase 25a: while the server's planner writes nothing for the account (`planner` isn't `on`), it says
+ * "Automatic AI posts are paused" and why, never a next AI post.
  */
 export function AutoPostsPromo({ locationId, gbpConnected = true }: { locationId: string; gbpConnected?: boolean }) {
   const ai = useAiStatus(locationId);
   const list = usePostSeries(locationId);
   const series = list.data?.series ?? [];
-  const active = series.filter((entry) => entry.active);
-  const problems = series.filter((entry) => entry.last_error).length;
-  const next = sortRows(
-    active.flatMap((entry) => entry.next_slots),
-    byTime((slot) => slot, "asc"),
-  )[0];
+  const { active, pausedBy, nextSlot: next } = autoPostsState(series);
+  const problems = series.filter((entry) => seriesProblem(entry)).length;
   const running = active.length > 0;
 
   return (
@@ -34,7 +33,7 @@ export function AutoPostsPromo({ locationId, gbpConnected = true }: { locationId
         <IconChip icon={Repeat} tone="ai" className="mt-0.5" />
         <div className="min-w-0">
           <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-foreground">
-            {running ? "Auto-posts are on" : gbpConnected ? "Let AI keep your profile active" : "AI can post for you once Google is connected"}
+            {running ? (pausedBy ? PLANNER_PAUSED_TITLE : "Auto-posts are on") : gbpConnected ? "Let AI keep your profile active" : "AI can post for you once Google is connected"}
             {ai.state === "off" ? (
               <StatusBadge tone="ai" size="sm">
                 AI almost ready
@@ -48,7 +47,9 @@ export function AutoPostsPromo({ locationId, gbpConnected = true }: { locationId
           </p>
           <p className="text-sm text-muted-foreground">
             {running
-              ? `${active.length === 1 ? "1 series" : `${active.length} series`} running${next ? ` · next AI post ${formatPostMoment(next, { weekday: true })}` : ""}.`
+              ? pausedBy
+                ? `${plannerPausedReason(pausedBy)} ${active.length === 1 ? "Your series is saved." : `Your ${active.length} series are saved.`}`
+                : `${active.length === 1 ? "1 series" : `${active.length} series`} running${next ? ` · next AI post ${formatPostMoment(next, { weekday: true })}` : ""}.`
               : gbpConnected
                 ? "Choose days and topics once. AI writes each post in your voice and publishes it on schedule."
                 : "Meanwhile, AI Posts can suggest ideas and write drafts for you to publish later."}

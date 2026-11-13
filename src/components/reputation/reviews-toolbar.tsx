@@ -5,12 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
+  DELETED_FILTER_LABEL,
   FLAG_FILTER_LABEL,
   MAX_REVIEW_SEARCH,
   REPLY_FILTER_LABEL,
   REVIEW_SORTS,
   SORT_LABEL,
   hasReviewFilters,
+  noReviewFilters,
   type FlagFilter,
   type ReplyFilter,
   type ReviewFilters,
@@ -24,20 +26,43 @@ type Stats = NonNullable<ReviewsSummary["stats"]>;
 type QuickView = {
   id: string;
   label: string;
-  count: number;
+  /** Undefined while unknown (no pill). */
+  count: number | undefined;
   reply: ReplyFilter | null;
   flag: FlagFilter | null;
+  /** Only the reviews deleted on Google. */
+  deleted?: boolean;
   /** Explains the view (tooltip). */
   title?: string;
-  /** Left out when its count is 0 and it isn't selected. */
+  /** Left out when its count is 0 (or unknown) and it isn't selected. */
   optional?: boolean;
+  /** The count's colour while unselected and above zero. */
+  attention?: "critical";
 };
 
-function quickViews(stats: Stats): QuickView[] {
+function quickViews(stats: Stats, deletedCount: number | undefined): QuickView[] {
   return [
-    { id: "all", label: "All", count: stats.total, reply: null, flag: null, title: "Every review, newest first." },
-    { id: "needs", label: "Needs reply", count: stats.unreplied, reply: "needs", flag: null, title: "Reviews without a reply on Google, including drafts not sent yet." },
+    { id: "all", label: "All", count: stats.total, reply: null, flag: null, title: "Every review still on Google, newest first." },
+    {
+      id: "needs",
+      label: "Needs reply",
+      count: stats.unreplied,
+      reply: "needs",
+      flag: null,
+      title: "Reviews without a reply on Google, including drafts not sent yet and replies Google rejected.",
+    },
     { id: "drafts", label: "Drafts", count: stats.drafts_pending, reply: "draft", flag: null, title: "Replies written or drafted with AI that haven't been sent yet." },
+    {
+      // Phase 25a: a to-do (it counts as unanswered), so next to the drafts, in red while it has any.
+      id: "rejected",
+      label: REPLY_FILTER_LABEL.rejected,
+      count: stats.replies_rejected,
+      reply: "rejected",
+      flag: null,
+      title: "Replies Google didn't publish. Read Google's reason on each, then send a new reply.",
+      optional: true,
+      attention: "critical",
+    },
     {
       id: "attention",
       label: "Needs attention",
@@ -55,29 +80,62 @@ function quickViews(stats: Stats): QuickView[] {
       title: "Reviews that may break Google's rules. Ask Google to remove them rather than replying.",
       optional: true,
     },
-    { id: "replied", label: "Replied", count: Math.max(0, stats.total - stats.unreplied), reply: "sent", flag: null },
+    {
+      id: "pending",
+      label: REPLY_FILTER_LABEL.pending,
+      count: stats.replies_pending,
+      reply: "pending",
+      flag: null,
+      title: "Replies you sent that Google is still reviewing before they show. This usually takes minutes, sometimes a day.",
+      optional: true,
+    },
+    {
+      id: "replied",
+      label: "Replied",
+      count: Math.max(0, stats.total - stats.unreplied),
+      reply: "sent",
+      flag: null,
+      title: "Reviews with a reply on Google, including replies Google is still reviewing.",
+    },
+    {
+      // Last: a read-only list of reviews no longer on Google (left out of every other view and count).
+      id: "deleted",
+      label: DELETED_FILTER_LABEL,
+      count: deletedCount,
+      reply: null,
+      flag: null,
+      deleted: true,
+      title: "Reviews removed from Google, by the reviewer or by Google. They're kept here to read, and left out of your numbers.",
+      optional: true,
+    },
   ];
 }
 
 /**
  * The Reviews page's filters, all kept in the address: quick views with counts (all, needs reply,
- * drafts, needs attention, suspicious, replied), the search box, star ratings and the order.
+ * drafts, rejected by Google, needs attention, suspicious, waiting for Google, replied, deleted on
+ * Google), the search box, star ratings and the order. Views that are often empty show up only when
+ * they have reviews (or are open).
  */
 export function ReviewsToolbar({
   stats,
   filters,
   onChange,
   openTotal,
+  deletedCount,
 }: {
   stats: Stats;
   filters: ReviewFilters;
   onChange: (patch: Partial<ReviewFilters>) => void;
   /** The listed total for the open view, when nothing else narrows it (keeps the open chip equal to the list). */
   openTotal?: number;
+  /** Reviews deleted on Google (`GET reviews?deleted_on_google=true` total), when counted. */
+  deletedCount?: number | undefined;
 }) {
-  const activeId = quickViews(stats).find((view) => view.reply === filters.reply && view.flag === filters.flag)?.id ?? null;
+  const all = quickViews(stats, deletedCount);
+  const activeId = all.find((view) => view.reply === filters.reply && view.flag === filters.flag && Boolean(view.deleted) === filters.deleted)?.id ?? null;
   const useOpenTotal = openTotal !== undefined && filters.ratings.length === 0 && !filters.q.trim();
-  const views = quickViews(stats).map((view) => (useOpenTotal && view.id === activeId ? { ...view, count: openTotal } : view));
+  const views = all.map((view) => (useOpenTotal && view.id === activeId ? { ...view, count: openTotal } : view));
   const activeView = views.find((view) => view.id === activeId) ?? null;
   const filtered = hasReviewFilters(filters);
 
@@ -89,11 +147,11 @@ export function ReviewsToolbar({
         aria-label="Quick views"
         value={activeView?.id ?? null}
         options={views
-          .filter((view) => !view.optional || view.count > 0 || view === activeView)
-          .map((view) => ({ id: view.id, label: view.label, count: view.count, title: view.title }))}
+          .filter((view) => !view.optional || (view.count ?? 0) > 0 || view === activeView)
+          .map((view) => ({ id: view.id, label: view.label, count: view.count, title: view.title, attention: view.attention }))}
         onChange={(id) => {
           const view = views.find((item) => item.id === id);
-          if (view) onChange({ reply: view.reply, flag: view.flag });
+          if (view) onChange({ reply: view.reply, flag: view.flag, deleted: Boolean(view.deleted) });
         }}
         className="max-sm:-mx-3 max-sm:w-[calc(100%+1.5rem)] max-sm:px-3"
       />
@@ -102,6 +160,7 @@ export function ReviewsToolbar({
       {!activeView ? (
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="font-medium text-muted-foreground">Showing</span>
+          {filters.deleted ? <FilterChip label={DELETED_FILTER_LABEL} onClear={() => onChange({ deleted: false })} /> : null}
           {filters.reply ? (
             <FilterChip label={REPLY_FILTER_LABEL[filters.reply]} onClear={() => onChange({ reply: null })} />
           ) : null}
@@ -159,7 +218,7 @@ export function ReviewsToolbar({
             </SelectContent>
           </Select>
           {filtered ? (
-            <Button variant="ghost" size="sm" className="h-9" onClick={() => onChange({ reply: null, flag: null, ratings: [], q: "" })}>
+            <Button variant="ghost" size="sm" className="h-9" onClick={() => onChange(noReviewFilters())}>
               <X aria-hidden /> Clear filters
             </Button>
           ) : null}

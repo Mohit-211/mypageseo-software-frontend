@@ -10,7 +10,10 @@
  * Reasons (backend docs/API.md "AI errors (every AI route)", billing gates, Phase 22/25):
  * - 503 `ai_not_configured`: AI isn't switched on yet. Shown as "AI is almost ready"; never "the server".
  * - 503 `ai_budget_reached`: today's AI budget is used up (per UTC day, nothing charged).
- * - 502 `ai_failed`: the AI didn't answer; the tokens were refunded.
+ * - 502 `ai_failed`: the AI didn't answer or (Phase 25a) nothing in its answer could be used: no usable
+ *   reply, analysis, report text, post text or idea, or an AI image that couldn't be stored (`posts/ai-image`
+ *   answers this instead of a `media_*` error). Either way the tokens were refunded, and the words say so.
+ *   Keyword ideas are free and never answer it for an unusable answer: that's `suggestions: []`.
  * - 402 `insufficient_tokens` `{ balance, cost }`: owners get "Buy tokens"; others are told to ask the owner.
  * - 402 `subscription_required`: owners get "Go to billing"; others are told to ask the owner.
  * - 403 `organization_suspended` (→ a new support ticket), 403 `feature_not_included` `{ feature }`,
@@ -152,12 +155,15 @@ export function aiErrorText(error: unknown, options: AiErrorTextOptions = {}): A
       return { ...base, tone: "info", title: "AI is paused for today", description: `Today's AI limit has been reached, so nothing was charged. It's back at ${back}.` };
     }
     case "ai_failed":
+      // No answer, or (Phase 25a) nothing usable in it: refunded either way, and this says so.
       return {
         ...base,
         tone: "critical",
         retryable: true,
-        title: "The AI didn't answer",
-        description: free ? "Nothing was charged. Try again in a moment." : "Your tokens were refunded. Try again in a moment.",
+        title: "The AI couldn't finish this",
+        description: free
+          ? "Nothing usable came back, and nothing was charged. Try again in a moment."
+          : "Nothing usable came back, so your tokens were refunded. Try again.",
       };
     case "insufficient_tokens": {
       const cost = numberOf(data.cost);
@@ -217,7 +223,7 @@ export function aiErrorText(error: unknown, options: AiErrorTextOptions = {}): A
         tone: "warning",
         retryable: true,
         title: "The draft didn't meet Google's post rules",
-        description: "No tokens were used. Try again, or change the topic.",
+        description: "Your tokens were refunded. Try again, or change the topic.",
       };
     case "gbp_not_connected":
       return { ...base, tone: "warning", title: "Connect Google first", description: "This needs the location's Google Business Profile to be connected." };
