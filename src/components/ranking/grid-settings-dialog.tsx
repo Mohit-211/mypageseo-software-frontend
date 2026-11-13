@@ -123,7 +123,7 @@ function GridSettingsDialog({ locationId, onClose }: { locationId: string; onClo
               <div className="space-y-1.5">
                 <Label htmlFor="grid-size"><TermWithTip term="Grid size">{GLOSSARY.gridSize}</TermWithTip></Label>
                 <Select value={String(currentSize)} onValueChange={(value) => setSize(Number(value))}>
-                  <SelectTrigger id="grid-size" className="bg-background"><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="grid-size"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {SIZES.map((value) => (
                       <SelectItem key={value} value={String(value)}>
@@ -144,15 +144,16 @@ function GridSettingsDialog({ locationId, onClose }: { locationId: string; onClo
                 />
               </div>
             </div>
-            <div className="flex flex-wrap gap-2" aria-label="Common distances">
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Common distances">
               {PRESETS_KM.map((km) => (
                 <button
                   key={km}
                   type="button"
                   onClick={() => setRadiusText(String(km))}
+                  aria-pressed={radius === km}
                   className={cn(
-                    "rounded-md border px-2.5 py-1 text-xs",
-                    radius === km ? "border-primary bg-brand-tint text-primary" : "border-border text-muted-foreground hover:bg-muted/40",
+                    "inline-flex min-h-8 cursor-pointer items-center rounded-full border px-3 py-1 text-xs font-medium transition-colors outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
+                    radius === km ? "border-primary bg-brand-tint text-primary" : "border-border bg-card text-muted-foreground hover:border-border-strong hover:text-foreground",
                   )}
                 >
                   {formatDistance(km)}

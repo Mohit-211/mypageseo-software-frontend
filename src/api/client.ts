@@ -7,7 +7,7 @@
  */
 import { API_BASE_URL, API_TIMEOUT_MS } from "./config";
 import { refreshToken } from "./auth/refresh-token";
-import { clearAccessToken, getValidAccessToken, getValidRefreshToken } from "./token-storage";
+import { clearAccessToken, getAccessToken, getValidAccessToken, getValidRefreshToken } from "./token-storage";
 import { getSelectedOrganizationId } from "./organization-storage";
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -125,37 +125,57 @@ function toApiError(status: number, payload: unknown): ApiError {
 /**
  * Sends the request. For authenticated calls an expired access token is renewed
  * first, and a 401 triggers one refresh-and-retry before the session is dropped.
+ * Renewal is shared by every tab (see auth/refresh-token.ts), so a 401 first
+ * checks whether the session was already renewed while the request was out.
  */
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const auth = options.auth ?? true;
-  if (auth && !getValidAccessToken() && getValidRefreshToken()) {
-    // Best effort: if this fails the request goes out unauthenticated and the 401 path below handles it.
+  if (!(options.auth ?? true)) return send<T>(path, options, null);
+
+  if (!getValidAccessToken() && getValidRefreshToken()) {
+    // Best effort: if this fails the request goes out with what is stored and the 401 path below handles it.
     await refreshToken().catch(() => undefined);
   }
 
+  // Whatever token is stored, even one this device's clock calls expired: local expiry only
+  // triggers the early renewal above, and the backend, whose clock counts, answers 401 when it is.
+  const token = getAccessToken();
   try {
-    return await send<T>(path, options);
+    return await send<T>(path, options, token);
   } catch (error) {
-    if (!(auth && error instanceof ApiError && error.status === 401)) throw error;
-    if (!getValidRefreshToken()) {
-      clearAccessToken();
-      throw error;
-    }
-    try {
-      await refreshToken();
-    } catch {
-      // refreshToken() already ends the session if the refresh token was rejected.
-      throw error;
-    }
-    const retried = await send<T>(path, options).catch((retryError: unknown) => {
-      if (retryError instanceof ApiError && retryError.status === 401) clearAccessToken();
+    if (!(error instanceof ApiError && error.status === 401)) throw error;
+    const renewed = await renewAfterUnauthorized(token);
+    if (!renewed) throw error;
+    return send<T>(path, options, renewed).catch((retryError: unknown) => {
+      // A just-issued token refused too: the session itself has ended (e.g. the password changed elsewhere).
+      if (retryError instanceof ApiError && retryError.status === 401 && getAccessToken() === renewed) clearAccessToken();
       throw retryError;
     });
-    return retried;
   }
 }
 
-async function send<T>(path: string, options: RequestOptions): Promise<T> {
+/**
+ * After a 401: an access token newer than the refused one to retry with, or null
+ * when the session can't be renewed (it has then been ended where appropriate).
+ */
+async function renewAfterUnauthorized(refused: string | null): Promise<string | null> {
+  // Another tab, or a parallel request in this one, may have renewed the session meanwhile.
+  const current = getAccessToken();
+  if (current && current !== refused) return current;
+  if (!getValidRefreshToken()) {
+    clearAccessToken();
+    return null;
+  }
+  try {
+    await refreshToken();
+  } catch {
+    // refreshToken() has already ended the session if its refresh token was refused.
+    return null;
+  }
+  const renewed = getAccessToken();
+  return renewed && renewed !== refused ? renewed : null;
+}
+
+async function send<T>(path: string, options: RequestOptions, token: string | null): Promise<T> {
   const {
     method = "GET",
     body,
@@ -185,7 +205,6 @@ async function send<T>(path: string, options: RequestOptions): Promise<T> {
   };
 
   if (auth) {
-    const token = getValidAccessToken();
     if (token) finalHeaders.Authorization = `Bearer ${token}`;
     // The organization picked in the header; without it the backend uses the default one.
     const organizationId = getSelectedOrganizationId();

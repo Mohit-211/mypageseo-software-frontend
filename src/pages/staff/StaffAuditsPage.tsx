@@ -94,7 +94,7 @@ function AuditWorkspace() {
         ) : (
           <div className="grid min-h-[420px] place-items-center rounded-lg border border-dashed border-border bg-surface p-8 text-center">
             <div className="max-w-sm">
-              <ClipboardList aria-hidden className="mx-auto size-10 text-muted-foreground/60" />
+              <ClipboardList aria-hidden className="mx-auto size-10 text-muted-foreground" />
               <h1 className="mt-3 text-lg font-semibold text-foreground">Free local SEO audit</h1>
               <p className="mt-2 text-sm text-muted-foreground">
                 Pick a business and a keyword. In about 30 seconds you get its Google Maps ranking heatmap within 5 km, who ranks higher, and a

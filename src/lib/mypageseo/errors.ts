@@ -51,7 +51,7 @@ const COPY: Record<FailureKind, Omit<Failure, "kind">> = {
     retryable: true,
   },
   network: {
-    title: "Couldn't reach Mypageseo",
+    title: "Couldn't reach MyPageSEO",
     description:
       "The connection dropped while loading this. Check your connection and try again.",
     retryable: true,

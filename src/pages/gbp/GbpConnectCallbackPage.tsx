@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle2, Link2Off, ShieldX } from "lucide-react";
 import { z } from "zod";
-import { AuthStatePanel, AuthWordmark } from "@/components/auth/auth";
+import { AuthLayout, AuthStatePanel } from "@/components/auth/auth";
 import { ConnectGbpButton } from "@/components/gbp-audit/connect-gbp-button";
 import { Button } from "@/components/ui/button";
 import { useTypedSearch } from "@/hooks/use-typed-search";
@@ -72,86 +72,87 @@ function GbpConnectCallbackPage() {
 
   const retry = (label: string) => <ConnectGbpButton label={label} size="default" fullWidth />;
 
+  // The sign-in layout (logo, brand panel, card): this page opens in the browser on its own,
+  // outside the app frame, after Google sends the user back.
   return (
-    <div className="flex min-h-screen w-full flex-col items-center justify-center bg-background px-4 py-10">
-      <AuthWordmark className="mb-6" />
-      <main className="w-full max-w-md rounded-lg border border-border bg-surface p-5 shadow-card sm:p-7">
-        {state === "connected" ? (
-          <AuthStatePanel
-            tone="success"
-            icon={<CheckCircle2 className="size-5" />}
-            title="Google Business Profile connected"
-            description={
-              <>
-                {serverMessage ??
-                  "Mypageseo can now read your profile details, reviews and posts."}
-                <span className="mt-2 block text-xs">Taking you to Locations to choose which profiles to add…</span>
-              </>
-            }
-          >
-            <Button className="w-full" onClick={finish}>
-              Continue now
-            </Button>
-          </AuthStatePanel>
-        ) : state === "denied" ? (
-          <AuthStatePanel
-            tone="critical"
-            icon={<ShieldX className="size-5" />}
-            title="Google access wasn't granted"
-            description={
-              <>
-                {serverMessage ??
-                  "The Google sign-in was cancelled, so nothing was connected. You can try again whenever you're ready."}
-                {countdown}
-              </>
-            }
-          >
-            {retry("Try again")}
-            {backLink}
-          </AuthStatePanel>
-        ) : state === "failed" ? (
-          <AuthStatePanel
-            tone="critical"
-            icon={<AlertTriangle className="size-5" />}
-            title="We couldn't connect Google Business Profile"
-            description={
-              <>
-                {serverMessage ??
-                  "Something went wrong while saving the connection. Please start the connection again."}
-                {countdown}
-              </>
-            }
-          >
-            {retry("Connect again")}
-            {backLink}
-          </AuthStatePanel>
-        ) : (
-          <AuthStatePanel
-            tone="critical"
-            icon={<Link2Off className="size-5" />}
-            title="This connection link isn't valid"
-            description={
-              <>
-                Mypageseo didn't receive a result for this connection. Start the connection again from
-                Mypageseo.
-                {countdown}
-              </>
-            }
-          >
-            {retry("Connect Google")}
-            {backLink}
-          </AuthStatePanel>
-        )}
-      </main>
-      <p className="mt-6 max-w-md text-center text-xs text-muted-foreground">
-        Mypageseo only requests access to manage your Business Profile. You can disconnect at any time
-        from{" "}
-        <Link to="/settings/integrations" className="font-medium text-primary underline-offset-4 hover:underline">
-          Settings → Integrations
-        </Link>
-        .
-      </p>
-    </div>
+    <AuthLayout
+      footer={
+        <p className="mx-auto max-w-md text-xs text-muted-foreground">
+          MyPageSEO only asks for access to manage your Business Profiles. You can disconnect at any time from{" "}
+          <Link to="/settings/integrations" className="font-medium text-primary underline-offset-4 hover:underline">
+            Settings › Integrations
+          </Link>
+          .
+        </p>
+      }
+    >
+      {state === "connected" ? (
+        <AuthStatePanel
+          tone="success"
+          icon={<CheckCircle2 className="size-5" />}
+          title="Google Business Profile connected"
+          description={
+            <>
+              {serverMessage ??
+                "MyPageSEO can now read your profile details, reviews and posts."}
+              <span className="mt-2 block text-xs">Taking you to Locations to choose which profiles to add…</span>
+            </>
+          }
+        >
+          <Button className="w-full" onClick={finish}>
+            Continue now
+          </Button>
+        </AuthStatePanel>
+      ) : state === "denied" ? (
+        <AuthStatePanel
+          tone="critical"
+          icon={<ShieldX className="size-5" />}
+          title="Google access wasn't granted"
+          description={
+            <>
+              {serverMessage ??
+                "The Google sign-in was cancelled, so nothing was connected. You can try again whenever you're ready."}
+              {countdown}
+            </>
+          }
+        >
+          {retry("Try again")}
+          {backLink}
+        </AuthStatePanel>
+      ) : state === "failed" ? (
+        <AuthStatePanel
+          tone="critical"
+          icon={<AlertTriangle className="size-5" />}
+          title="We couldn't connect Google Business Profile"
+          description={
+            <>
+              {serverMessage ??
+                "Something went wrong while saving the connection. Please start the connection again."}
+              {countdown}
+            </>
+          }
+        >
+          {retry("Connect again")}
+          {backLink}
+        </AuthStatePanel>
+      ) : (
+        <AuthStatePanel
+          tone="critical"
+          icon={<Link2Off className="size-5" />}
+          title="This connection link isn't valid"
+          description={
+            <>
+              MyPageSEO didn't receive a result for this connection. Start the connection again from
+              MyPageSEO.
+              {countdown}
+            </>
+          }
+        >
+          {retry("Connect Google")}
+          {backLink}
+        </AuthStatePanel>
+      )}
+    </AuthLayout>
   );
 }
 

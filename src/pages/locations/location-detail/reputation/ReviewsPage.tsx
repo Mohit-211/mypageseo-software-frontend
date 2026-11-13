@@ -1,571 +1,234 @@
-import { useEffect, useState } from "react";
-import { useCanEdit } from "@/hooks/use-access";
-import { useNavigate } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
-import { AlertTriangle, LoaderCircle, MessageSquareText, RefreshCw, Search, Send, Sparkles, X } from "lucide-react";
-import {
-  analyzeReviews,
-  draftAllReviews,
-  generateReplyDrafts,
-  getReviews,
-  refreshReviews,
-  sendReplies,
-  apiErrorData,
-  isApiError,
-  type ReplyState,
-  type Review,
-  type ReviewsQuery,
-  type ReviewsSummary,
-} from "@/api";
-import { MetricCard, PageHeader } from "@/components/layout/shared/data-display";
-import { TablePagination } from "@/components/layout/shared/data-table";
+import { useRef } from "react";
+import { Link } from "react-router-dom";
+import { CheckCircle2, MessageSquareHeart, MessageSquareText, PenLine, ShieldCheck, Sparkles, X } from "lucide-react";
+import { PageHeader } from "@/components/layout/shared/data-display";
 import { EmptyState, ErrorState, PageSkeleton } from "@/components/layout/shared/feedback/states";
-import { TermWithTip } from "@/components/layout/shared/info-tip";
-import { ReviewCard } from "@/components/reputation/review-card";
 import { BackgroundActivity } from "@/components/location/background-activity";
+import { BulkReplies } from "@/components/reputation/bulk-replies";
+import { ReviewInsightsCard } from "@/components/reputation/review-insights";
+import { ReviewKpis } from "@/components/reputation/review-kpis";
+import { ReviewsGateState } from "@/components/reputation/review-gates";
+import { RefreshReviewsButton, ReviewsSyncMeta } from "@/components/reputation/review-sync";
+import { REVIEWS_PAGE_SIZE, ReviewsFeed } from "@/components/reputation/reviews-feed";
+import { ReviewsToolbar } from "@/components/reputation/reviews-toolbar";
 import { ReportButton } from "@/components/report/rank-report-button";
 import { Button } from "@/components/ui/button";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useGbpContext } from "@/lib/gbp/gbp-context";
-import { useGbpConnect } from "@/lib/gbp/use-gbp-connect";
+import { useCanEdit } from "@/hooks/use-access";
+import { useAiStatus } from "@/lib/ai/ai-status";
+import { useLocationRoute } from "@/lib/locations/location-route-context";
+import { locationPath } from "@/lib/mypageseo/section-links";
 import { reviewErrorMessage } from "@/lib/reviews/review-errors";
-import { reviewsKey, useReviewsList, useReviewsSummary } from "@/lib/reviews/use-reviews";
-import { formatRunDate } from "@/lib/rankings/format";
-import { cn } from "@/lib/utils";
+import { SORT_LABEL, hasReviewFilters, reviewFiltersQuery, useReviewFilters, type ReviewFilters } from "@/lib/reviews/review-filters";
+import { reviewsGate } from "@/lib/reviews/review-metrics";
+import { useDebounced } from "@/lib/reviews/use-debounced";
+import { useReviewsList, useReviewsSummary } from "@/lib/reviews/use-reviews";
 
-const PAGE_SIZE = 20;
-const MAX_AI_BATCH = 20;
-
-type Filters = {
-  ratings: number[];
-  replyState: ReplyState | "all";
-  flagged: "all" | "any" | "suspicious" | "attention" | "none";
-  search: string;
-  sort: NonNullable<ReviewsQuery["sort"]>;
-};
-
-const EMPTY_FILTERS: Filters = { ratings: [], replyState: "all", flagged: "all", search: "", sort: "newest" };
-
-function useDebounced<T>(value: T, ms = 350): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebounced(value), ms);
-    return () => window.clearTimeout(timer);
-  }, [value, ms]);
-  return debounced;
-}
-
-/** Reviews: one page to read, reply, check flags and draft removal requests. AI only on request. */
+/**
+ * Reviews (`/locations/:locationId/reputation`): read and answer Google reviews. Key numbers on top,
+ * "Draft all" with AI, then the reviews (newest first) with quick views and filters kept in the
+ * address, and what customers say on the side. Answering with AI has its own page (AI Review
+ * Replies), one click away in the header.
+ */
 function ReviewsPage() {
-  const canEdit = useCanEdit();
-  const { location } = useGbpContext();
+  const { location } = useLocationRoute();
   const locationId = location.location_id;
+  const canEdit = useCanEdit();
   const summary = useReviewsSummary(locationId);
-  const { connect } = useGbpConnect();
+  const ai = useAiStatus(locationId);
+  const [filters, setFilters] = useReviewFilters();
+  const search = useDebounced(filters.q.trim());
+  const listRef = useRef<HTMLDivElement>(null);
+
+  const data = summary.data;
+  const gate = data ? reviewsGate(data) : null;
+  const stats = data?.stats ?? null;
+  const ready = Boolean(data && !gate);
+  const listQuery = reviewFiltersQuery(filters, search);
+  // The list the feed shows (one request, shared through the cache), so the open quick view's count matches it.
+  const openList = useReviewsList(locationId, { ...listQuery, page: filters.page, limit: REVIEWS_PAGE_SIZE }, Boolean(ready && stats && stats.total > 0));
+
+  const showList = (patch: Partial<ReviewFilters>) => {
+    setFilters(patch);
+    listRef.current?.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  };
 
   const header = (
     <PageHeader
+      icon={MessageSquareHeart}
+      tone="reputation"
       title="Reviews"
-      description="Read and answer Google reviews, see which need attention, and get AI help when you want it."
-      meta={summary.data ? <RefreshMeta summary={summary.data} /> : undefined}
+      description="Read and answer your Google reviews, and spot the ones that need attention."
+      meta={data && ready ? <ReviewsSyncMeta summary={data} /> : undefined}
       actions={
-        summary.data ? (
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <RefreshReviewsButton locationId={locationId} summary={summary.data} />
-            {summary.data.stats && summary.data.stats.total > 0 ? (
-              <ReportButton locationId={locationId} type="reputation" subtitle="Review summary, star distribution, reviews needing attention, replies sent and insights, as a PDF." />
+        data && ready ? (
+          <>
+            <RefreshReviewsButton locationId={locationId} summary={data} />
+            {stats && stats.total > 0 ? (
+              // Outline: "Reply with AI" is this page's one filled action.
+              <ReportButton
+                locationId={locationId}
+                type="reputation"
+                variant="outline"
+                subtitle="Review summary, star distribution, reviews needing attention, replies sent and insights, as a PDF."
+              />
             ) : null}
-          </div>
+            {canEdit ? (
+              // Phones: the primary action comes first, not on a row of its own below the others (as on Posts).
+              <Button asChild variant="ai" className="max-sm:order-first">
+                <Link to={locationPath(locationId, "ai/replies")}>
+                  <Sparkles aria-hidden /> Reply with AI
+                </Link>
+              </Button>
+            ) : null}
+          </>
         ) : undefined
       }
     />
   );
 
-  if (summary.isPending) return <>{header}<PageSkeleton /></>;
-  if (summary.isError) {
-    return <>{header}<ErrorState description={reviewErrorMessage(summary.error, "Reviews couldn't be loaded.").message} onRetry={() => void summary.refetch()} /></>;
-  }
-  if (!summary.data.gbp_connected) {
+  if (summary.isPending) {
     return (
       <>
         {header}
-        <EmptyState
-          icon={MessageSquareText}
-          title="Connect the Google Business Profile"
-          description="Reviews come from the location's Google Business Profile."
-          action={canEdit ? <Button size="sm" onClick={() => connect()}>Connect Google</Button> : undefined}
+        <PageSkeleton header={false} metrics={4} rows={4} />
+      </>
+    );
+  }
+  if (summary.isError) {
+    return (
+      <>
+        {header}
+        <ErrorState
+          title="Reviews couldn't be loaded"
+          description={reviewErrorMessage(summary.error, "Something went wrong while loading the reviews.").message}
+          onRetry={() => void summary.refetch()}
         />
       </>
     );
   }
-  if (!summary.data.v4_enabled) {
-    return <>{header}<EmptyState icon={MessageSquareText} title="Waiting for Google access" description="Reviews need a Google API approval that is still pending. They appear here as soon as it's granted." /></>;
+  if (gate) {
+    return (
+      <>
+        {header}
+        <ReviewsGateState gate={gate} />
+      </>
+    );
   }
+  if (!stats || stats.total === 0) {
+    return (
+      <>
+        {header}
+        <BackgroundActivity locationId={locationId} />
+        <EmptyState
+          icon={MessageSquareText}
+          tone="reputation"
+          title="No reviews yet"
+          description="Your Google reviews appear here after the next check with Google. When customers leave one, you can answer it here, or let AI draft the reply."
+          action={<RefreshReviewsButton locationId={locationId} summary={summary.data} />}
+        />
+      </>
+    );
+  }
+
+  const filtered = hasReviewFilters(filters);
+  const clear = () => setFilters({ reply: null, flag: null, ratings: [], q: "" });
 
   return (
     <>
       {header}
-      <BackgroundActivity locationId={locationId} className="mb-4" />
-      <Stats summary={summary.data} />
-      {canEdit ? <BulkReplies locationId={locationId} summary={summary.data} /> : null}
-      <ReviewsList locationId={locationId} summary={summary.data} />
+      <BackgroundActivity locationId={locationId} />
+      <ReviewKpis locationId={locationId} stats={stats} onShowNeedsReply={() => showList({ reply: "needs", flag: null })} />
+      {/* Keyed: a "Continue (N left)", send failures or an open dialog belong to one location. */}
+      <BulkReplies key={locationId} locationId={locationId} summary={summary.data} ai={ai} variant="bar" onShowDrafts={() => showList({ reply: "draft", flag: null })} />
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
+        <section ref={listRef} aria-label="Reviews" className="min-w-0 scroll-mt-20 space-y-4">
+          <ReviewsToolbar
+            stats={stats}
+            filters={filters}
+            onChange={setFilters}
+            {...(openList.data && !openList.isPlaceholderData ? { openTotal: openList.data.total } : {})}
+          />
+          <ReviewsFeed
+            locationId={locationId}
+            ai={ai}
+            query={listQuery}
+            page={filters.page}
+            onPageChange={(page) => setFilters({ page })}
+            caption={SORT_LABEL[filters.sort]}
+            unansweredOnly={filters.reply === "needs" || filters.reply === "none"}
+            empty={<FilteredEmpty filters={filters} filtered={filtered} onClear={clear} locationId={locationId} canEdit={canEdit} />}
+          />
+        </section>
+        <aside aria-label="What customers say" className="min-w-0 space-y-4 xl:sticky xl:top-20 xl:self-start">
+          <ReviewInsightsCard locationId={locationId} ai={ai} summary={summary.data} />
+        </aside>
+      </div>
     </>
   );
 }
 
-function RefreshMeta({ summary }: { summary: ReviewsSummary }) {
-  return (
-    <p className="text-xs text-muted-foreground">
-      {summary.last_refreshed_at ? `Last checked with Google ${formatRunDate(summary.last_refreshed_at, true)}` : summary.last_synced_at ? `Last synced ${formatRunDate(summary.last_synced_at, true)}` : "Not checked with Google yet"}
-      {summary.ai.configured ? ` · ${summary.ai.token_balance} tokens for AI` : ""}
-    </p>
-  );
-}
-
-/** Hidden for a read-only client_user. */
-function RefreshReviewsButton(props: { locationId: string; summary: ReviewsSummary }) {
-  return useCanEdit() ? <RefreshReviewsButtonEditor {...props} /> : null;
-}
-
-function RefreshReviewsButtonEditor({ locationId, summary }: { locationId: string; summary: ReviewsSummary }) {
-  const queryClient = useQueryClient();
-  const [busy, setBusy] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
-    return () => window.clearInterval(timer);
-  }, []);
-  const nextAllowed = summary.next_refresh_allowed_at ? new Date(summary.next_refresh_allowed_at).getTime() : 0;
-  const waiting = nextAllowed > now;
-
-  const refresh = async () => {
-    setBusy(true);
-    try {
-      const result = await refreshReviews(locationId);
-      toast.success(result.new_reviews || result.updated_reviews ? `${result.new_reviews} new, ${result.updated_reviews} updated.` : "No new reviews.");
-    } catch (err) {
-      if (isApiError(err) && err.reason === "rate_limited") {
-        const next = apiErrorData(err).next_allowed_at;
-        toast.error(`Reviews were checked a moment ago. Try again ${typeof next === "string" ? formatRunDate(next, true) : "in a few minutes"}.`);
-      } else {
-        toast.error(reviewErrorMessage(err, "Reviews couldn't be refreshed.").message);
-      }
-    } finally {
-      setBusy(false);
-      void queryClient.invalidateQueries({ queryKey: reviewsKey(locationId) });
-    }
-  };
-
-  return (
-    <Button variant="outline" size="sm" disabled={busy || waiting} onClick={() => void refresh()} title={waiting ? `Available ${formatRunDate(summary.next_refresh_allowed_at, true)}` : undefined}>
-      {busy ? <LoaderCircle aria-hidden className="animate-spin" /> : <RefreshCw aria-hidden />}
-      {waiting ? "Checked recently" : "Refresh Reviews"}
+/** What to say when a view or filter matches nothing: celebrate the empty to-do views, offer a way out of the rest. */
+function FilteredEmpty({
+  filters,
+  filtered,
+  onClear,
+  locationId,
+  canEdit,
+}: {
+  filters: ReviewFilters;
+  filtered: boolean;
+  onClear: () => void;
+  locationId: string;
+  canEdit: boolean;
+}) {
+  const onlyView = filters.ratings.length === 0 && !filters.q.trim();
+  const clearButton = (
+    <Button variant="outline" size="sm" onClick={onClear}>
+      <X aria-hidden /> Show all reviews
     </Button>
   );
-}
-
-function Stats({ summary }: { summary: ReviewsSummary }) {
-  const stats = summary.stats;
-  if (!stats) return null;
-  return (
-    <section aria-label="Review summary" className="mb-6">
-      <div className="grid overflow-hidden rounded-lg border border-border bg-surface shadow-card sm:grid-cols-2 xl:grid-cols-5 xl:divide-x xl:divide-border">
-        <MetricCard label="Rating" value={stats.average_rating?.toFixed(1) ?? "—"} caption={`${stats.total.toLocaleString()} reviews · ${stats.new_this_month} new this month`} />
-        <MetricCard label="Needs attention" value={stats.awaiting_attention} caption="Unanswered 1–3 stars or flagged" />
-        <MetricCard label="Flagged" value={stats.flagged} caption={`${stats.suspicious} with suspicious indicators`} />
-        <MetricCard label="Drafts waiting" value={stats.drafts_pending} caption={`${stats.unreplied} reviews without a reply`} />
-        <MetricCard label="Replies sent" value={stats.replies_sent_this_month} caption="This month" />
-      </div>
-    </section>
-  );
-}
-
-/** Reviews per `POST reviews/send` call. */
-const SEND_BATCH = 100;
-
-type SendFailure = { review_id: string; reviewer: string; reason: string };
-
-const SEND_REASON: Record<string, string> = {
-  no_draft: "No draft",
-  already_replied: "Already replied",
-  google_error: "Google refused it",
-};
-
-/**
- * "Draft all unreplied" (50 per call, then "Continue (N left)") and "Send all drafts"
- * (every unreplied review with a draft, in batches). Sending is always the user's click.
- */
-function BulkReplies({ locationId, summary }: { locationId: string; summary: ReviewsSummary }) {
-  const queryClient = useQueryClient();
-  const navigate = useNavigate();
-  const [busy, setBusy] = useState<"draft" | "send" | null>(null);
-  const [remaining, setRemaining] = useState<number | null>(null);
-  const [confirmSend, setConfirmSend] = useState(false);
-  const [progress, setProgress] = useState<string | null>(null);
-  const [failures, setFailures] = useState<SendFailure[]>([]);
-  const ai = summary.ai;
-  const aiUsable = ai.configured && !ai.paused_today;
-  const draftable = remaining ?? ai.draftable ?? 0;
-  const drafts = summary.stats?.drafts_pending ?? 0;
-
-  const refresh = () => {
-    void queryClient.invalidateQueries({ queryKey: reviewsKey(locationId) });
-    void queryClient.invalidateQueries({ queryKey: ["billing"] });
-  };
-
-  const draftAll = async () => {
-    setBusy("draft");
-    try {
-      const result = await draftAllReviews(locationId);
-      setRemaining(result.remaining);
-      toast.success(`${result.drafted} repl${result.drafted === 1 ? "y" : "ies"} drafted · ${result.tokens_spent} token${result.tokens_spent === 1 ? "" : "s"}`, {
-        description: result.remaining > 0 ? `${result.remaining} still to draft.` : "Check the drafts, then send them.",
-      });
-    } catch (err) {
-      const { message, buyTokens } = reviewErrorMessage(err, "The replies couldn't be drafted.");
-      toast.error(message, buyTokens ? { action: { label: "Buy tokens", onClick: () => navigate("/settings/billing") } } : undefined);
-    } finally {
-      setBusy(null);
-      refresh();
-    }
-  };
-
-  const sendAll = async () => {
-    setConfirmSend(false);
-    setBusy("send");
-    setFailures([]);
-    try {
-      // Every unreplied review with a draft, 100 per page.
-      const pending: Review[] = [];
-      for (let page = 1; ; page += 1) {
-        const list = await getReviews(locationId, { has_draft: true, replied: false, page, limit: 100 });
-        pending.push(...list.reviews);
-        if (pending.length >= list.total || list.reviews.length === 0) break;
-      }
-      let sent = 0;
-      const failed: SendFailure[] = [];
-      for (let index = 0; index < pending.length; index += SEND_BATCH) {
-        setProgress(`Sending ${Math.min(index + SEND_BATCH, pending.length)} of ${pending.length}…`);
-        const batch = pending.slice(index, index + SEND_BATCH);
-        const result = await sendReplies(locationId, batch.map((review) => review.review_id));
-        sent += result.sent;
-        for (const row of result.results) {
-          if (row.status === "sent") continue;
-          const review = batch.find((item) => item.review_id === row.review_id);
-          failed.push({
-            review_id: row.review_id,
-            reviewer: review?.reviewer?.display_name ?? "A reviewer",
-            reason: (row.reason && SEND_REASON[row.reason]) ?? row.reason ?? row.status,
-          });
+  if (onlyView && filters.reply === "needs" && !filters.flag) {
+    return <EmptyState variant="all-done" title="All caught up" description="Every review has a reply on Google. New reviews show up here after the next check." action={clearButton} />;
+  }
+  if (onlyView && filters.reply === "draft" && !filters.flag) {
+    return (
+      <EmptyState
+        icon={PenLine}
+        tone="reputation"
+        title="No drafts waiting"
+        description="Drafts appear here when you save a reply without sending it, or when AI drafts replies for you."
+        action={
+          canEdit ? (
+            <Button asChild size="sm" variant="ai">
+              <Link to={locationPath(locationId, "ai/replies")}>
+                <Sparkles aria-hidden /> Draft replies with AI
+              </Link>
+            </Button>
+          ) : undefined
         }
-      }
-      setFailures(failed);
-      if (failed.length) toast.error(`${sent} sent, ${failed.length} not sent. See the list below.`);
-      else toast.success(`${sent} repl${sent === 1 ? "y" : "ies"} published on Google.`);
-    } catch (err) {
-      toast.error(reviewErrorMessage(err, "The replies couldn't be sent.").message);
-    } finally {
-      setBusy(null);
-      setProgress(null);
-      refresh();
-    }
-  };
-
-  if (!aiUsable && drafts === 0) return null;
-
+        secondaryAction={clearButton}
+      />
+    );
+  }
+  if (onlyView && !filters.reply && (filters.flag === "attention" || filters.flag === "suspicious")) {
+    return (
+      <EmptyState
+        variant="all-done"
+        icon={filters.flag === "suspicious" ? ShieldCheck : CheckCircle2}
+        title={filters.flag === "suspicious" ? "No suspicious reviews" : "Nothing needs attention"}
+        description={filters.flag === "suspicious" ? "None of your reviews show signs of breaking Google's rules." : "None of your reviews were marked for a closer look."}
+        action={clearButton}
+      />
+    );
+  }
   return (
-    <section aria-label="Reply in bulk" className="mb-4 space-y-2 rounded-lg border border-border bg-surface p-3 shadow-card">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="mr-auto text-sm text-muted-foreground">
-          AI drafts a reply for every unreplied review except those with suspicious indicators. Nothing is sent until you send it.
-        </span>
-        {aiUsable ? (
-          <Button size="sm" disabled={busy !== null || draftable === 0} onClick={() => void draftAll()}>
-            {busy === "draft" ? <LoaderCircle aria-hidden className="animate-spin" /> : <Sparkles aria-hidden />}
-            {remaining !== null && remaining > 0
-              ? `Continue (${remaining} left)`
-              : draftable === 0
-                ? "No replies to draft"
-                : `Draft ${draftable} repl${draftable === 1 ? "y" : "ies"}${ai.draft_all_cost != null ? ` · ${ai.draft_all_cost} token${ai.draft_all_cost === 1 ? "" : "s"}` : ""}`}
-          </Button>
-        ) : null}
-        <Button size="sm" variant="outline" disabled={busy !== null || drafts === 0} onClick={() => setConfirmSend(true)}>
-          {busy === "send" ? <LoaderCircle aria-hidden className="animate-spin" /> : <Send aria-hidden />}
-          Send all {drafts} draft{drafts === 1 ? "" : "s"}
-        </Button>
-      </div>
-      {aiUsable ? (
-        <p className="text-xs text-muted-foreground">
-          AI replies are 2–4 sentences, use your keywords where they fit, and answer in the reviewer's language. Drafts made before this stay as they were until you regenerate them.
-        </p>
-      ) : null}
-      {busy === "draft" ? <p className="text-xs text-muted-foreground">Drafting up to {ai.draft_all_max ?? 50} replies. This takes about 15 seconds.</p> : null}
-      {progress ? <p className="text-xs text-muted-foreground">{progress}</p> : null}
-      {ai.paused_today ? <p className="text-xs text-muted-foreground">AI is paused for today.</p> : null}
-      {failures.length > 0 ? (
-        <div role="alert" className="rounded-md border border-critical/25 bg-critical-surface/40 p-2.5 text-sm text-critical">
-          <p className="flex items-center gap-1.5 font-medium"><AlertTriangle className="size-4" aria-hidden /> Not sent</p>
-          <ul className="mt-1 space-y-0.5">
-            {failures.map((failure) => <li key={failure.review_id}>{failure.reviewer}: {failure.reason}</li>)}
-          </ul>
-        </div>
-      ) : null}
-
-      <AlertDialog open={confirmSend} onOpenChange={setConfirmSend}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Publish {drafts} repl{drafts === 1 ? "y" : "ies"} on Google?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Every unreplied review with a draft gets its reply published, as written. Check the drafts first: filter by "Draft waiting".
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void sendAll()}>Publish replies</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </section>
-  );
-}
-
-function ReviewsList({ locationId, summary }: { locationId: string; summary: ReviewsSummary }) {
-  const queryClient = useQueryClient();
-  const navigate = useNavigate();
-  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
-  const [page, setPage] = useState(1);
-  const canEdit = useCanEdit();
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [busy, setBusy] = useState<string | null>(null);
-  const search = useDebounced(filters.search.trim());
-
-  const query: ReviewsQuery = {
-    ...(filters.ratings.length ? { rating: filters.ratings.join(",") } : {}),
-    ...(filters.replyState !== "all" ? { reply_state: filters.replyState } : {}),
-    ...(filters.flagged !== "all" ? { flagged: filters.flagged } : {}),
-    ...(search ? { search } : {}),
-    sort: filters.sort,
-    page,
-    limit: PAGE_SIZE,
-  };
-  const list = useReviewsList(locationId, query);
-  const reviews = list.data?.reviews ?? [];
-  const chosen = reviews.filter((review) => selected.has(review.review_id));
-  const ai = summary.ai;
-  const aiUsable = ai.configured && !ai.paused_today;
-  const eligibleForDrafts = chosen.filter((review) => review.ai_reply_eligible).length;
-  const withDrafts = chosen.filter((review) => review.draft).length;
-  const batches = (count: number) => Math.ceil(count / 10);
-
-  const update = (patch: Partial<Filters>) => {
-    setFilters((current) => ({ ...current, ...patch }));
-    setPage(1);
-    setSelected(new Set());
-  };
-  const toggle = (id: string, checked: boolean) =>
-    setSelected((current) => {
-      const next = new Set(current);
-      if (checked) next.add(id);
-      else next.delete(id);
-      return next;
-    });
-
-  const bulk = async (key: string, action: () => Promise<string>) => {
-    setBusy(key);
-    try {
-      toast.success(await action());
-      setSelected(new Set());
-    } catch (err) {
-      const { message, buyTokens } = reviewErrorMessage(err, "That didn't work. Try again.");
-      toast.error(message, buyTokens ? { action: { label: "Buy tokens", onClick: () => navigate("/settings/billing") } } : undefined);
-    } finally {
-      setBusy(null);
-      void queryClient.invalidateQueries({ queryKey: reviewsKey(locationId) });
-      void queryClient.invalidateQueries({ queryKey: ["billing", "tokens"] });
-    }
-  };
-  const ids = chosen.map((review) => review.review_id).slice(0, MAX_AI_BATCH);
-
-  const filtered = filters.ratings.length > 0 || filters.replyState !== "all" || filters.flagged !== "all" || Boolean(search);
-
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-3 shadow-card lg:flex-row lg:flex-wrap lg:items-center">
-        <div className="relative min-w-0 flex-1 lg:max-w-xs">
-          <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input aria-label="Search reviews" value={filters.search} placeholder="Search text or reviewer" className="h-9 pl-9" onChange={(e) => update({ search: e.target.value })} />
-        </div>
-        <div className="flex items-center gap-1" role="group" aria-label="Stars">
-          {[5, 4, 3, 2, 1].map((stars) => {
-            const on = filters.ratings.includes(stars);
-            return (
-              <button
-                key={stars}
-                type="button"
-                aria-pressed={on}
-                onClick={() => update({ ratings: on ? filters.ratings.filter((r) => r !== stars) : [...filters.ratings, stars] })}
-                className={cn("rounded-md border px-2 py-1 text-xs font-medium", on ? "border-primary bg-brand-tint text-primary" : "border-border text-muted-foreground hover:bg-muted/40")}
-              >
-                {stars}★
-              </button>
-            );
-          })}
-        </div>
-        <Select value={filters.replyState} onValueChange={(value) => update({ replyState: value as Filters["replyState"] })}>
-          <SelectTrigger className="h-9 w-full bg-background lg:w-40" aria-label="Reply"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Any reply status</SelectItem>
-            <SelectItem value="none">Not replied</SelectItem>
-            <SelectItem value="draft">Draft waiting</SelectItem>
-            <SelectItem value="sent">Replied</SelectItem>
-            <SelectItem value="failed">Send failed</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={filters.flagged} onValueChange={(value) => update({ flagged: value as Filters["flagged"] })}>
-          <SelectTrigger className="h-9 w-full bg-background lg:w-48" aria-label="Flags"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Flagged or not</SelectItem>
-            <SelectItem value="any">Any flag</SelectItem>
-            <SelectItem value="attention">Needs attention</SelectItem>
-            <SelectItem value="suspicious">Suspicious indicators</SelectItem>
-            <SelectItem value="none">Not flagged</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={filters.sort} onValueChange={(value) => update({ sort: value as Filters["sort"] })}>
-          <SelectTrigger className="h-9 w-full bg-background lg:w-40" aria-label="Sort"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="newest">Newest first</SelectItem>
-            <SelectItem value="oldest">Oldest first</SelectItem>
-            <SelectItem value="rating_asc">Lowest rating</SelectItem>
-            <SelectItem value="rating_desc">Highest rating</SelectItem>
-          </SelectContent>
-        </Select>
-        {filtered ? <Button variant="ghost" size="sm" onClick={() => update(EMPTY_FILTERS)}><X aria-hidden /> Clear</Button> : null}
-      </div>
-
-      {chosen.length > 0 && canEdit ? (
-        <div className="sticky top-16 z-10 flex flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-brand-tint px-3 py-2 shadow-card">
-          <span className="text-sm font-medium text-foreground">{chosen.length} selected</span>
-          {aiUsable ? (
-            <>
-              <Button
-                size="sm"
-                disabled={busy !== null || eligibleForDrafts === 0}
-                title={eligibleForDrafts === 0 ? "AI drafts are for reviews without a reply that aren't flagged as suspicious" : undefined}
-                onClick={() =>
-                  void bulk("drafts", async () => {
-                    const result = await generateReplyDrafts(locationId, ids);
-                    return `${result.generated} drafted, ${result.reused} reused${result.skipped.length ? `, ${result.skipped.length} skipped` : ""}.`;
-                  })
-                }
-              >
-                {busy === "drafts" ? <LoaderCircle aria-hidden className="animate-spin" /> : <Sparkles aria-hidden />}
-                Generate replies ({eligibleForDrafts} · ≈{batches(eligibleForDrafts) * ai.token_costs.reply_drafts_per_10} tokens)
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={busy !== null}
-                onClick={() =>
-                  void bulk("analyze", async () => {
-                    const result = await analyzeReviews(locationId, ids);
-                    return `${result.analyzed} analyzed, ${result.reused} reused${result.skipped.length ? `, ${result.skipped.length} without text skipped` : ""}.`;
-                  })
-                }
-              >
-                {busy === "analyze" ? <LoaderCircle aria-hidden className="animate-spin" /> : <Sparkles aria-hidden />}
-                Analyze selected (≈{batches(chosen.length) * ai.token_costs.analysis_per_10} tokens)
-              </Button>
-            </>
-          ) : null}
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={busy !== null || withDrafts === 0}
-            onClick={() =>
-              void bulk("send", async () => {
-                const result = await sendReplies(locationId, chosen.filter((review) => review.draft).map((review) => review.review_id));
-                return `${result.sent} replies published${result.failed ? `, ${result.failed} failed` : ""}.`;
-              })
-            }
-          >
-            {busy === "send" ? <LoaderCircle aria-hidden className="animate-spin" /> : <Send aria-hidden />}
-            Send {withDrafts} draft{withDrafts === 1 ? "" : "s"}
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear selection</Button>
-          {ai.paused_today ? <span className="text-xs text-muted-foreground">AI is paused for today.</span> : null}
-          {chosen.length > MAX_AI_BATCH ? <span className="text-xs text-muted-foreground">AI works on {MAX_AI_BATCH} at a time.</span> : null}
-        </div>
-      ) : null}
-
-      {list.isPending ? (
-        <PageSkeleton />
-      ) : list.isError ? (
-        <ErrorState description={reviewErrorMessage(list.error, "Reviews couldn't be loaded.").message} onRetry={() => void list.refetch()} />
-      ) : reviews.length === 0 ? (
-        <EmptyState
-          icon={MessageSquareText}
-          title={filtered ? "No reviews match these filters" : "No reviews yet"}
-          description={filtered ? "Change the filters to see other reviews." : "New reviews appear after the next Refresh Reviews or Google sync."}
-        />
-      ) : (
-        <>
-          <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                className="size-4 accent-[var(--color-primary)]"
-                checked={chosen.length === reviews.length}
-                onChange={(event) => setSelected(event.target.checked ? new Set(reviews.map((review) => review.review_id)) : new Set())}
-              />
-              Select all on this page
-            </label>
-            <span className="flex items-center gap-1">
-              {list.data.total.toLocaleString()} review{list.data.total === 1 ? "" : "s"}
-              <TermWithTip term={<span className="sr-only">About flags</span>}>
-                Flags are checks on each review (links, contact details, repeated text, sudden low ratings…). “Suspicious indicators” means a review may break Google's rules; it is not proof the review is fake.
-              </TermWithTip>
-            </span>
-          </div>
-          <div className="space-y-3">
-            {reviews.map((review) => (
-              <ReviewCard
-                key={review.review_id}
-                locationId={locationId}
-                review={review}
-                summary={summary}
-                selected={selected.has(review.review_id)}
-                onSelect={(checked) => toggle(review.review_id, checked)}
-              />
-            ))}
-          </div>
-          <TablePagination
-            page={page}
-            pageCount={Math.max(1, Math.ceil(list.data.total / PAGE_SIZE))}
-            totalItems={list.data.total}
-            pageSize={PAGE_SIZE}
-            onPageChange={(next) => {
-              setPage(next);
-              setSelected(new Set());
-            }}
-            itemLabel="reviews"
-          />
-          {list.data.attribution ? <p className="text-[11px] text-muted-foreground">{list.data.attribution.text}</p> : null}
-        </>
-      )}
-    </div>
+    <EmptyState
+      variant="no-results"
+      title="No reviews match"
+      description={filtered ? "Try fewer filters or other words." : "There are no reviews to show here."}
+      action={filtered ? clearButton : undefined}
+    />
   );
 }
 

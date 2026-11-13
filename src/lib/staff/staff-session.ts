@@ -4,7 +4,7 @@
  */
 import { useEffect, useSyncExternalStore } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AUDIT_PERMISSION, clearStaffToken, getStaffMe, getStaffToken, getTokenExpiry, subscribeToStaffToken } from "@/api";
+import { AUDIT_PERMISSION, clearStaffToken, getStaffMe, getStaffToken, getTokenExpiry, serverNow, subscribeToStaffToken } from "@/api";
 
 /** Browsers fire a setTimeout longer than this (~24.8 days) immediately. */
 const MAX_TIMEOUT_MS = 2_147_483_647;
@@ -16,7 +16,8 @@ export function useStaffToken(): string | null {
     if (!token) return;
     const expiry = getTokenExpiry(token);
     if (expiry === null) return;
-    const timer = window.setTimeout(clearStaffToken, Math.min(Math.max(expiry - Date.now(), 0), MAX_TIMEOUT_MS));
+    // The backend's clock, as getStaffToken judges expiry by: the device's may be off.
+    const timer = window.setTimeout(clearStaffToken, Math.min(Math.max(expiry - serverNow(), 0), MAX_TIMEOUT_MS));
     return () => window.clearTimeout(timer);
   }, [token]);
   return token;

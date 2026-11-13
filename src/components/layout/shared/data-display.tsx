@@ -1,94 +1,226 @@
 import type { ReactNode } from "react";
-import { ArrowDownRight, ArrowRight, ArrowUpRight } from "lucide-react";
+import { Link, useLocation } from "react-router-dom";
+import { ArrowDownRight, ArrowRight, ArrowUpRight, MapPin, type LucideIcon } from "lucide-react";
+import type { LocationHeader } from "@/api";
 import { cn } from "@/lib/utils";
-import { healthTone, type HealthTone } from "@/lib/health-tone";
+import { HEALTH_TONE_CLASSES, healthTone, type HealthTone } from "@/lib/health-tone";
+import { useOptionalLocationRoute } from "@/lib/locations/location-route-context";
+import { locationPath } from "@/lib/mypageseo/section-links";
+import { useAccess } from "@/hooks/use-access";
+import { useDocumentTitle } from "@/hooks/use-document-title";
+import { IconChip } from "@/components/layout/shared/icon-chip";
+import type { ModuleTone } from "@/components/layout/shared/module-tone";
 
-/** Page header used at the top of every product screen. */
+export { StatusBadge } from "@/components/layout/shared/status-badge";
+export type { StatusTone } from "@/components/layout/shared/module-tone";
+
+/* -------------------------------------------------------------------------- */
+/* Page header                                                                 */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Page header at the top of every product screen: an optional module icon, an eyebrow, the one
+ * <h1> of the page, a one-line description and the page's actions.
+ *
+ * Under a location page (`/locations/:id/*`) the eyebrow automatically names the location (and its
+ * client for agencies), since there is no location bar or tab bar any more. Actions sit on the
+ * right and wrap below the title when the row gets tight; the title block never shrinks below
+ * about 20rem. `meta` (a line of facts) runs the full width under both. `children` render as a
+ * toolbar row under the header (filters, view switches).
+ */
 export function PageHeader({
   title,
   description,
   actions,
   meta,
+  icon,
+  tone = "brand",
+  eyebrow,
+  showLocation = true,
+  children,
+  className,
 }: {
   title: string;
-  description?: string;
+  description?: ReactNode;
   actions?: ReactNode;
   meta?: ReactNode;
+  icon?: LucideIcon;
+  tone?: ModuleTone;
+  /** Extra context above the title, shown after the automatic location eyebrow. */
+  eyebrow?: ReactNode;
+  /** Show the current location above the title on location pages (default true). */
+  showLocation?: boolean;
+  children?: ReactNode;
+  className?: string;
 }) {
+  const route = useOptionalLocationRoute();
+  const location = showLocation ? (route?.location ?? null) : null;
+  // The tab and history name the page and its location even where the eyebrow is hidden
+  // ("Overview · Harbor Dental – Downtown · MyPageSEO").
+  useDocumentTitle([title, route?.location.name]);
+
   return (
-    <header className="relative flex flex-col gap-3 border-b border-border pb-4 pl-4 md:flex-row md:items-start md:justify-between">
-      <span
-        aria-hidden
-        className="absolute left-0 top-0.5 h-8 w-1 rounded-full bg-primary"
-      />
-      <div className="min-w-0">
-        <h1 className="text-xl font-semibold text-foreground md:text-2xl">{title}</h1>
-        {description ? (
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{description}</p>
-        ) : null}
-        {meta ? <div className="mt-2">{meta}</div> : null}
+    <header data-page-header className={cn("min-w-0", className)}>
+      <div className="flex flex-wrap items-start justify-between gap-x-5 gap-y-4">
+        <div className="flex min-w-0 flex-[1_1_20rem] items-start gap-3.5">
+          {icon ? <IconChip icon={icon} tone={tone} size="lg" className="mt-0.5 hidden sm:grid" /> : null}
+          <div className="min-w-0 flex-1">
+            {location || eyebrow ? (
+              <div className="mb-1 flex min-h-5 min-w-0 items-center gap-x-3 gap-y-1">
+                {location ? <LocationEyebrow location={location} /> : null}
+                {eyebrow ? <div className="flex shrink-0 items-center gap-2 text-xs">{eyebrow}</div> : null}
+              </div>
+            ) : null}
+            {/* Focusable from script only: after a page change that took focus away (a link in the
+                page or the mobile menu), the shell moves it here. */}
+            <h1 tabIndex={-1} className="text-2xl font-semibold leading-tight tracking-tight text-foreground outline-none">
+              {title}
+            </h1>
+            {description ? (
+              typeof description === "string" ? (
+                <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{description}</p>
+              ) : (
+                <div className="mt-1 max-w-3xl text-sm text-muted-foreground">{description}</div>
+              )
+            ) : null}
+          </div>
+        </div>
+        {actions ? <div className="flex max-w-full flex-wrap items-center gap-2 max-sm:order-2">{actions}</div> : null}
+        {/* The facts line (last update, scope, status) takes the whole width under the title and the
+            actions, lined up with the title, so it stays on one line instead of wrapping in the title
+            column beside a row of buttons. On phones it stays with the title, above the actions.
+            The negative margin turns the 16px row gap into the 10px it sits under the description. */}
+        {meta ? <div className={cn("-mt-1.5 min-w-0 basis-full max-sm:order-1", icon && "sm:pl-13.5")}>{meta}</div> : null}
       </div>
-      {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
+      {children ? <div className="mt-4 flex flex-wrap items-center gap-2">{children}</div> : null}
     </header>
   );
 }
 
-/** Section header inside a page. */
+/** "📍 Location name · Client" above a location page's title. One line; the client name truncates first. */
+function LocationEyebrow({ location }: { location: LocationHeader }) {
+  const { pathname } = useLocation();
+  const canViewClients = useAccess().can("clients.view");
+  const overview = locationPath(location.location_id);
+  const onOverview = pathname.replace(/\/+$/, "") === overview;
+  // Small print, but a 36px tall hit area: an invisible box above and below the 16px line, which
+  // doesn't move the line. The name truncates in an inner span, as the link's own `overflow:
+  // hidden` would clip that box.
+  const linkClass =
+    "relative min-w-0 rounded-sm underline-offset-2 outline-hidden after:absolute after:inset-x-0 after:-inset-y-2.5 after:content-[''] hover:text-primary hover:underline focus-visible:ring-2 focus-visible:ring-ring";
+
+  return (
+    <p className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-muted-foreground">
+      <MapPin aria-hidden className="size-3.5 shrink-0 text-primary" />
+      <span className="sr-only">Location:</span>
+      {onOverview ? (
+        <span className="min-w-0 truncate text-foreground">{location.name}</span>
+      ) : (
+        <Link to={overview} className={cn("text-foreground", linkClass)}>
+          <span className="block truncate">{location.name}</span>
+        </Link>
+      )}
+      {location.client ? (
+        <>
+          <span aria-hidden className="shrink-0 text-muted-foreground">
+            ·
+          </span>
+          <span className="sr-only">Client:</span>
+          {canViewClients ? (
+            <Link to={`/clients/${encodeURIComponent(location.client.client_id)}`} className={cn("shrink-[3]", linkClass)}>
+              <span className="block truncate">{location.client.name}</span>
+            </Link>
+          ) : (
+            <span className="min-w-0 shrink-[3] truncate">{location.client.name}</span>
+          )}
+        </>
+      ) : null}
+    </p>
+  );
+}
+
+/** Section header inside a page: an <h2>, a short description and the section's actions. */
 export function SectionHeader({
   title,
   description,
   actions,
+  icon,
+  tone = "brand",
+  className,
 }: {
   title: string;
-  description?: string;
+  description?: ReactNode;
   actions?: ReactNode;
+  icon?: LucideIcon;
+  tone?: ModuleTone;
+  className?: string;
 }) {
   return (
-    <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-      <div>
-        <h2 className="flex items-center gap-2 text-sm font-semibold tracking-tight text-foreground">
-          <span aria-hidden className="h-3.5 w-0.5 rounded-full bg-brand-soft" />
-          {title}
-        </h2>
-        {description ? <p className="pl-3.5 text-xs text-muted-foreground">{description}</p> : null}
+    <div className={cn("mb-4 flex flex-wrap items-end justify-between gap-x-4 gap-y-2", className)}>
+      {/* The chip sits beside the title line (centred on its 24px), not beside a long description. */}
+      <div className="flex min-w-0 items-start gap-3">
+        {icon ? <IconChip icon={icon} tone={tone} size="sm" className="-mt-0.5" /> : null}
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold tracking-tight text-foreground">{title}</h2>
+          {description ? <p className="mt-0.5 text-sm text-muted-foreground">{description}</p> : null}
+        </div>
       </div>
-      {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
+      {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
     </div>
   );
 }
 
+/* -------------------------------------------------------------------------- */
+/* Trend and metrics                                                           */
+/* -------------------------------------------------------------------------- */
+
 export type TrendDirection = "up" | "down" | "flat";
 
 /**
- * Trend indicator. `positive` decides the semantic color, because in rank data
- * a decreasing position number is an improvement.
+ * Trend indicator. `positive` decides the semantic colour, because in rank data a decreasing
+ * position number is an improvement. `variant="chip"` puts it on a soft tinted pill.
+ *
+ * A change for the better is green; a change for the worse is amber (attention), because an
+ * ordinary dip is not an alarm: red is kept for `severity="critical"`. `tone="neutral"` draws
+ * either direction in the flat grey, for movement that is neither good nor bad for the user
+ * (a competitor's rank). The arrow and the screen-reader text always carry the direction.
  */
 export function TrendIndicator({
   direction,
   value,
   positive,
+  variant = "text",
+  tone = "auto",
+  severity = "attention",
   className,
 }: {
   direction: TrendDirection;
   value: string;
   positive?: boolean;
+  variant?: "text" | "chip";
+  /** "neutral" shows the change without judging it (grey either way). */
+  tone?: "auto" | "neutral";
+  /** How a change for the worse reads: amber "attention" (default) or red "critical" for a real alarm. */
+  severity?: "attention" | "critical";
   className?: string;
 }) {
   const isPositive = positive ?? direction === "up";
   const Icon = direction === "up" ? ArrowUpRight : direction === "down" ? ArrowDownRight : ArrowRight;
+  const look = direction === "flat" || tone === "neutral" ? "flat" : isPositive ? "good" : severity === "critical" ? "critical" : "bad";
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 text-xs font-medium tabular",
-        direction === "flat"
-          ? "text-muted-foreground"
-          : isPositive
-            ? "text-success"
-            : "text-critical",
+        "inline-flex items-center gap-0.5 whitespace-nowrap text-xs font-semibold tabular",
+        variant === "chip" && "rounded-full px-1.5 py-0.5",
+        look === "flat" && (variant === "chip" ? "bg-muted text-muted-foreground" : "text-muted-foreground"),
+        look === "good" && (variant === "chip" ? "bg-success-surface text-success" : "text-success"),
+        look === "bad" && (variant === "chip" ? "bg-warning-surface text-warning-foreground" : "text-warning-foreground"),
+        look === "critical" && (variant === "chip" ? "bg-critical-surface text-critical" : "text-critical"),
         className,
       )}
     >
-      <Icon className="size-3.5" aria-hidden />
+      {/* inline-block: callers sometimes pass `block`, and a block-level svg would sit on its own line. */}
+      <Icon className="inline-block size-3.5 shrink-0 align-middle" aria-hidden />
       <span className="sr-only">
         {direction === "up" ? "Up" : direction === "down" ? "Down" : "No change"}
         {": "}
@@ -101,53 +233,46 @@ export function TrendIndicator({
 /** Accent colours available to metric cards, so summary bands read as a set. */
 export type MetricAccent = "brand" | "teal" | "green" | "amber" | "red" | "clay";
 
+// Each accent is a top bar only: labels stay in text colours, so they always read at >= 4.5:1.
 const metricAccentBar: Record<MetricAccent, string> = {
-  brand: "bg-primary",
-  teal: "bg-chart-2",
+  brand: "bg-brand",
+  teal: "bg-chart-1",
   green: "bg-success",
   amber: "bg-warning",
   red: "bg-critical",
-  clay: "bg-chart-6",
+  clay: "bg-chart-7",
 };
 
-const metricAccentLabel: Record<MetricAccent, string> = {
-  brand: "text-primary",
-  teal: "text-chart-2",
-  green: "text-success",
-  amber: "text-warning-foreground",
-  red: "text-critical",
-  clay: "text-chart-6",
-};
-
-/** Compact metric summary card for dashboard and overview screens. */
+/**
+ * One cell of a metric band (the caller's grid draws the outer border and the dividers).
+ * For a stand-alone, clickable tile with an icon use `KpiTile`.
+ */
 export function MetricCard({
   label,
   value,
   trend,
   caption,
   accent,
+  className,
 }: {
   label: string;
   value: ReactNode;
   trend?: ReactNode;
   caption?: string;
   accent?: MetricAccent;
+  className?: string;
 }) {
   return (
-    <div className="relative border-b border-border bg-surface p-4 pt-[17px] last:border-b-0 sm:[&:nth-last-child(-n+2)]:border-b-0 xl:border-b-0">
-      {accent ? (
-        <span aria-hidden className={cn("absolute inset-x-0 top-0 h-0.5", metricAccentBar[accent])} />
-      ) : null}
-      <p
-        className={cn(
-          "text-xs font-medium uppercase tracking-wide",
-          accent ? metricAccentLabel[accent] : "text-muted-foreground",
-        )}
-      >
-        {label}
-      </p>
-      <div className="mt-2 flex items-baseline gap-2">
-        <span className="text-2xl font-semibold tabular text-foreground">{value}</span>
+    <div
+      className={cn(
+        "relative min-w-0 border-b border-border bg-card px-4 pb-4 pt-[18px] last:border-b-0 sm:[&:nth-last-child(-n+2)]:border-b-0 xl:border-b-0",
+        className,
+      )}
+    >
+      {accent ? <span aria-hidden className={cn("absolute inset-x-0 top-0 h-[3px]", metricAccentBar[accent])} /> : null}
+      <p className="text-[13px] font-medium text-muted-foreground">{label}</p>
+      <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <span className="text-2xl font-semibold tracking-tight text-foreground">{value}</span>
         {trend}
       </div>
       {caption ? <p className="mt-1.5 text-xs text-muted-foreground">{caption}</p> : null}
@@ -155,64 +280,40 @@ export function MetricCard({
   );
 }
 
-export type StatusTone = "neutral" | "success" | "warning" | "critical" | "info" | "brand";
-
-/** Status badge used for health, sync and issue states. */
-export function StatusBadge({
-  tone = "neutral",
-  children,
-  className,
-}: {
-  tone?: StatusTone;
-  children: ReactNode;
-  className?: string;
-}) {
-  const tones: Record<StatusTone, string> = {
-    neutral: "bg-muted text-muted-foreground border-border",
-    success: "bg-success-surface text-success border-success/25",
-    warning: "bg-warning-surface text-warning-foreground border-warning/35",
-    critical: "bg-critical-surface text-critical border-critical/25",
-    info: "bg-info-surface text-info border-info/25",
-    brand: "bg-brand-tint text-primary border-primary/20",
-  };
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium",
-        tones[tone],
-        className,
-      )}
-    >
-      {children}
-    </span>
-  );
-}
+/* -------------------------------------------------------------------------- */
+/* Containers                                                                  */
+/* -------------------------------------------------------------------------- */
 
 /** Card wrapper for charts and data panels. */
 export function Panel({
   title,
   description,
   actions,
+  icon,
+  tone = "brand",
   children,
   className,
 }: {
   title?: string;
-  description?: string;
+  description?: ReactNode;
   actions?: ReactNode;
+  icon?: LucideIcon;
+  tone?: ModuleTone;
   children: ReactNode;
   className?: string;
 }) {
   return (
-    <section className={cn("min-w-0 rounded-lg border border-border bg-surface shadow-card", className)}>
+    <section className={cn("min-w-0 rounded-xl border border-border bg-card shadow-card", className)}>
       {title ? (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-t-lg border-b border-border bg-brand-tint px-4 py-3">
-          <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-            {description ? (
-              <p className="text-xs text-muted-foreground">{description}</p>
-            ) : null}
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-border px-4 py-3.5">
+          <div className="flex min-w-0 items-start gap-3">
+            {icon ? <IconChip icon={icon} tone={tone} size="sm" className="-mt-0.5" /> : null}
+            <div className="min-w-0">
+              <h2 className="text-[15px] font-semibold leading-6 text-foreground">{title}</h2>
+              {description ? <p className="text-[13px] text-muted-foreground">{description}</p> : null}
+            </div>
           </div>
-          {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
+          {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
         </div>
       ) : null}
       <div className="p-4">{children}</div>
@@ -220,8 +321,7 @@ export function Panel({
   );
 }
 
-
-/** Score indicator: a labelled 0-100 bar with a semantic fill. */
+/** Score indicator: a labelled 0-100 bar with a semantic fill (green, amber, red only when critical). */
 export function ScoreIndicator({
   label,
   score,
@@ -236,16 +336,18 @@ export function ScoreIndicator({
   className?: string;
 }) {
   const resolved = tone ?? healthTone(score);
-  const fill =
-    resolved === "healthy" ? "bg-success" : resolved === "attention" ? "bg-warning" : "bg-critical";
   return (
     <div className={cn("min-w-0", className)}>
       <div className="flex items-baseline justify-between gap-3">
         <span className="truncate text-sm font-medium text-foreground">{label}</span>
         <span className="tabular text-sm font-semibold text-foreground">{score}</span>
       </div>
-      <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-        <div className={cn("h-full rounded-full", fill)} style={{ width: `${Math.min(Math.max(score, 0), 100)}%` }} />
+      {/* The number above already says it; the bar is its picture. */}
+      <div aria-hidden className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-muted">
+        <div
+          className={cn("h-full rounded-full", HEALTH_TONE_CLASSES[resolved].fill)}
+          style={{ width: `${Math.min(Math.max(score, 0), 100)}%` }}
+        />
       </div>
       {detail ? <p className="mt-1.5 text-xs text-muted-foreground">{detail}</p> : null}
     </div>
@@ -268,7 +370,7 @@ export function ComparisonControl<T extends string>({
     <div
       role="group"
       aria-label={ariaLabel}
-      className="inline-flex rounded-md border border-border bg-surface p-0.5"
+      className="inline-flex h-9 items-center gap-1 rounded-lg bg-muted p-1 ring-1 ring-inset ring-border"
     >
       {options.map((option) => (
         <button
@@ -277,9 +379,9 @@ export function ComparisonControl<T extends string>({
           onClick={() => onChange(option.value)}
           aria-pressed={option.value === value}
           className={cn(
-            "inline-flex min-h-8 items-center rounded-[5px] px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35",
+            "inline-flex h-7 cursor-pointer items-center whitespace-nowrap rounded-md px-2.5 text-[13px] font-medium transition-[color,background-color,box-shadow] outline-hidden focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring",
             option.value === value
-              ? "bg-primary text-primary-foreground"
+              ? "bg-card font-semibold text-foreground shadow-sm ring-1 ring-border-strong/60"
               : "text-muted-foreground hover:text-foreground",
           )}
         >

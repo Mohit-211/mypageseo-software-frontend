@@ -17,8 +17,12 @@ export function storeSessionTokens(tokens: AuthTokens | undefined, remember: boo
   else setAuthTokens(pair, remember);
 }
 
-/** A fresh sign-in (login, verification, invitation): stores the tokens and starts in the default organization. */
-export function startSession(tokens: AuthTokens | undefined, remember: boolean, details?: unknown) {
+/**
+ * A fresh sign-in (login, verification, invitation): stores the tokens and starts
+ * in the default organization. Sessions are kept across browser restarts unless
+ * the user unticked "Keep me signed in" (`remember: false`).
+ */
+export function startSession(tokens: AuthTokens | undefined, remember = true, details?: unknown) {
   storeSessionTokens(tokens, remember, details);
   setSelectedOrganizationId(null);
   const onboarding = (details as { onboarding?: { completed?: boolean } | null } | undefined)?.onboarding;

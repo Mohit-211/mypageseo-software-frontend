@@ -87,25 +87,48 @@ export const BUCKET_LABEL: Record<RankBucket, string> = {
   error: "Search failed",
 };
 
-/** Colour classes per rank bucket, shared by rank cells and map markers. */
+/** A sample value per bucket for the legend's mini pills, so the key shows the coloured numeral the cells show. */
+export const BUCKET_SAMPLE: Record<RankBucket, string> = {
+  pack: "2",
+  visible: "7",
+  low: "15",
+  invisible: "35",
+  not_found: "60+",
+  error: "–",
+};
+
+/** Colour classes per rank bucket for rank cells and pills (soft surface, coloured text >= 4.5:1). */
 export const BUCKET_CLASS: Record<RankBucket, string> = {
   pack: "border-success/30 bg-success-surface text-success",
   visible: "border-info/30 bg-info-surface text-info",
   low: "border-warning/35 bg-warning-surface text-warning-foreground",
   invisible: "border-critical/25 bg-critical-surface text-critical",
-  not_found: "border-border bg-muted text-muted-foreground",
-  error: "border-dashed border-border bg-background text-muted-foreground",
+  not_found: "border-border-strong bg-muted text-muted-foreground",
+  error: "border-dashed border-border-strong bg-card text-muted-foreground",
 };
 
-/** Solid marker colours per bucket for the map (text stays readable on top). */
+/**
+ * Solid marker colours per bucket for the maps (design.md §6.14): numerals stay >= 4.5:1 on their
+ * fill (11–20 uses the bright gold with ink text, 9.4:1); "not found" is a hollow marker and a failed
+ * search a dashed one, so they never read as a rank.
+ */
 export const BUCKET_MARKER_CLASS: Record<RankBucket, string> = {
   pack: "bg-success text-white border-white",
   visible: "bg-info text-white border-white",
-  low: "bg-warning text-warning-foreground border-white",
+  low: "bg-warning-bright text-warning-bright-foreground border-white",
   invisible: "bg-critical text-white border-white",
-  not_found: "bg-muted-foreground text-white border-white",
-  error: "bg-background text-muted-foreground border-dashed border-muted-foreground",
+  not_found: "bg-card text-muted-foreground border-input",
+  error: "bg-card text-muted-foreground border-dashed border-input",
 };
+
+/** The map legend's buckets, best first (failed searches are rare and explained in the tooltip). */
+export const MAP_LEGEND_BUCKETS: readonly { bucket: RankBucket; label: string }[] = [
+  { bucket: "pack", label: "1–3" },
+  { bucket: "visible", label: "4–10" },
+  { bucket: "low", label: "11–20" },
+  { bucket: "invisible", label: "21–60" },
+  { bucket: "not_found", label: "Not in top 60" },
+];
 
 /**
  * "Measured around: …" from a center's source (run or location header).

@@ -1,5 +1,6 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { getCitationChanges, getCitations, isApiError } from "@/api";
+import { keepPreviousForLocation } from "@/lib/query-placeholder";
 
 export const citationsKey = (locationId: string) => ["locations", locationId, "citations"] as const;
 
@@ -19,6 +20,6 @@ export function useCitationChanges(locationId: string, page: number, limit: numb
     queryKey: [...citationsKey(locationId), "changes", page, limit],
     queryFn: ({ signal }) => getCitationChanges(locationId, { page, limit }, signal),
     retry,
-    placeholderData: keepPreviousData,
+    placeholderData: keepPreviousForLocation(locationId),
   });
 }

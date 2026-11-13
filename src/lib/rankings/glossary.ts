@@ -31,6 +31,6 @@ export const GLOSSARY = {
   runTime: "How long a full ranking run takes with these settings. Runs happen in the background.",
   tokenCost: "Pressing Refresh rankings costs this many tokens. The automatic monthly refresh is free.",
   distribution: "How the business ranks across all searches of this run, grouped by position range.",
-  movers: "The keywords whose average rank changed the most since the previous run.",
+  movers: "The keywords whose average rank changed the most since the previous run: up to 3 of the biggest gains and up to 3 of the biggest drops.",
   mapPoint: "Where the search is made from. The top 20 can differ between the center and the points around it.",
 } as const;

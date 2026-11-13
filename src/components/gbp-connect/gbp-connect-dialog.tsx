@@ -184,7 +184,7 @@ function AccountStep({ onConnected }: { onConnected: (target: GbpConnectTarget) 
       ) : null}
 
       {loadError ? (
-        <Alert className="border-critical/25 bg-critical-surface/40">
+        <Alert variant="critical">
           <AlertCircle aria-hidden />
           <AlertDescription>
             <p>{connectErrorMessage(loadError)}</p>
@@ -204,7 +204,7 @@ function AccountStep({ onConnected }: { onConnected: (target: GbpConnectTarget) 
       ) : null}
 
       {error ? (
-        <Alert className="border-critical/25 bg-critical-surface/40" role="alert">
+        <Alert variant="critical" role="alert">
           <AlertCircle aria-hidden />
           <AlertDescription>
             <p>{error.message}</p>
@@ -252,11 +252,14 @@ function pickErrorMessage(err: unknown): string {
 }
 
 function rowLockReason(location: GbpAccountLocation): string | null {
-  if (location.bound_location_id) return "Bound";
+  if (location.bound_location_id) return "Already added";
   if (location.picked_by_other) return "Picked by a teammate";
   if (!location.supported) return "US and Canada only";
   return null;
 }
+
+/** Profiles A–Z (Google lists them in its own order), so a long account is easy to scan. */
+const collator = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
 
 function PickStep({ target, onSaved }: { target: GbpConnectTarget; onSaved: (pending: number) => void }) {
   const queryClient = useQueryClient();
@@ -280,7 +283,7 @@ function PickStep({ target, onSaved }: { target: GbpConnectTarget; onSaved: (pen
             .map((location) => location.gbpLocationId),
         );
 
-  const locations = list.data?.locations ?? [];
+  const locations = [...(list.data?.locations ?? [])].sort((a, b) => collator.compare(a.title, b.title));
   const needle = filter.trim().toLowerCase();
   const visible = needle
     ? locations.filter((location) =>
@@ -314,10 +317,10 @@ function PickStep({ target, onSaved }: { target: GbpConnectTarget; onSaved: (pen
   return (
     <>
       <DialogHeader>
-        <DialogTitle>Choose locations</DialogTitle>
+        <DialogTitle>Choose your Business Profiles</DialogTitle>
         <DialogDescription>
-          Connected as <span className="font-medium text-foreground">{target.googleEmail}</span>. Tick the locations to
-          add; they'll appear on the Locations page, where you bind each one.
+          Connected as <span className="font-medium text-foreground">{target.googleEmail}</span>. Tick the profiles to track.
+          They wait under "Ready to add" on the Locations page, where you add each one.
         </DialogDescription>
       </DialogHeader>
 
@@ -328,7 +331,7 @@ function PickStep({ target, onSaved }: { target: GbpConnectTarget; onSaved: (pen
           <Skeleton className="h-14 w-full" />
         </div>
       ) : list.isError ? (
-        <Alert className="border-critical/25 bg-critical-surface/40">
+        <Alert variant="critical">
           <AlertCircle aria-hidden />
           <AlertDescription>
             <p>
@@ -342,7 +345,7 @@ function PickStep({ target, onSaved }: { target: GbpConnectTarget; onSaved: (pen
           </AlertDescription>
         </Alert>
       ) : locations.length === 0 ? (
-        <p className="rounded-md border border-border bg-surface-strong p-4 text-sm text-muted-foreground">
+        <p className="rounded-lg border border-border bg-surface-strong p-4 text-sm text-muted-foreground">
           This Google account doesn't manage any Business Profile locations. Try another account.
         </p>
       ) : (
@@ -362,13 +365,13 @@ function PickStep({ target, onSaved }: { target: GbpConnectTarget; onSaved: (pen
               />
             </div>
           ) : null}
-          <ul className="max-h-80 divide-y divide-border overflow-y-auto rounded-md border border-border">
+          <ul className="max-h-80 divide-y divide-border overflow-y-auto rounded-lg border border-border">
             {visible.map((location) => {
               const lock = rowLockReason(location);
               const checked = location.bound_location_id ? true : selected.has(location.gbpLocationId);
               const id = `gbp-pick-${location.gbpLocationId}`;
               return (
-                <li key={location.gbpLocationId} className="flex items-start gap-3 p-3">
+                <li key={location.gbpLocationId} className={lock ? "flex items-start gap-3 bg-surface-strong p-3" : "flex items-start gap-3 p-3 transition-colors hover:bg-accent/50"}>
                   <Checkbox
                     id={id}
                     className="mt-0.5"
@@ -376,10 +379,15 @@ function PickStep({ target, onSaved }: { target: GbpConnectTarget; onSaved: (pen
                     disabled={Boolean(lock) || saving}
                     onCheckedChange={(value) => toggle(location.gbpLocationId, value === true)}
                   />
-                  <label htmlFor={id} className={lock ? "min-w-0 flex-1 opacity-70" : "min-w-0 flex-1 cursor-pointer"}>
+                  {/* A profile that can't be picked says why in a badge; its text stays readable. */}
+                  <label htmlFor={id} className={lock ? "min-w-0 flex-1" : "min-w-0 flex-1 cursor-pointer"}>
                     <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-foreground">
                       {location.title}
-                      {lock ? <StatusBadge tone={location.bound_location_id ? "success" : "neutral"}>{lock}</StatusBadge> : null}
+                      {lock ? (
+                        <StatusBadge tone={location.bound_location_id ? "success" : "neutral"} size="sm">
+                          {lock}
+                        </StatusBadge>
+                      ) : null}
                     </span>
                     {location.address ? (
                       <span className="mt-0.5 flex items-start gap-1 text-xs text-muted-foreground">
@@ -430,17 +438,28 @@ function SavedStep({
 }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  // The Locations page and the add page list the picks under "Ready to add" themselves: stay there.
+  const listedHere = pathname === "/locations" || pathname === "/locations/add";
+  // The setup checklist doesn't list them, and a pick only counts once it's added: go and add them.
+  const fromSetup = pathname.startsWith("/onboarding");
+  const next = pending === 0 || listedHere ? null : fromSetup ? "/locations/add" : "/locations";
 
   return (
     <>
       <DialogHeader>
         <DialogTitle className="flex items-center gap-2">
-          <CheckCircle2 aria-hidden className="size-5 text-success" /> Selection saved
+          <CheckCircle2 aria-hidden className="size-5 text-success" /> {pending === 0 ? "Selection saved" : `${pending} ${pending === 1 ? "profile" : "profiles"} ready to add`}
         </DialogTitle>
         <DialogDescription>
           {pending === 0
-            ? `No locations from ${target.googleEmail} are waiting to be bound.`
-            : `${pending} location${pending === 1 ? " is" : "s are"} waiting on the Locations page. Press Bind on each one to start tracking it.`}
+            ? `No profiles from ${target.googleEmail} are waiting to be added.`
+            : listedHere
+              ? `They're under "Ready to add" on this page. Press Add on each one to start tracking it.`
+              : fromSetup
+                ? pending === 1
+                  ? "Add it now: it becomes a location, and you choose its keywords next."
+                  : "Add them now: each one becomes a location, and you choose its keywords next."
+                : `They wait under "Ready to add" on the Locations page. Press Add on each one to start tracking it.`}
         </DialogDescription>
       </DialogHeader>
       <DialogFooter>
@@ -450,10 +469,10 @@ function SavedStep({
         <Button
           onClick={() => {
             closeGbpConnect();
-            if (pathname !== "/locations") navigate("/locations");
+            if (next) navigate(next);
           }}
         >
-          {pathname === "/locations" ? "Done" : "Go to Locations"}
+          {next === "/locations/add" ? `Add ${pending === 1 ? "it" : "them"} now` : next ? `Add ${pending === 1 ? "it" : "them"} on Locations` : fromSetup ? "Back to setup" : "Done"}
         </Button>
       </DialogFooter>
     </>

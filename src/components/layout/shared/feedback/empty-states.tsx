@@ -28,8 +28,9 @@ export function NoLocationsEmpty({ className }: { className?: string }) {
   return (
     <EmptyState
       icon={MapPin}
+      tone="locations"
       title="No locations yet"
-      description="Mypageseo tracks local search performance per Google Business Profile location. Add your first location to start collecting rankings, profile health and citation data."
+      description="MyPageSEO tracks local search performance per Google Business Profile location. Add your first location to start collecting rankings, profile health and citation data."
       action={
         <Button asChild size="sm">
           <Link to="/locations/add">Add location</Link>
@@ -44,6 +45,7 @@ export function NoKeywordsEmpty({ action, className }: { action?: ReactNode; cla
   return (
     <EmptyState
       icon={ListChecks}
+      tone="keywords"
       title="No tracked keywords"
       description="This location has no keywords set up yet. Positions, movement and distribution appear once keywords are tracked and the first ranking collection completes."
       {...(action ? { action } : {})}
@@ -56,6 +58,7 @@ export function NoRankingDataEmpty({ className }: { className?: string }) {
   return (
     <EmptyState
       icon={BarChart3}
+      tone="rankings"
       title="No ranking data for this period"
       description="Keywords are tracked for this location, but no positions have been collected for the selected period yet. Results appear after the next ranking collection."
       {...(className === undefined ? {} : { className })}
@@ -84,6 +87,7 @@ export function NoCitationsEmpty({ action, className }: { action?: ReactNode; cl
   return (
     <EmptyState
       icon={Building2}
+      tone="citations"
       title="No citation data yet"
       description="This location hasn't been scanned for directory listings, so listing consistency, missing listings and duplicates can't be shown yet."
       {...(action ? { action } : {})}
@@ -102,6 +106,7 @@ export function NoCompetitorsEmpty({
   return (
     <EmptyState
       icon={Users}
+      tone="competitors"
       title="No competitors tracked"
       description="No competitors have been added for this location and none have been discovered from local search results, so there is nothing to compare rankings, reviews and citations against yet."
       {...(action ? { action } : {})}
@@ -114,13 +119,14 @@ export function NoReportsEmpty({ canCreate = true, className }: { canCreate?: bo
   return (
     <EmptyState
       icon={FileText}
+      tone="reports"
       title="No reports yet"
       description="Reports package ranking, Google Business Profile, citation and competitor results into a shareable document for a chosen period."
       {...(canCreate
         ? {
             action: (
               <Button asChild size="sm">
-                <Link to="/reports/create">Create report</Link>
+                <Link to="/reports?create=report">Create report</Link>
               </Button>
             ),
           }
@@ -140,6 +146,7 @@ export function NoAutomationsEmpty({
   return (
     <EmptyState
       icon={Workflow}
+      tone="settings"
       title="No automations yet"
       description="Automations handle recurring work: ranking and review alerts, citation monitoring, scheduled profile posts and recurring report delivery."
       {...(canCreate
@@ -160,6 +167,7 @@ export function NoNotificationsEmpty({ className }: { className?: string }) {
   return (
     <EmptyState
       icon={Bell}
+      tone="settings"
       title="No notifications yet"
       description="Ranking movement, profile changes, new reviews, citation issues and automation results will appear here as they happen."
       {...(className === undefined ? {} : { className })}
@@ -183,7 +191,7 @@ export function NoResultsEmpty({
 }) {
   return (
     <EmptyState
-      compact
+      variant="no-results"
       icon={Search}
       title={`No ${label} match these filters`}
       description="Adjust the search or filters to see more. Your data hasn't changed."

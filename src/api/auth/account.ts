@@ -12,7 +12,7 @@ export async function changePassword(currentPassword: string, newPassword: strin
   const result = unwrapData<{ tokens: AuthTokens }>(
     await api.post(ENDPOINTS.auth.changePassword, { current_password: currentPassword, new_password: newPassword }),
   );
-  // Keep the session where it already lives ("Remember me" or this tab only).
+  // Keep the session where it already lives ("Keep me signed in", or this tab only).
   storeSessionTokens(result.tokens, undefined, result);
 }
 

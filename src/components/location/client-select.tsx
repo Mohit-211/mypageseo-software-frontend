@@ -30,7 +30,7 @@ export function ClientSelect({
     <div className="space-y-1.5">
       <Label htmlFor={id}>{label ?? (required ? "Client" : "Client (optional)")}</Label>
       <Select value={value ?? (required ? "" : NO_CLIENT)} onValueChange={(next) => onChange(next === NO_CLIENT ? null : next)}>
-        <SelectTrigger id={id} className="bg-background">
+        <SelectTrigger id={id}>
           <SelectValue placeholder={required ? "Choose one of your clients" : "No client"} />
         </SelectTrigger>
         <SelectContent>

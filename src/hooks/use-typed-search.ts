@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { useSearchParams, type NavigateOptions } from "react-router-dom";
 import type { z } from "zod";
+import { isHistoryState, useSearchUpdater } from "@/lib/url-state";
 
 /**
  * Typed search params — replacement for TanStack Router's `validateSearch`
@@ -17,6 +18,11 @@ import type { z } from "zod";
  *
  * Porting rule: `navigate({ search: X })` -> `setSearch(X)`. Same semantics:
  * the value (or updater result) becomes the complete new search.
+ *
+ * Updates stay on the page: the path and `#hash` are kept and the scroll position doesn't move
+ * (`useSearchUpdater`). Without `replace` they add a history entry. Pass `flushSync: true` from a
+ * handler that scrolls right after, and for a text box bound to the address (every keystroke and
+ * the caret survive).
  *
  * Invalid params fall back to `fallback` (default `{}`), matching the old
  * `parsed.success ? parsed.data : {}` pattern. Values are serialized with
@@ -59,7 +65,8 @@ export function useTypedSearch<S extends z.ZodType>(schema: S, fallback?: z.outp
   // Fallbacks are static per route; freeze the first value so an inline
   // literal doesn't invalidate memoization every render.
   const [fallbackValue] = useState<Search>(() => (fallback ?? {}) as Search);
-  const [params, setParams] = useSearchParams();
+  const [params] = useSearchParams();
+  const updateSearch = useSearchUpdater();
 
   const search = useMemo(
     () => readParams(schema, params, fallbackValue),
@@ -67,15 +74,23 @@ export function useTypedSearch<S extends z.ZodType>(schema: S, fallback?: z.outp
   );
 
   const setSearch = useCallback(
+    // Of the navigate options, `replace`, `flushSync` and `state` apply; the scroll never resets.
     (update: SearchUpdate<Search>, options?: NavigateOptions) => {
-      setParams((previousParams) => {
-        const previous = readParams(schema, previousParams, fallbackValue);
-        const next =
-          typeof update === "function" ? (update as (p: Search) => Search)(previous) : update;
-        return writeParams(next as Record<string, unknown>);
-      }, options);
+      updateSearch(
+        (previousParams) => {
+          const previous = readParams(schema, previousParams, fallbackValue);
+          const next =
+            typeof update === "function" ? (update as (p: Search) => Search)(previous) : update;
+          return writeParams(next as Record<string, unknown>);
+        },
+        {
+          push: !options?.replace,
+          ...(options?.flushSync ? { flushSync: true } : {}),
+          ...(isHistoryState(options?.state) ? { state: options.state } : {}),
+        },
+      );
     },
-    [schema, setParams, fallbackValue],
+    [schema, updateSearch, fallbackValue],
   );
 
   return [search, setSearch] as const;

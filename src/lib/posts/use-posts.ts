@@ -1,7 +1,6 @@
-import { useSyncExternalStore } from "react";
-import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryOptions, useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CalendarClock, CheckCircle2, Clock, FileText, LoaderCircle, XCircle, type LucideIcon } from "lucide-react";
 import {
-  apiErrorData,
   getPostMedia,
   getPostSeries,
   getPosts,
@@ -9,22 +8,91 @@ import {
   getPostsSummary,
   isApiError,
   type CtaType,
+  type Post,
+  type PostSource,
   type PostStatus,
   type PostsQuery,
   type PostTone,
   type AiImageStyle,
   type Weekday,
 } from "@/api";
-import { useBilling } from "@/lib/billing/use-billing";
+import { formatTokens } from "@/lib/ai/ai-costs";
+import { aiErrorText } from "@/lib/ai/ai-errors";
+import type { StatusTone } from "@/components/layout/shared/module-tone";
 
 export const postsKey = (locationId: string) => ["locations", locationId, "posts"] as const;
 
+/**
+ * `GET posts/summary`: counts per status, last and next post, and `connection.gbp_connected`. The
+ * backend answers for a location without Google too (the organization calendar reads that flag).
+ */
+export const postsSummaryQuery = (locationId: string) =>
+  queryOptions({ queryKey: [...postsKey(locationId), "summary"], queryFn: ({ signal }) => getPostsSummary(locationId, signal), retry: false });
+
 export function usePostsSummary(locationId: string) {
-  return useQuery({ queryKey: [...postsKey(locationId), "summary"], queryFn: ({ signal }) => getPostsSummary(locationId, signal), retry: false });
+  return useQuery(postsSummaryQuery(locationId));
 }
 
+/**
+ * One server page of posts, in the server's order ("most recently changed first"). Don't show it as
+ * a list people read top to bottom: use `useAllPosts` + `sortPosts` (see below).
+ */
 export function usePostsList(locationId: string, query: PostsQuery) {
   return useQuery({ queryKey: [...postsKey(locationId), "list", query], queryFn: ({ signal }) => getPosts(locationId, query, signal), retry: false });
+}
+
+/** `GET posts` answers at most 100 posts per call. */
+export const ALL_POSTS_PAGE_SIZE = 100;
+/** Safety cap per list: 10 calls (1,000 posts). Far above what one location writes. */
+export const ALL_POSTS_MAX_PAGES = 10;
+
+export type AllPosts = {
+  posts: Post[];
+  /** What the server counted for this list. */
+  total: number;
+  /** More than `ALL_POSTS_MAX_PAGES` pages: the oldest changes may be missing. */
+  capped: boolean;
+};
+
+export type AllPostsOptions = { source?: PostSource; enabled?: boolean };
+
+async function loadAllPosts(locationId: string, query: Omit<PostsQuery, "page" | "limit">, signal: AbortSignal): Promise<AllPosts> {
+  const first = await getPosts(locationId, { ...query, page: 1, limit: ALL_POSTS_PAGE_SIZE }, signal);
+  const pages = Math.min(Math.ceil(first.total / ALL_POSTS_PAGE_SIZE), ALL_POSTS_MAX_PAGES);
+  const rest = await Promise.all(
+    Array.from({ length: Math.max(0, pages - 1) }, (_, index) =>
+      getPosts(locationId, { ...query, page: index + 2, limit: ALL_POSTS_PAGE_SIZE }, signal),
+    ),
+  );
+  // A post that changes between two page calls can move across pages: keep one copy of each.
+  const byId = new Map<string, Post>();
+  for (const post of [first, ...rest].flatMap((page) => page.posts)) byId.set(post.post_id, post);
+  return { posts: [...byId.values()], total: first.total, capped: first.total > ALL_POSTS_MAX_PAGES * ALL_POSTS_PAGE_SIZE };
+}
+
+/**
+ * Every post of a list, all pages, for ordering and paging in the browser (`sortPosts`, 20 a page).
+ *
+ * WORKAROUND until the backend can sort: `GET locations/:id/posts` has no sort parameter and answers
+ * "most recently changed first" (`updated_at desc`). "Refresh posts" and the monthly Google sync
+ * rewrite `updated_at` of every synced post one at a time, in Google's newest-first order, so the
+ * OLDEST published post got the latest `updated_at` and was listed first. Sorting one page can't fix
+ * that, so a list loads all its pages (1 call up to 100 posts, at most 10) and sorts them itself.
+ * A `sort`/`order` parameter has been requested on the Handoff Board; when it ships, go back to
+ * server paging (`usePostsList`) with the order of `POST_ORDER` in `post-order.ts`.
+ *
+ * `statuses`: one status, a comma list, or an array; empty means every status. The key sits under
+ * `postsKey`, so `useInvalidatePosts` reloads it after any change.
+ */
+export function useAllPosts(locationId: string, statuses?: string | readonly PostStatus[] | null, options: AllPostsOptions = {}) {
+  const status = typeof statuses === "string" ? statuses : statuses?.length ? statuses.join(",") : "";
+  const { source, enabled = true } = options;
+  return useQuery({
+    queryKey: [...postsKey(locationId), "list", { all: true, status: status || null, source: source ?? null }],
+    queryFn: ({ signal }) => loadAllPosts(locationId, { ...(status ? { status } : {}), ...(source ? { source } : {}) }, signal),
+    enabled,
+    retry: false,
+  });
 }
 
 export function usePostsCalendar(locationId: string, from: string, to: string) {
@@ -60,16 +128,24 @@ export function useInvalidatePosts(locationId: string) {
   };
 }
 
-/** Token cost of each AI post action, from `GET billing` → `tokens.ai_costs` (defaults 1 and 3). */
-export function useAiCosts() {
-  const billing = useBilling();
-  const costs = billing.data?.tokens.ai_costs ?? {};
-  return { draft: costs.post_draft ?? 1, image: costs.post_image ?? 3, topics: costs.post_topics ?? 1 };
+/** The token balance only: AI ideas and drafts save nothing, so the post lists don't need a reload. */
+export function useInvalidateTokens() {
+  const queryClient = useQueryClient();
+  return () => {
+    void queryClient.invalidateQueries({ queryKey: ["billing"] });
+  };
 }
 
-export const tokens = (count: number) => `${count} token${count === 1 ? "" : "s"}`;
+/**
+ * Token prices of every AI action (`useAiCosts(locationId)` → `post_topics`, `post_draft`,
+ * `post_image`, `regenerate`, `auto_post`, …). Moved to the AI library; re-exported for older imports.
+ */
+export { useAiCosts } from "@/lib/ai/ai-costs";
 
-/** The tabs of the Posts page and the statuses each lists. */
+/** "1 token", "3 tokens", "Free". Kept for older imports; prefer `formatTokens` from the AI library. */
+export const tokens = formatTokens;
+
+/** The status lists of the Posts page (kept for deep links and older imports; see `post-order.ts`). */
 export const POST_TABS = [
   { id: "drafts", label: "Drafts", status: "draft" },
   { id: "waiting", label: "Waiting for approval", status: "pending_approval" },
@@ -90,7 +166,7 @@ export const STATUS_LABEL: Record<PostStatus, string> = {
   rejected: "Rejected",
 };
 
-export const STATUS_TONE: Record<PostStatus, "neutral" | "info" | "success" | "warning" | "critical" | "brand"> = {
+export const STATUS_TONE: Record<PostStatus, StatusTone> = {
   draft: "neutral",
   pending_approval: "warning",
   scheduled: "info",
@@ -98,6 +174,17 @@ export const STATUS_TONE: Record<PostStatus, "neutral" | "info" | "success" | "w
   published: "success",
   failed: "critical",
   rejected: "critical",
+};
+
+/** Each status has an icon too, so it never depends on colour alone. */
+export const STATUS_ICON: Record<PostStatus, LucideIcon> = {
+  draft: FileText,
+  pending_approval: Clock,
+  scheduled: CalendarClock,
+  publishing: LoaderCircle,
+  published: CheckCircle2,
+  failed: XCircle,
+  rejected: XCircle,
 };
 
 export const CTA_LABEL: Record<CtaType, string> = {
@@ -140,6 +227,11 @@ export const WEEKDAYS: { id: Weekday; short: string }[] = [
   { id: "SUNDAY", short: "Sun" },
 ];
 
+/** Shortest topic `POST posts/ai-draft` accepts (backend validation: 3 characters). */
+export const AI_TOPIC_MIN = 3;
+/** Keywords an AI draft can weave in. */
+export const MAX_DRAFT_KEYWORDS = 3;
+
 const UPLOAD_ERRORS: Record<string, string> = {
   media_type: "Use a JPEG or PNG photo.",
   media_too_small: "The photo must be at least 250×250 pixels.",
@@ -151,7 +243,7 @@ const UPLOAD_ERRORS: Record<string, string> = {
 
 const SERIES_ERRORS: Record<string, string> = {
   insufficient_tokens: "Not enough tokens",
-  ai_not_configured: "AI isn't set up yet",
+  ai_not_configured: "AI isn't switched on yet",
   ai_budget_reached: "AI was paused for the day",
   ai_failed: "The AI didn't answer",
   gbp_not_connected: "The location isn't connected to Google",
@@ -170,8 +262,8 @@ export const POST_FAILURE_COPY: Record<string, string> = {
   gbp_not_connected: "The Business Profile isn't connected.",
   gbp_unbound: "The Business Profile was unbound from this location.",
   v4_access_pending: "Waiting for Google to grant posting access.",
-  media_url_not_public: "Google couldn't fetch the photo (this server isn't reachable from Google).",
-  media_unreachable: "Google couldn't fetch the photo. Retry, or choose another photo.",
+  media_url_not_public: "Google couldn't load the photo. Remove the photo to publish now, or try again later.",
+  media_unreachable: "Google couldn't load the photo. Retry, or choose another photo.",
   media_missing: "The photo is missing. Upload it again.",
   publish_interrupted: "Publishing was interrupted. Retry.",
   location_removed: "The location was removed.",
@@ -185,49 +277,43 @@ export function postFailureText(error: { code: string; message: string } | null)
   return POST_FAILURE_COPY[error.code] ?? error.message;
 }
 
-/*
- * AI availability: after a 503 `ai_not_configured` the AI buttons are hidden for the rest of
- * the session (the note: "hide the AI buttons"), rather than failing on every click.
+/**
+ * Reasons whose words come from the AI library's copy deck (`aiErrorText`), so posts, reviews and
+ * keyword ideas say the same thing about AI, tokens and the account.
  */
-let aiUnavailable = false;
-const aiListeners = new Set<() => void>();
+export const AI_ROUTED_REASONS: ReadonlySet<string> = new Set([
+  "ai_not_configured",
+  "ai_budget_reached",
+  "ai_failed",
+  "insufficient_tokens",
+  "subscription_required",
+  "organization_suspended",
+  "feature_not_included",
+  "ai_not_compliant",
+  "revision_in_progress",
+]);
 
-function markAiUnavailable() {
-  if (aiUnavailable) return;
-  aiUnavailable = true;
-  for (const listener of aiListeners) listener();
-}
-
-/** False once the server said AI isn't set up. */
-export function useAiAvailable(): boolean {
-  return !useSyncExternalStore(
-    (listener) => {
-      aiListeners.add(listener);
-      return () => aiListeners.delete(listener);
-    },
-    () => aiUnavailable,
-  );
+/** True when the AI copy deck has the words for this error (`useToastPostError` toasts it with `toastAiError`). */
+export function isAiRoutedError(err: unknown): boolean {
+  return isApiError(err) && Boolean(err.reason && AI_ROUTED_REASONS.has(err.reason));
 }
 
 /**
  * Message for a failed posts call, from `data.reason`. `buyTokens` is set when
  * the user should be offered token packs; `reload` when the post changed meanwhile.
+ *
+ * Pure (it is also called while rendering error states): recording what an error says about AI or
+ * the account happens in `useToastPostError`, through `toastAiError`.
  */
 export function postErrorText(err: unknown, fallback: string): { message: string; buyTokens?: boolean; reload?: boolean } {
   if (!isApiError(err)) return { message: fallback };
-  if (err.reason === "ai_not_configured") markAiUnavailable();
-  const data = apiErrorData(err);
   const reason = err.reason ?? "";
   if (UPLOAD_ERRORS[reason]) return { message: UPLOAD_ERRORS[reason] };
+  if (AI_ROUTED_REASONS.has(reason)) {
+    const text = aiErrorText(err, { fallback });
+    return { message: `${text.title}. ${text.description}`, ...(reason === "insufficient_tokens" && text.action ? { buyTokens: true } : {}) };
+  }
   switch (reason) {
-    case "insufficient_tokens":
-      return { message: `Not enough tokens: this costs ${String(data.cost ?? "?")}, your balance is ${String(data.balance ?? "?")}.`, buyTokens: true };
-    case "ai_not_configured":
-      return { message: "AI isn't available yet, so the AI buttons are hidden." };
-    case "ai_budget_reached":
-      return { message: "AI is paused for today. Try again tomorrow." };
-    case "ai_failed":
-      return { message: "The AI didn't answer. Nothing was charged; try again." };
     case "post_incomplete":
       return { message: "The post isn't complete yet. Fix the highlighted fields first." };
     case "invalid_status":
@@ -236,7 +322,7 @@ export function postErrorText(err: unknown, fallback: string): { message: string
     case "type_change_on_published":
       return { message: "A published post's type can't change. Duplicate it instead." };
     case "refresh_too_soon":
-      return { message: "Posts were refreshed a moment ago. Try again in a few minutes." };
+      return { message: "Posts were synced with Google a moment ago. Try again in a few minutes." };
     case "gbp_not_connected":
       return { message: "Connect this location to Google to publish." };
     case "v4_access_pending":
@@ -255,8 +341,6 @@ export function postErrorText(err: unknown, fallback: string): { message: string
       return { message: "The end date must be after the start date." };
     case "read_only":
       return { message: "Your access is read-only." };
-    case "subscription_required":
-      return { message: "Your account is read-only until you subscribe." };
     default:
       // A published post is patched on Google first: 502 carries Google's reason and nothing changed.
       if (err.status === 502) return { message: err.message ? `Google refused the change: ${err.message}` : "Google refused the change. Try again later." };

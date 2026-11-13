@@ -7,11 +7,15 @@ export function monthRange(month: Date): { from: string; to: string } {
   return { from: from.toISOString(), to: to.toISOString() };
 }
 
+function startOfThisMonth(): Date {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), 1);
+}
+
+/** The month a calendar shows: `shift(±1)` moves it, `today()` comes back to the current month. */
 export function useMonth() {
-  const [month, setMonth] = useState(() => {
-    const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth(), 1);
-  });
+  const [month, setMonth] = useState(startOfThisMonth);
   const shift = (delta: number) => setMonth((current) => new Date(current.getFullYear(), current.getMonth() + delta, 1));
-  return { month, shift, ...monthRange(month) };
+  const today = () => setMonth(startOfThisMonth());
+  return { month, shift, today, ...monthRange(month) };
 }

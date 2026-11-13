@@ -106,7 +106,7 @@ export function PlaceAutocomplete({
         }}
       />
       {showList ? (
-        <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-md border border-border bg-popover shadow-lg">
+        <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-border bg-popover shadow-raised">
           {suggestions.isFetching && list.length === 0 ? (
             <p className="flex items-center gap-2 px-3 py-2.5 text-sm text-muted-foreground">
               <LoaderCircle aria-hidden className="size-4 animate-spin" /> Searching…
@@ -131,7 +131,7 @@ export function PlaceAutocomplete({
                     onMouseDown={(event) => event.preventDefault()}
                     onMouseEnter={() => setActive(index)}
                     onClick={() => pick(suggestion)}
-                    className={cn("flex cursor-pointer items-start gap-2 px-3 py-2 text-sm", index === active && "bg-secondary")}
+                    className={cn("flex cursor-pointer items-start gap-2 px-3 py-2 text-sm", index === active && "bg-accent")}
                   >
                     <MapPin aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                     <span className="min-w-0">
@@ -142,7 +142,7 @@ export function PlaceAutocomplete({
                 ))}
               </ul>
               {suggestions.data?.attribution ? (
-                <p className="border-t border-border px-3 py-1 text-right text-[10px] text-muted-foreground">{suggestions.data.attribution.text}</p>
+                <p className="border-t border-border px-3 py-1 text-right text-xs text-muted-foreground">{suggestions.data.attribution.text}</p>
               ) : null}
             </>
           )}

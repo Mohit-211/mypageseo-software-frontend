@@ -196,7 +196,8 @@ export type PostSeries = PostSeriesInput & {
   time_zone_source?: "series" | "location" | "default";
   posts_generated: number;
   next_slots: string[];
-  last_error: { code: string; message: string; slot_at: string; at: string } | null;
+  /** The backend model allows an error without a slot time (`slot_at: null`). */
+  last_error: { code: string; message: string; slot_at: string | null; at: string } | null;
   history: { slot_at: string; post_id: string | null; outcome: "generated" | "failed"; reason: string | null; at: string }[];
   created_at: string;
   updated_at: string;

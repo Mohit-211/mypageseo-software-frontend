@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { AlertTriangle, BadgeCheck, LinkIcon, Loader2, TimerOff } from "lucide-react";
+import { toast } from "sonner";
 import { z } from "zod";
-import { AuthFooterNote, AuthLayout, AuthStatePanel } from "@/components/auth/auth";
+import { AuthFooterNote, AuthLayout, AuthLink, AuthStatePanel } from "@/components/auth/auth";
 import { ResendVerification } from "@/components/auth/resend-verification";
 import { Button } from "@/components/ui/button";
-import { isApiError, verifyEmail } from "@/api";
+import { getSessionSubject, isApiError, verifyEmail } from "@/api";
 import { rateLimitMessage } from "@/lib/auth/auth-recovery";
 import { useTypedSearch } from "@/hooks/use-typed-search";
 
@@ -33,7 +34,7 @@ function stateForError(error: unknown): VerifyState {
 
 /**
  * `/verify-email?token=…`, opened from the signup email. Verifies once on load:
- * the first time it signs the user in and continues to onboarding.
+ * the first time it signs the user in (kept signed in) and continues to setup.
  */
 function VerifyEmailPage() {
   const navigate = useNavigate();
@@ -51,41 +52,60 @@ function VerifyEmailPage() {
     if (submitted.current === key) return;
     submitted.current = key;
 
+    // Verifying signs the new account in, replacing any session already open in this browser.
+    const signedInBefore = getSessionSubject();
     verifyEmail(token)
       .then((result) => {
-        if (result.already_verified) setState({ kind: "already_verified" });
-        // Signed in now: continue to onboarding.
-        else void navigate("/onboarding", { replace: true });
+        if (result.already_verified) {
+          setState({ kind: "already_verified" });
+          return;
+        }
+        if (signedInBefore && signedInBefore !== getSessionSubject()) {
+          toast.info(result.user?.email ? `You're now signed in as ${result.user.email}` : "You're now signed in with your new account", {
+            description: "The account that was signed in before is signed out in this browser.",
+          });
+        }
+        // Signed in now (kept signed in): continue to setup.
+        void navigate("/onboarding", { replace: true });
       })
       .catch((error: unknown) => setState(stateForError(error)));
   }, [token, attempt, navigate]);
 
+  const retry = () => {
+    setState({ kind: "verifying" });
+    setAttempt((n) => n + 1);
+  };
+
   const signIn = (
-    <Button asChild className="w-full">
-      <Link to="/login">Log in</Link>
+    <Button asChild size="lg" className="w-full">
+      <Link to="/login">Sign in</Link>
     </Button>
   );
+
+  // A way out for people whose link was already used, on the screens that ask for an email.
+  const needsResend = state.kind === "expired" || state.kind === "invalid";
 
   return (
     <AuthLayout>
       {state.kind === "verifying" ? (
         <AuthStatePanel
-          icon={<Loader2 className="size-5 animate-spin" />}
+          icon={<Loader2 className="animate-spin" />}
           title="Verifying your email"
           description="Hold on a moment while we confirm this link."
         />
       ) : state.kind === "already_verified" ? (
         <AuthStatePanel
-          icon={<BadgeCheck className="size-5" />}
+          tone="success"
+          icon={<BadgeCheck />}
           title="Your email is already verified"
-          description="This link was used before. Log in to continue."
+          description="This link was used before. Sign in to continue."
         >
           {signIn}
         </AuthStatePanel>
       ) : state.kind === "expired" ? (
         <AuthStatePanel
           tone="critical"
-          icon={<TimerOff className="size-5" />}
+          icon={<TimerOff />}
           title="This link has expired"
           description="Verification links last 24 hours. Enter your email and we'll send a new one."
         >
@@ -94,43 +114,36 @@ function VerifyEmailPage() {
       ) : state.kind === "invalid" ? (
         <AuthStatePanel
           tone="critical"
-          icon={<LinkIcon className="size-5" />}
+          icon={<LinkIcon />}
           title="This link isn't valid"
           description="It may be incomplete, or a newer link was sent (only the newest one works). Enter your email to get a new link."
         >
           <ResendVerification />
         </AuthStatePanel>
       ) : state.kind === "rate_limited" ? (
-        <AuthStatePanel tone="critical" icon={<AlertTriangle className="size-5" />} title="Too many attempts" description={state.message}>
-          <Button type="button" variant="outline" className="w-full" onClick={() => {
-            setState({ kind: "verifying" });
-            setAttempt((n) => n + 1);
-          }}>
+        <AuthStatePanel tone="critical" icon={<AlertTriangle />} title="Too many attempts" description={state.message}>
+          <Button type="button" variant="outline" className="h-10 w-full" onClick={retry}>
             Try again
           </Button>
         </AuthStatePanel>
       ) : (
         <AuthStatePanel
           tone="critical"
-          icon={<AlertTriangle className="size-5" />}
+          icon={<AlertTriangle />}
           title="We couldn't verify your email"
           description="Something went wrong on our side. Please try again in a moment."
         >
-          <Button type="button" className="w-full" onClick={() => {
-            setState({ kind: "verifying" });
-            setAttempt((n) => n + 1);
-          }}>
+          <Button type="button" size="lg" className="w-full" onClick={retry}>
             Try again
           </Button>
         </AuthStatePanel>
       )}
 
-      <AuthFooterNote>
-        Already verified?{" "}
-        <Link to="/login" className="font-medium text-primary underline-offset-4 hover:underline">
-          Log in
-        </Link>
-      </AuthFooterNote>
+      {needsResend ? (
+        <AuthFooterNote>
+          Already verified? <AuthLink to="/login">Sign in</AuthLink>
+        </AuthFooterNote>
+      ) : null}
     </AuthLayout>
   );
 }

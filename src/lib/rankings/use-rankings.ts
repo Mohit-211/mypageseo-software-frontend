@@ -1,4 +1,4 @@
-import { keepPreviousData, queryOptions, useQuery } from "@tanstack/react-query";
+import { queryOptions, useQuery } from "@tanstack/react-query";
 import {
   apiErrorData,
   getKeywordGroups,
@@ -12,6 +12,7 @@ import {
   getRefreshState,
   isApiError,
 } from "@/api";
+import { keepPreviousForLocation } from "@/lib/query-placeholder";
 
 /** Prefix of one location's ranking queries; invalidate it when a run finishes or a refresh starts. */
 export const rankingsKey = (locationId: string) => ["locations", locationId, "rankings"] as const;
@@ -28,7 +29,7 @@ export const rankTrackerQuery = (locationId: string, runId?: string, group?: str
   });
 
 export function useRankTracker(locationId: string, runId: string | undefined, group?: string) {
-  return useQuery({ ...rankTrackerQuery(locationId, runId, group), placeholderData: keepPreviousData });
+  return useQuery({ ...rankTrackerQuery(locationId, runId, group), placeholderData: keepPreviousForLocation(locationId) });
 }
 
 export function useGrid(locationId: string, runId: string | undefined, group?: string) {
@@ -36,7 +37,7 @@ export function useGrid(locationId: string, runId: string | undefined, group?: s
     queryKey: [...rankingsKey(locationId), "grid", runId ?? "latest", group ?? "all"],
     queryFn: ({ signal }) => getGrid(locationId, { ...(runId ? { runId } : {}), ...(group ? { group } : {}) }, signal),
     retry,
-    placeholderData: keepPreviousData,
+    placeholderData: keepPreviousForLocation(locationId),
   });
 }
 
@@ -45,7 +46,7 @@ export function useMapRanking(locationId: string, runId: string | undefined, poi
     queryKey: [...rankingsKey(locationId), "map", runId ?? "latest", point],
     queryFn: ({ signal }) => getMapRanking(locationId, { point, ...(runId ? { runId } : {}) }, signal),
     retry,
-    placeholderData: keepPreviousData,
+    placeholderData: keepPreviousForLocation(locationId),
   });
 }
 
@@ -77,13 +78,17 @@ export function useRefreshState(locationId: string, watch = false) {
   });
 }
 
-/** Tracking settings (keywords, competitors with names, grid). */
-export function useTracking(locationId: string) {
-  return useQuery({
+/** Tracking settings (keywords, competitors with names, grid). The location loader prefetches it. */
+export const trackingQuery = (locationId: string) =>
+  queryOptions({
     queryKey: [...rankingsKey(locationId), "tracking"],
     queryFn: ({ signal }) => getTracking(locationId, signal),
     retry,
   });
+
+/** Tracking settings (keywords, competitors with names, grid). */
+export function useTracking(locationId: string) {
+  return useQuery(trackingQuery(locationId));
 }
 
 export function useKeywordGroups(locationId: string) {

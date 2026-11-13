@@ -1,7 +1,24 @@
-import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState, type ReactNode } from "react";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Coins, Download, LoaderCircle, MapPinPlus } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowDownLeft,
+  ArrowUpRight,
+  CalendarClock,
+  Coins,
+  CreditCard,
+  Download,
+  FileText,
+  Info,
+  LoaderCircle,
+  MapPin,
+  MapPinPlus,
+  ReceiptText,
+  RefreshCw,
+  Tag,
+  UserRound,
+} from "lucide-react";
 import {
   apiErrorData,
   buyLocationSlots,
@@ -17,31 +34,35 @@ import {
   updateBillingDetails,
   validateCoupon,
   type BillingDetails,
+  type BillingInvoice,
   type BillingSummary,
   type CouponQuote,
+  type TokenLedgerEntry,
 } from "@/api";
-import { RequireAccess } from "@/components/mypageseo/access";
-import { AppShell } from "@/components/layout/shared/app-shell";
-import { MetricCard, PageHeader, Panel, StatusBadge } from "@/components/layout/shared/data-display";
-import { ConfirmDialog } from "@/components/layout/shared/form-fields";
-import { ErrorState, PageSkeleton } from "@/components/layout/shared/feedback/states";
+import { AiBadge } from "@/components/ai/ai-badge";
+import { Panel, StatusBadge } from "@/components/layout/shared/data-display";
+import { TableBody, TableHead, TablePagination, TableRow, TableScroll, Th, tdClass, tdMutedClass, tdNumberClass } from "@/components/layout/shared/data-table";
+import { ConfirmDialog, FormGrid, FormSaveBar, FormTextField } from "@/components/layout/shared/form-fields";
+import { EmptyState, ErrorState, ListSkeleton, SectionSkeleton } from "@/components/layout/shared/feedback/states";
+import { KpiTile } from "@/components/layout/shared/kpi-tile";
+import type { StatusTone } from "@/components/layout/shared/module-tone";
 import { PaypalReturnNotice } from "@/components/settings/paypal-return-notice";
-import { SettingsNav } from "@/components/settings/settings-nav";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAccess } from "@/hooks/use-access";
+import { AI_COST_ITEMS, formatTokens, useAiCosts } from "@/lib/ai/ai-costs";
 import { useBilling } from "@/lib/billing/use-billing";
 import { formatDate } from "@/lib/datetime";
-import { useWorkspace } from "@/lib/mypageseo/workspace";
-import { formatMoney, saveBlob } from "@/lib/utils";
+import { cn, formatMoney, saveBlob } from "@/lib/utils";
 
-const STATE_LABEL: Record<BillingSummary["state"], { label: string; tone: "success" | "info" | "warning" | "critical" | "neutral" }> = {
+const STATE_LABEL: Record<BillingSummary["state"], { label: string; tone: StatusTone }> = {
   trialing: { label: "Free trial", tone: "info" },
   active: { label: "Active", tone: "success" },
   past_due: { label: "Payment failed", tone: "warning" },
-  inactive: { label: "Read-only", tone: "critical" },
+  // Amber like the account banner and the notice below: an attention state, not an alarm.
+  inactive: { label: "Read-only", tone: "warning" },
   suspended_by_admin: { label: "Suspended", tone: "critical" },
 };
 
@@ -50,47 +71,86 @@ const CHECKOUT_ERRORS: Record<string, string> = {
   already_subscribed: "This organization already has a subscription.",
   manual_billing: "This organization is billed by invoice. Contact us to change it.",
   enterprise_required: "More than 20 locations needs an enterprise plan. Contact us.",
-  billing_not_configured: "Online payments aren't set up yet.",
+  billing_not_configured: "Online payments aren't available yet.",
   no_subscription: "There's no subscription to cancel.",
   owner_only: "Only the account owner can make payments.",
 };
 
+const INVOICE_KIND: Record<BillingInvoice["kind"], string> = {
+  subscription: "Subscription",
+  location_slots: "Extra location",
+  token_pack: "Token pack",
+  manual: "Invoice",
+};
+
+const INVOICE_STATUS: Record<BillingInvoice["status"], { label: string; tone: StatusTone }> = {
+  paid: { label: "Paid", tone: "success" },
+  open: { label: "Open", tone: "warning" },
+  refunded: { label: "Refunded", tone: "neutral" },
+  void: { label: "Void", tone: "neutral" },
+};
+
+const INVOICES_PAGE_SIZE = 12;
+
 function checkoutError(err: unknown): string {
   if (!isApiError(err)) return "That didn't work. Try again.";
   if (err.reason === "quantity_below_active") return `You have ${String(apiErrorData(err).active ?? "more")} active locations; subscribe for at least that many.`;
-  return (err.reason && CHECKOUT_ERRORS[err.reason]) ?? (err.status === 503 ? CHECKOUT_ERRORS.billing_not_configured : "That didn't work. Try again.");
+  return (err.reason && CHECKOUT_ERRORS[err.reason]) ?? (err.status === 503 ? CHECKOUT_ERRORS.billing_not_configured! : "That didn't work. Try again.");
 }
 
-/** One billing page (Phase 13a): plan, subscription, extra locations, tokens, invoices and details. Owners pay; members read. */
-const SettingsBillingPage = () => (
-  <RequireAccess permission="billing.view">
-    <BillingPage />
-  </RequireAccess>
-);
-
-function BillingPage() {
-  const workspace = useWorkspace();
+/** One billing page (Phase 13a): plan, tokens, invoices and details. Owners pay; members read. Gated by the settings layout. */
+function SettingsBillingPage() {
   const billing = useBilling();
   const canPay = useAccess().can("billing.manage");
 
   return (
-    <AppShell>
-      <PageHeader title="Billing" description="Your plan, locations, tokens and invoices." />
-      <SettingsNav active="billing" isAgency={workspace.organization?.accountType === "agency"} />
+    <>
       <PaypalReturnNotice />
       {billing.isPending ? (
-        <PageSkeleton />
+        <div role="status" aria-label="Loading billing" className="space-y-6">
+          <SectionSkeleton lines={4} />
+          <SectionSkeleton lines={6} />
+        </div>
       ) : billing.isError ? (
-        <ErrorState description="Billing couldn't be loaded." onRetry={() => void billing.refetch()} />
+        <ErrorState title="Billing couldn't be loaded" description="Check your connection and try again." onRetry={() => void billing.refetch()} />
       ) : (
         <div className="space-y-6">
           <PlanPanel billing={billing.data} canPay={canPay} />
           <TokensPanel billing={billing.data} canPay={canPay} />
           <InvoicesPanel />
-          <DetailsPanel details={billing.data.billing_details ?? null} canPay={canPay} />
+          <DetailsPanel key={JSON.stringify(billing.data.billing_details ?? null)} details={billing.data.billing_details ?? null} canPay={canPay} />
         </div>
       )}
-    </AppShell>
+    </>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Plan                                                                        */
+/* -------------------------------------------------------------------------- */
+
+function Meter({ used, limit, label }: { used: number; limit: number; label: string }) {
+  const ratio = limit > 0 ? Math.min(used / limit, 1) : 0;
+  return (
+    <span role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={limit} aria-valuenow={used} className="mt-1 block h-1.5 w-full overflow-hidden rounded-full bg-muted">
+      <span className={cn("block h-full rounded-full", ratio >= 0.9 ? "bg-warning" : "bg-primary")} style={{ width: `${ratio * 100}%` }} />
+    </span>
+  );
+}
+
+function Notice({ tone, icon: Icon = Info, children }: { tone: "info" | "warning" | "critical"; icon?: typeof Info; children: ReactNode }) {
+  return (
+    <p
+      className={cn(
+        "flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-sm text-foreground",
+        tone === "info" && "border-info/25 bg-info-surface",
+        tone === "warning" && "border-warning/40 bg-warning-surface",
+        tone === "critical" && "border-critical/25 bg-critical-surface",
+      )}
+    >
+      <Icon aria-hidden className={cn("mt-0.5 size-4 shrink-0", tone === "info" ? "text-info" : tone === "warning" ? "text-warning" : "text-critical")} />
+      <span>{children}</span>
+    </p>
   );
 }
 
@@ -107,8 +167,10 @@ function PlanPanel({ billing, canPay }: { billing: BillingSummary; canPay: boole
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [slotQuote, setSlotQuote] = useState<Awaited<ReturnType<typeof getLocationSlotQuote>> | null>(null);
   const monthly = (n: number) => (prices ? prices.first_location + (n - 1) * prices.additional_location : null);
+  const monthlyTotal = monthly(Number(quantity));
 
   const subscribe = async () => {
+    if (busy) return;
     setBusy("subscribe");
     try {
       const result = await checkoutSubscription(Number(quantity));
@@ -134,6 +196,7 @@ function PlanPanel({ billing, canPay }: { billing: BillingSummary; canPay: boole
   };
 
   const quoteSlot = async () => {
+    if (busy) return;
     setBusy("quote");
     try {
       setSlotQuote(await getLocationSlotQuote(1));
@@ -145,13 +208,14 @@ function PlanPanel({ billing, canPay }: { billing: BillingSummary; canPay: boole
   };
 
   const buySlot = async () => {
+    if (busy) return;
     setBusy("slot");
     try {
       const order = await buyLocationSlots(1);
       if (order.fulfilled) {
         void queryClient.invalidateQueries({ queryKey: ["billing"] });
         void queryClient.invalidateQueries({ queryKey: ["organization", "usage"] });
-        toast.success("The extra location is available now; it's added to your next invoice.");
+        toast.success("The extra location is available now. It's added to your next invoice.");
         setSlotQuote(null);
       } else if (order.approve_url) {
         window.location.assign(order.approve_url);
@@ -164,77 +228,149 @@ function PlanPanel({ billing, canPay }: { billing: BillingSummary; canPay: boole
   };
 
   return (
-    <Panel title={billing.plan?.name ? `${billing.plan.name} plan` : "Plan"} actions={<StatusBadge tone={state.tone}>{state.label}</StatusBadge>}>
-      <div className="space-y-4">
-        <section className="-mx-4 grid border-y border-border sm:grid-cols-3 sm:divide-x sm:divide-border">
-          <MetricCard label="Locations" value={`${billing.locations?.active ?? "—"} of ${billing.locations?.allowed ?? "—"}`} caption={`Paid or allowed now · up to ${max} on this plan`} />
-          <MetricCard label="Users" value={`${billing.users?.used ?? "—"} of ${billing.users?.limit ?? "—"}`} caption={`${billing.plan?.users_per_location ?? 3} per paid location, owner included`} />
-          <MetricCard
-            label="Next renewal"
-            value={billing.next_renewal ? formatMoney(billing.next_renewal.amount, billing.currency) : "—"}
-            caption={billing.next_renewal ? `${formatDate(billing.next_renewal.date)} · ${billing.next_renewal.quantity} location${billing.next_renewal.quantity === 1 ? "" : "s"}${billing.next_renewal.fixed ? "" : " (estimate)"}` : "No renewal scheduled"}
+    <Panel
+      title={billing.plan?.name ? `${billing.plan.name} plan` : "Your plan"}
+      description={prices ? `${formatMoney(prices.first_location, billing.currency)} a month for the first location, ${formatMoney(prices.additional_location, billing.currency)} for each additional one. All features included.` : "Billing opens soon. Your trial keeps everything working until then."}
+      icon={CreditCard}
+      tone="settings"
+      actions={
+        <StatusBadge tone={state.tone} dot>
+          {state.label}
+        </StatusBadge>
+      }
+    >
+      <div className="space-y-5">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
+          <KpiTile
+            label="Locations"
+            icon={MapPin}
+            tone="locations"
+            value={`${billing.locations?.active ?? "—"} of ${billing.locations?.allowed ?? "—"}`}
+            hint={
+              <>
+                {billing.locations ? <Meter used={billing.locations.active} limit={billing.locations.allowed} label="Locations used" /> : null}
+                <span className="mt-2 block">Paid or allowed now · up to {max} on this plan</span>
+              </>
+            }
+            className="shadow-none"
           />
-        </section>
-
-        <div className="space-y-1 text-sm text-muted-foreground">
-          {billing.state === "trialing" && billing.trial_ends_at ? <p>Your free trial ends on {formatDate(billing.trial_ends_at)}. After that the account is read-only until you subscribe.</p> : null}
-          {billing.state === "past_due" && billing.grace_ends_at ? <p className="text-warning-foreground">Your last payment failed. Full access continues until {formatDate(billing.grace_ends_at)}.</p> : null}
-          {billing.state === "inactive" ? <p className="text-critical">The account is read-only: everything stays visible, but refreshes, new locations and AI actions are paused until you subscribe.</p> : null}
-          {subscription?.cancel_at_period_end && subscription.current_period_end ? <p>Cancelled: access continues until {formatDate(subscription.current_period_end)}.</p> : null}
-          {prices ? (
-            <p>
-              {formatMoney(prices.first_location, billing.currency)} a month for the first location, {formatMoney(prices.additional_location, billing.currency)} for each additional one. All features included.
-              {billing.prices?.upcoming ? ` From ${formatDate(billing.prices.upcoming.effective_from)}: ${formatMoney(billing.prices.upcoming.first_location, billing.currency)} and ${formatMoney(billing.prices.upcoming.additional_location, billing.currency)}.` : ""}
-            </p>
-          ) : (
-            <p>Billing opens soon: prices haven't been set yet.</p>
-          )}
-          {!billing.online_payments ? <p>Online payments aren't set up yet.</p> : null}
+          <KpiTile
+            label="Users"
+            // The same seat glyph as Settings › Organization (Users is the Clients icon).
+            icon={UserRound}
+            tone="clients"
+            value={`${billing.users?.used ?? "—"} of ${billing.users?.limit ?? "—"}`}
+            hint={
+              <>
+                {billing.users ? <Meter used={billing.users.used} limit={billing.users.limit} label="Users" /> : null}
+                <span className="mt-2 block">{billing.plan?.users_per_location ?? 3} per paid location, owner included</span>
+              </>
+            }
+            className="shadow-none"
+          />
+          <KpiTile
+            label="Next renewal"
+            icon={CalendarClock}
+            tone="brand"
+            value={billing.next_renewal ? formatMoney(billing.next_renewal.amount, billing.currency) : "—"}
+            hint={
+              billing.next_renewal
+                ? `${formatDate(billing.next_renewal.date)} · ${billing.next_renewal.quantity} location${billing.next_renewal.quantity === 1 ? "" : "s"}${billing.next_renewal.fixed ? "" : " (estimate)"}`
+                : "No renewal scheduled"
+            }
+            className="col-span-2 shadow-none sm:col-span-1"
+          />
         </div>
 
+        {billing.state === "trialing" && billing.trial_ends_at ? (
+          <Notice tone="info">Your free trial ends on {formatDate(billing.trial_ends_at)}. After that the account is read-only until you subscribe.</Notice>
+        ) : null}
+        {billing.state === "past_due" && billing.grace_ends_at ? (
+          <Notice tone="warning" icon={AlertTriangle}>
+            Your last payment failed. Everything keeps working until {formatDate(billing.grace_ends_at)}; update your payment in PayPal before then.
+          </Notice>
+        ) : null}
+        {/* Amber, like the shell's banner: read-only asks for attention; it isn't an alarm. */}
+        {billing.state === "inactive" ? (
+          <Notice tone="warning" icon={AlertTriangle}>
+            The account is read-only: everything stays visible, but refreshes, new locations and AI actions are paused until you subscribe.
+          </Notice>
+        ) : null}
+        {/* Members see billing but can't pay: say who can, instead of a notice with no way forward. */}
+        {!canPay && (billing.state === "inactive" || billing.state === "trialing" || billing.state === "past_due") ? (
+          <Notice tone="info">Only the account owner can subscribe or change the plan.</Notice>
+        ) : null}
+        {subscription?.cancel_at_period_end && subscription.current_period_end ? (
+          <Notice tone="info">Cancelled: everything keeps working until {formatDate(subscription.current_period_end)}.</Notice>
+        ) : null}
+        {billing.prices?.upcoming ? (
+          <Notice tone="info">
+            From {formatDate(billing.prices.upcoming.effective_from)}: {formatMoney(billing.prices.upcoming.first_location, billing.currency)} for the first location and{" "}
+            {formatMoney(billing.prices.upcoming.additional_location, billing.currency)} for each additional one.
+          </Notice>
+        ) : null}
+        {!billing.online_payments ? <Notice tone="info">Online payments aren't available yet. Contact us to pay by invoice.</Notice> : null}
+
         {canPay && !subscribed && billing.state !== "suspended_by_admin" ? (
-          <div className="flex flex-col gap-2 rounded-md border border-border p-3 sm:flex-row sm:items-end">
+          <div className="flex flex-col gap-3 rounded-xl border border-primary/25 bg-brand-tint/50 p-4 sm:flex-row sm:items-end">
             <div className="space-y-1.5">
-              <Label>Locations to pay for</Label>
+              <Label htmlFor="billing-quantity">Locations to pay for</Label>
               <Select value={quantity} onValueChange={setQuantity}>
-                <SelectTrigger className="w-28 bg-background"><SelectValue /></SelectTrigger>
-                <SelectContent>
+                <SelectTrigger id="billing-quantity" className="w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="max-h-72">
                   {Array.from({ length: max - Math.max(1, active) + 1 }, (_, index) => String(Math.max(1, active) + index)).map((value) => (
-                    <SelectItem key={value} value={value}>{value}</SelectItem>
+                    <SelectItem key={value} value={value}>
+                      {value}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            <Button disabled={busy !== null || !prices || !billing.online_payments} onClick={() => void subscribe()}>
-              {busy === "subscribe" ? <LoaderCircle aria-hidden className="animate-spin" /> : null}
-              Subscribe{monthly(Number(quantity)) != null ? ` · ${formatMoney(monthly(Number(quantity))!, billing.currency)}/month` : ""}
+            <Button disabled={busy !== null || !prices || !billing.online_payments} aria-busy={busy === "subscribe" || undefined} onClick={() => void subscribe()}>
+              {busy === "subscribe" ? <LoaderCircle aria-hidden className="animate-spin" /> : <CreditCard aria-hidden />}
+              Subscribe{monthlyTotal != null ? ` · ${formatMoney(monthlyTotal, billing.currency)} a month` : ""}
             </Button>
-            <p className="text-xs text-muted-foreground sm:ml-2">You'll approve it with PayPal and come back here. More than {max} locations: contact us.</p>
+            <p className="text-xs text-muted-foreground sm:ml-2 sm:max-w-xs">You approve it with PayPal and come back here. More than {max} locations? Contact us.</p>
           </div>
         ) : null}
 
         {canPay && subscribed ? (
-          <div className="flex flex-wrap gap-2">
-            {slotQuote ? (
-              <div className="w-full space-y-2 rounded-md border border-border p-3 text-sm">
-                {(slotQuote.lines ?? []).map((line) => (
-                  <p key={line.label} className="flex justify-between gap-3"><span>{line.label}</span><span className="tabular">{formatMoney(line.amount, slotQuote.currency)}</span></p>
-                ))}
-                <p className="flex justify-between gap-3 font-semibold"><span>Total now</span><span className="tabular">{formatMoney(slotQuote.amount, slotQuote.currency)}</span></p>
-                <div className="flex gap-2">
-                  <Button size="sm" disabled={busy !== null} onClick={() => void buySlot()}>{busy === "slot" ? <LoaderCircle aria-hidden className="animate-spin" /> : null} Pay with PayPal</Button>
-                  <Button size="sm" variant="ghost" onClick={() => setSlotQuote(null)}>Cancel</Button>
-                </div>
+          slotQuote ? (
+            <div className="max-w-md space-y-2 rounded-xl border border-border bg-surface-strong p-4 text-sm">
+              <p className="font-semibold text-foreground">One more location</p>
+              {(slotQuote.lines ?? []).map((line) => (
+                <p key={line.label} className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">{line.label}</span>
+                  <span className="tabular-nums text-foreground">{formatMoney(line.amount, slotQuote.currency)}</span>
+                </p>
+              ))}
+              <p className="flex justify-between gap-3 border-t border-border pt-2 font-semibold">
+                <span>Total now</span>
+                <span className="tabular-nums">{formatMoney(slotQuote.amount, slotQuote.currency)}</span>
+              </p>
+              <div className="flex gap-2 pt-1">
+                <Button size="sm" disabled={busy !== null} aria-busy={busy === "slot" || undefined} onClick={() => void buySlot()}>
+                  {busy === "slot" ? <LoaderCircle aria-hidden className="animate-spin" /> : null} Pay with PayPal
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setSlotQuote(null)}>
+                  Not now
+                </Button>
               </div>
-            ) : (
-              <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => void quoteSlot()}>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="outline" disabled={busy !== null} aria-busy={busy === "quote" || undefined} onClick={() => void quoteSlot()}>
                 {busy === "quote" ? <LoaderCircle aria-hidden className="animate-spin" /> : <MapPinPlus aria-hidden />} Add a location slot
               </Button>
-            )}
-            <Button size="sm" variant="ghost" className="text-critical" disabled={busy !== null} onClick={() => setConfirmCancel(true)}>Cancel subscription</Button>
-          </div>
+              <Button size="sm" variant="ghost" className="text-critical hover:text-critical" disabled={busy !== null} onClick={() => setConfirmCancel(true)}>
+                Cancel subscription
+              </Button>
+            </div>
+          )
         ) : null}
-        <p className="text-xs text-muted-foreground">Removing a location refunds nothing; its slot stays paid and reusable until the period ends.</p>
+        <p className="text-xs text-muted-foreground">Removing a location doesn't refund it: its slot stays paid and reusable until the period ends.</p>
       </div>
       <ConfirmDialog
         open={confirmCancel}
@@ -242,6 +378,7 @@ function PlanPanel({ billing, canPay }: { billing: BillingSummary; canPay: boole
         title="Cancel the subscription?"
         description="Everything keeps working until the end of the paid period. After that the account becomes read-only."
         confirmLabel="Cancel subscription"
+        cancelLabel="Keep subscription"
         onConfirm={() => {
           setConfirmCancel(false);
           void cancel();
@@ -251,16 +388,89 @@ function PlanPanel({ billing, canPay }: { billing: BillingSummary; canPay: boole
   );
 }
 
+/* -------------------------------------------------------------------------- */
+/* Tokens                                                                      */
+/* -------------------------------------------------------------------------- */
+
+const LEDGER_PREVIEW = 8;
+
+function PriceRow({ label, unit, price }: { label: string; unit?: string; price: string }) {
+  return (
+    <li className="flex items-start justify-between gap-3 py-2">
+      <span className="min-w-0">
+        <span className="block text-sm text-foreground">{label}</span>
+        {unit ? <span className="block text-xs text-muted-foreground">{unit}</span> : null}
+      </span>
+      <span className={cn("shrink-0 text-sm font-semibold tabular-nums", price === "Free" ? "text-success" : "text-foreground")}>{price}</span>
+    </li>
+  );
+}
+
+/** What each priced action costs: refreshes, then every AI action in plain words. */
+function PriceList({ billing }: { billing: BillingSummary }) {
+  const costs = useAiCosts();
+  const refresh = billing.tokens.cost_per_refresh;
+  return (
+    <div className="rounded-xl border border-border bg-card p-4">
+      <h3 className="text-sm font-semibold text-foreground">What tokens pay for</h3>
+      <p className="mt-0.5 text-xs text-muted-foreground">The automatic monthly refresh is free.</p>
+      <p className="mt-4 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <RefreshCw aria-hidden className="size-3.5" /> Refreshes
+      </p>
+      <ul className="divide-y divide-border">
+        <PriceRow label="Refresh rankings" unit="per refresh, for one location" price={formatTokens(refresh.rankings)} />
+        <PriceRow label="Refresh profile data" unit="per refresh, once a day at most" price={formatTokens(refresh.gbp)} />
+      </ul>
+      <p className="mt-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        AI actions <AiBadge variant="soft" />
+      </p>
+      <ul className="divide-y divide-border">
+        {AI_COST_ITEMS.map((item) => (
+          <PriceRow key={item.id} label={item.label} unit={item.unit} price={formatTokens(costs[item.id])} />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function LedgerRow({ entry }: { entry: TokenLedgerEntry }) {
+  const credit = entry.amount > 0;
+  return (
+    <li className="flex items-center gap-3 py-2">
+      <span
+        aria-hidden
+        className={cn(
+          "grid size-7 shrink-0 place-items-center rounded-full ring-1 ring-inset",
+          credit ? "bg-success-surface text-success ring-success/20" : "bg-muted text-muted-foreground ring-border-strong",
+        )}
+      >
+        {credit ? <ArrowDownLeft className="size-3.5" /> : <ArrowUpRight className="size-3.5" />}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm text-foreground">{entry.note ?? entry.type.replace(/_/g, " ")}</span>
+        <span className="block text-xs text-muted-foreground">{formatDate(entry.at)}</span>
+      </span>
+      <span className={cn("shrink-0 text-sm font-semibold tabular-nums", credit ? "text-success" : "text-foreground")}>
+        <span className="sr-only">{credit ? "Added" : "Spent"} </span>
+        {credit ? "+" : "−"}
+        {Math.abs(entry.amount)}
+      </span>
+    </li>
+  );
+}
+
 function TokensPanel({ billing, canPay }: { billing: BillingSummary; canPay: boolean }) {
   const packs = useQuery({ queryKey: ["billing", "token-packs"], queryFn: ({ signal }) => getTokenPacks(signal), retry: false });
   const ledger = useQuery({ queryKey: ["billing", "ledger"], queryFn: ({ signal }) => getTokenLedger(20, signal), retry: false });
   const [coupon, setCoupon] = useState("");
   const [quotes, setQuotes] = useState<Record<string, CouponQuote>>({});
   const [busy, setBusy] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
   const tokens = billing.tokens;
+  const entries = ledger.data?.entries ?? [];
 
   const applyCoupon = async () => {
-    if (!packs.data) return;
+    if (!packs.data || busy) return;
     setBusy("coupon");
     const next: Record<string, CouponQuote> = {};
     let error: string | null = null;
@@ -275,10 +485,11 @@ function TokensPanel({ billing, canPay }: { billing: BillingSummary; canPay: boo
     setBusy(null);
     if (Object.keys(next).length === 0) {
       toast.error(error === "coupon_expired" ? "That coupon has expired." : error === "coupon_exhausted" ? "That coupon has been used up." : "That coupon isn't valid for these packs.");
-    } else toast.success("Coupon applied.");
+    } else toast.success("Coupon applied. The new prices are on the packs.");
   };
 
   const buy = async (packId: string) => {
+    if (busy) return;
     setBusy(packId);
     try {
       const order = await checkoutTokens(packId, quotes[packId] ? coupon.trim() : undefined);
@@ -293,160 +504,335 @@ function TokensPanel({ billing, canPay }: { billing: BillingSummary; canPay: boo
   };
 
   return (
-    <Panel title="Tokens" description="Manual refreshes and AI actions spend tokens. The automatic monthly refresh is free. Packs never expire unless noted.">
-      <div className="space-y-4">
-        <div className="flex flex-wrap items-center gap-4 text-sm">
-          <span className="flex items-center gap-1.5 text-lg font-semibold text-foreground"><Coins aria-hidden className="size-5 text-brand-soft" /> {tokens.balance} tokens</span>
-          <span className="text-muted-foreground">
-            Rankings refresh {tokens.cost_per_refresh.rankings} · GBP refresh {tokens.cost_per_refresh.gbp}
-            {tokens.ai_costs ? ` · ${Object.entries(tokens.ai_costs).map(([key, cost]) => `${key.replace(/_/g, " ")} ${cost}`).join(" · ")}` : ""}
+    <section id="tokens" aria-labelledby="billing-tokens-title" className="min-w-0 scroll-mt-20 rounded-xl border border-border bg-card shadow-card">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3.5">
+        {/* The chip sits on the title line (as in Panel), not beside the wrapped description. */}
+        <div className="flex min-w-0 items-start gap-3">
+          <span aria-hidden className="-mt-0.5 grid size-7 shrink-0 place-items-center rounded-md bg-brand-tint text-primary ring-1 ring-inset ring-primary/20">
+            <Coins className="size-3.5" />
           </span>
-          {tokens.monthly_grant ? <span className="text-muted-foreground">+{tokens.monthly_grant} each month{tokens.next_grant_at ? ` (next ${formatDate(tokens.next_grant_at)})` : ""}</span> : null}
-        </div>
-        {canPay ? (
-          packs.data?.packs.length ? (
-            <>
-              <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {packs.data.packs.map((pack) => {
-                  const quote = quotes[pack.id];
-                  return (
-                    <li key={pack.id} className="flex items-center justify-between gap-3 rounded-md border border-border p-3">
-                      <div>
-                        <p className="text-sm font-medium text-foreground">{pack.name}</p>
-                        <p className="text-xs text-muted-foreground">{pack.tokens} tokens{pack.expires_after_days ? ` · valid ${pack.expires_after_days} days` : ""}</p>
-                      </div>
-                      <Button size="sm" disabled={busy !== null || !billing.online_payments} onClick={() => void buy(pack.id)}>
-                        {busy === pack.id ? <LoaderCircle aria-hidden className="animate-spin" /> : null}
-                        {quote ? <s className="mr-1 text-xs opacity-70">{formatMoney(quote.price, quote.currency)}</s> : null}
-                        {formatMoney(quote ? quote.total : pack.price, pack.currency)}
-                      </Button>
-                    </li>
-                  );
-                })}
-              </ul>
-              <div className="flex max-w-sm gap-2">
-                <Input placeholder="Coupon code" value={coupon} onChange={(event) => setCoupon(event.target.value)} />
-                <Button variant="outline" disabled={busy !== null || !coupon.trim()} onClick={() => void applyCoupon()}>
-                  {busy === "coupon" ? <LoaderCircle aria-hidden className="animate-spin" /> : null} Apply
-                </Button>
-              </div>
-            </>
-          ) : (
-            <p className="text-sm text-muted-foreground">{packs.isPending ? "Loading packs…" : "No token packs are available right now."}</p>
-          )
-        ) : null}
-        <div>
-          <p className="mb-1.5 text-xs font-semibold text-muted-foreground">Recent activity</p>
-          {ledger.data?.entries.length ? (
-            <ul className="divide-y divide-border text-sm">
-              {ledger.data.entries.map((entry) => (
-                <li key={entry.id} className="flex justify-between gap-3 py-1.5">
-                  <span>{entry.note ?? entry.type.replace(/_/g, " ")} <span className="text-xs text-muted-foreground">· {formatDate(entry.at)}</span></span>
-                  <span className={entry.amount < 0 ? "tabular text-muted-foreground" : "tabular text-success"}>{entry.amount > 0 ? "+" : ""}{entry.amount}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-muted-foreground">{ledger.isPending ? "Loading…" : "No token activity yet."}</p>
-          )}
+          <div className="min-w-0">
+            <h2 id="billing-tokens-title" className="text-[15px] font-semibold leading-6 text-foreground">
+              Tokens
+            </h2>
+            <p className="text-[13px] text-muted-foreground">Manual refreshes and AI actions spend tokens. Packs never expire unless noted.</p>
+          </div>
         </div>
       </div>
-    </Panel>
+
+      <div className="grid gap-6 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
+        <div className="min-w-0 space-y-5">
+          <div className="flex flex-wrap items-end gap-x-4 gap-y-1">
+            <p className="text-4xl font-semibold tracking-tight text-foreground">
+              {tokens.balance.toLocaleString()} <span className="text-base font-medium text-muted-foreground">tokens left</span>
+            </p>
+            {tokens.monthly_grant ? (
+              <p className="pb-1 text-sm text-muted-foreground">
+                +{tokens.monthly_grant} each month{tokens.next_grant_at ? `, next on ${formatDate(tokens.next_grant_at)}` : ""}
+              </p>
+            ) : null}
+          </div>
+
+          {canPay ? (
+            packs.isPending ? (
+              <ListSkeleton rows={2} />
+            ) : packs.data?.packs.length ? (
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-foreground">Buy more</h3>
+                <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {packs.data.packs.map((pack) => {
+                    const quote = quotes[pack.id];
+                    const was = quote ? quote.price : pack.list_price > pack.price ? pack.list_price : null;
+                    const now = quote ? quote.total : pack.price;
+                    return (
+                      <li key={pack.id} className="flex flex-col justify-between gap-3 rounded-xl border border-border p-3.5 transition-colors hover:border-border-strong">
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">{pack.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {pack.tokens.toLocaleString()} tokens{pack.expires_after_days ? ` · use within ${pack.expires_after_days} days` : ""}
+                          </p>
+                        </div>
+                        <Button size="sm" className="w-full" disabled={busy !== null || !billing.online_payments} aria-busy={busy === pack.id || undefined} onClick={() => void buy(pack.id)}>
+                          {busy === pack.id ? <LoaderCircle aria-hidden className="animate-spin" /> : null}
+                          {was !== null ? (
+                            <s className="text-xs font-medium">
+                              <span className="sr-only">was </span>
+                              {formatMoney(was, pack.currency)}
+                            </s>
+                          ) : null}
+                          Buy for {formatMoney(now, pack.currency)}
+                        </Button>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <form
+                  className="flex max-w-sm gap-2"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void applyCoupon();
+                  }}
+                >
+                  <div className="relative min-w-0 flex-1">
+                    <Tag aria-hidden className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input aria-label="Coupon code" placeholder="Coupon code" className="pl-9" value={coupon} onChange={(event) => setCoupon(event.target.value)} />
+                  </div>
+                  <Button type="submit" variant="outline" disabled={busy !== null || !coupon.trim()} aria-busy={busy === "coupon" || undefined}>
+                    {busy === "coupon" ? <LoaderCircle aria-hidden className="animate-spin" /> : null} Apply
+                  </Button>
+                </form>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">No token packs are available right now.</p>
+            )
+          ) : (
+            <p className="text-sm text-muted-foreground">The account owner can buy more tokens here.</p>
+          )}
+
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">Recent activity</h3>
+            {ledger.isPending ? (
+              <ListSkeleton rows={3} className="mt-2" />
+            ) : entries.length === 0 ? (
+              <p className="mt-2 text-sm text-muted-foreground">No token activity yet.</p>
+            ) : (
+              <>
+                <ul className="mt-1 divide-y divide-border">
+                  {(showAll ? entries : entries.slice(0, LEDGER_PREVIEW)).map((entry) => (
+                    <LedgerRow key={entry.id} entry={entry} />
+                  ))}
+                </ul>
+                {entries.length > LEDGER_PREVIEW ? (
+                  <Button variant="link" size="sm" className="h-auto p-0" onClick={() => setShowAll((open) => !open)}>
+                    {showAll ? "Show less" : `Show all ${entries.length}`}
+                  </Button>
+                ) : null}
+              </>
+            )}
+          </div>
+        </div>
+
+        <PriceList billing={billing} />
+      </div>
+    </section>
   );
 }
 
+/* -------------------------------------------------------------------------- */
+/* Invoices                                                                    */
+/* -------------------------------------------------------------------------- */
+
 function InvoicesPanel() {
-  const invoices = useQuery({ queryKey: ["billing", "invoices"], queryFn: ({ signal }) => getInvoices(1, 24, signal), retry: false });
+  const [page, setPage] = useState(1);
+  const invoices = useQuery({
+    queryKey: ["billing", "invoices", page, INVOICES_PAGE_SIZE],
+    queryFn: ({ signal }) => getInvoices(page, INVOICES_PAGE_SIZE, signal),
+    placeholderData: keepPreviousData,
+    retry: false,
+  });
   const [downloading, setDownloading] = useState<string | null>(null);
   const download = (invoiceId: string) => {
+    if (downloading) return;
     setDownloading(invoiceId);
     void downloadInvoicePdf(invoiceId)
       .then(({ blob, filename }) => saveBlob(blob, filename))
-      .catch(() => toast.error("The invoice couldn't be downloaded."))
+      .catch(() => toast.error("The invoice couldn't be downloaded. Try again."))
       .finally(() => setDownloading(null));
   };
+  const data = invoices.data;
+
   return (
-    <Panel title="Invoices">
-      {invoices.isError ? (
-        <ErrorState description="Invoices couldn't be loaded." onRetry={() => void invoices.refetch()} />
-      ) : !invoices.data?.invoices.length ? (
-        <p className="text-sm text-muted-foreground">{invoices.isPending ? "Loading…" : "No invoices yet."}</p>
-      ) : (
-        <div className="-m-4 overflow-x-auto">
-          <table className="w-full min-w-[560px] text-left text-sm">
-            <thead className="border-b border-border bg-surface-strong text-xs text-muted-foreground">
-              <tr><th className="px-4 py-2.5 font-medium">Invoice</th><th className="px-3 py-2.5 font-medium">Issued</th><th className="px-3 py-2.5 font-medium">Status</th><th className="px-3 py-2.5 text-right font-medium">Total</th><th className="px-3 py-2.5" /></tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {invoices.data.invoices.map((invoice) => (
-                <tr key={invoice.id}>
-                  <td className="px-4 py-2.5"><span className="font-medium text-foreground">{invoice.number}</span><span className="block text-xs capitalize text-muted-foreground">{invoice.kind.replace(/_/g, " ")}</span></td>
-                  <td className="px-3 py-2.5">{formatDate(invoice.issued_at)}</td>
-                  <td className="px-3 py-2.5"><StatusBadge tone={invoice.status === "paid" ? "success" : invoice.status === "open" ? "warning" : "neutral"}>{invoice.status}</StatusBadge></td>
-                  <td className="px-3 py-2.5 text-right tabular">{formatMoney(invoice.total, invoice.currency)}</td>
-                  <td className="px-3 py-2.5 text-right">
-                    {invoice.has_pdf ? (
-                      <Button size="sm" variant="ghost" disabled={downloading !== null} onClick={() => download(invoice.id)}>
-                        {downloading === invoice.id ? <LoaderCircle aria-hidden className="animate-spin" /> : <Download aria-hidden />} PDF
-                      </Button>
-                    ) : null}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+    <section aria-labelledby="billing-invoices-title" className="min-w-0 overflow-hidden rounded-xl border border-border bg-card shadow-card">
+      <div className="flex items-start gap-3 border-b border-border px-4 py-3.5">
+        <span aria-hidden className="-mt-0.5 grid size-7 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground ring-1 ring-inset ring-border-strong">
+          <ReceiptText className="size-3.5" />
+        </span>
+        <div className="min-w-0">
+          <h2 id="billing-invoices-title" className="text-[15px] font-semibold leading-6 text-foreground">
+            Invoices
+          </h2>
+          <p className="text-[13px] text-muted-foreground">Newest first.</p>
         </div>
+      </div>
+      {invoices.isError ? (
+        <ErrorState compact title="Invoices couldn't be loaded" description="Try again in a moment." onRetry={() => void invoices.refetch()} className="m-4 shadow-none" />
+      ) : !data ? (
+        <ListSkeleton rows={3} className="rounded-none border-0 shadow-none" />
+      ) : data.invoices.length === 0 ? (
+        <EmptyState compact icon={FileText} tone="settings" title="No invoices yet" description="Invoices appear here after your first payment." className="border-0" />
+      ) : (
+        <>
+          <ul className="divide-y divide-border md:hidden">
+            {data.invoices.map((invoice) => (
+              <li key={invoice.id} className="flex items-center gap-3 px-4 py-3">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-foreground">{invoice.number}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {INVOICE_KIND[invoice.kind] ?? "Invoice"} · {formatDate(invoice.issued_at)}
+                  </p>
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <span className="text-sm font-semibold tabular-nums text-foreground">{formatMoney(invoice.total, invoice.currency)}</span>
+                  <StatusBadge tone={INVOICE_STATUS[invoice.status]?.tone ?? "neutral"} size="sm">
+                    {INVOICE_STATUS[invoice.status]?.label ?? invoice.status}
+                  </StatusBadge>
+                </div>
+                {invoice.has_pdf ? (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    aria-label={`Download invoice ${invoice.number}`}
+                    disabled={downloading !== null}
+                    aria-busy={downloading === invoice.id || undefined}
+                    onClick={() => download(invoice.id)}
+                  >
+                    {downloading === invoice.id ? <LoaderCircle aria-hidden className="animate-spin" /> : <Download aria-hidden />}
+                  </Button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+          <div className="hidden md:block">
+            <TableScroll minWidth={620} label="Invoices">
+              <TableHead>
+                <Th>Invoice</Th>
+                <Th>Issued</Th>
+                <Th>Status</Th>
+                <Th align="right">Total</Th>
+                <Th srOnly>Download</Th>
+              </TableHead>
+              <TableBody>
+                {data.invoices.map((invoice) => (
+                  <TableRow key={invoice.id}>
+                    <td className={tdClass}>
+                      <span className="block font-medium text-foreground">{invoice.number}</span>
+                      <span className="block text-xs text-muted-foreground">{INVOICE_KIND[invoice.kind] ?? "Invoice"}</span>
+                    </td>
+                    <td className={tdMutedClass}>{formatDate(invoice.issued_at)}</td>
+                    <td className={tdClass}>
+                      <StatusBadge tone={INVOICE_STATUS[invoice.status]?.tone ?? "neutral"}>{INVOICE_STATUS[invoice.status]?.label ?? invoice.status}</StatusBadge>
+                    </td>
+                    <td className={cn(tdNumberClass, "font-medium")}>{formatMoney(invoice.total, invoice.currency)}</td>
+                    <td className={cn(tdClass, "text-right")}>
+                      {invoice.has_pdf ? (
+                        <Button size="sm" variant="ghost" disabled={downloading !== null} aria-busy={downloading === invoice.id || undefined} onClick={() => download(invoice.id)}>
+                          {downloading === invoice.id ? <LoaderCircle aria-hidden className="animate-spin" /> : <Download aria-hidden />} PDF
+                          <span className="sr-only"> of invoice {invoice.number}</span>
+                        </Button>
+                      ) : null}
+                    </td>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </TableScroll>
+          </div>
+          {data.total > data.limit ? (
+            <TablePagination
+              page={data.page}
+              pageCount={Math.ceil(data.total / data.limit)}
+              totalItems={data.total}
+              pageSize={data.limit}
+              itemLabel="invoices"
+              onPageChange={setPage}
+            />
+          ) : null}
+        </>
       )}
-    </Panel>
+    </section>
   );
 }
 
-const DETAIL_FIELDS: { key: keyof BillingDetails; label: string }[] = [
-  { key: "name", label: "Billing name" },
-  { key: "email", label: "Billing email" },
-  { key: "address_line1", label: "Address" },
-  { key: "address_line2", label: "Address line 2" },
-  { key: "city", label: "City" },
-  { key: "region", label: "Province / state" },
-  { key: "postal_code", label: "Postal / ZIP code" },
-  { key: "country", label: "Country" },
+/* -------------------------------------------------------------------------- */
+/* Billing details                                                             */
+/* -------------------------------------------------------------------------- */
+
+const DETAIL_FIELDS: { key: keyof BillingDetails; label: string; type?: string; autoComplete?: string }[] = [
+  { key: "name", label: "Billing name", autoComplete: "organization" },
+  { key: "email", label: "Billing email", type: "email", autoComplete: "email" },
+  { key: "address_line1", label: "Address", autoComplete: "address-line1" },
+  { key: "address_line2", label: "Address line 2", autoComplete: "address-line2" },
+  { key: "city", label: "City", autoComplete: "address-level2" },
+  { key: "region", label: "Province or state", autoComplete: "address-level1" },
+  { key: "postal_code", label: "Postal or ZIP code", autoComplete: "postal-code" },
+  { key: "country", label: "Country", autoComplete: "country-name" },
 ];
+
+type DetailsForm = Record<keyof BillingDetails, string>;
 
 function DetailsPanel({ details, canPay }: { details: BillingDetails | null; canPay: boolean }) {
   const queryClient = useQueryClient();
-  const initial = Object.fromEntries(DETAIL_FIELDS.map(({ key }) => [key, details?.[key] ?? ""])) as Record<keyof BillingDetails, string>;
-  const [form, setForm] = useState(initial);
+  const initial = Object.fromEntries(DETAIL_FIELDS.map(({ key }) => [key, details?.[key] ?? ""])) as DetailsForm;
+  const [saved, setSaved] = useState<DetailsForm>(initial);
+  const [form, setForm] = useState<DetailsForm>(initial);
   const [saving, setSaving] = useState(false);
-  const dirty = JSON.stringify(form) !== JSON.stringify(initial);
+  const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const dirty = DETAIL_FIELDS.some(({ key }) => form[key] !== saved[key]);
 
   const save = () => {
+    if (saving || !dirty) return;
     setSaving(true);
+    setError(null);
     void updateBillingDetails(Object.fromEntries(Object.entries(form).map(([key, value]) => [key, value.trim() || null])))
       .then(() => {
+        setSaved(form);
+        setSavedAt(new Date().toLocaleTimeString());
         void queryClient.invalidateQueries({ queryKey: ["billing"] });
         void queryClient.invalidateQueries({ queryKey: ["organization", "usage"] });
-        toast.success("Billing details saved. They print on your next invoices.");
       })
-      .catch(() => toast.error("The details couldn't be saved."))
+      .catch(() => setError("The details couldn't be saved. Try again."))
       .finally(() => setSaving(false));
   };
 
   return (
-    <Panel title="Billing details" description="Printed on your next invoices; issued invoices keep the details of their date.">
-      <fieldset disabled={!canPay || saving} className="grid gap-3 sm:grid-cols-2">
-        {DETAIL_FIELDS.map(({ key, label }) => (
-          <div key={key} className="space-y-1.5">
-            <Label htmlFor={`billing-${key}`}>{label}</Label>
-            <Input id={`billing-${key}`} value={form[key]} onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))} />
-          </div>
-        ))}
-        {canPay ? (
-          <div className="sm:col-span-2">
-            <Button disabled={!dirty || saving} onClick={save}>{saving ? <LoaderCircle aria-hidden className="animate-spin" /> : null} Save details</Button>
-          </div>
-        ) : null}
-      </fieldset>
-    </Panel>
+    <>
+      <Panel title="Billing details" description="Printed on your next invoices. Invoices already issued keep the details of their date." icon={FileText} tone="settings">
+        {!canPay ? <p className="mb-4 rounded-lg bg-surface-strong px-3 py-2 text-sm text-muted-foreground">Only the account owner can change these.</p> : null}
+        <form
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault();
+            save();
+          }}
+        >
+          <fieldset disabled={!canPay || saving}>
+            <FormGrid>
+              {DETAIL_FIELDS.map(({ key, label, type, autoComplete }) => (
+                <FormTextField
+                  key={key}
+                  id={`billing-${key}`}
+                  label={label}
+                  {...(type ? { type } : {})}
+                  {...(autoComplete ? { autoComplete } : {})}
+                  value={form[key]}
+                  onChange={(value) => {
+                    setForm((current) => ({ ...current, [key]: value }));
+                    setSavedAt(null);
+                    setError(null);
+                  }}
+                />
+              ))}
+            </FormGrid>
+          </fieldset>
+          <button type="submit" className="hidden" aria-hidden tabIndex={-1} />
+        </form>
+      </Panel>
+      {canPay && (dirty || savedAt || error) ? (
+        <FormSaveBar
+          dirty={dirty}
+          saving={saving}
+          hasErrors={false}
+          savedAt={savedAt}
+          error={error}
+          onSave={save}
+          onDiscard={() => {
+            setForm(saved);
+            setError(null);
+          }}
+          savedLabel="Billing details saved"
+        />
+      ) : null}
+    </>
   );
 }
 

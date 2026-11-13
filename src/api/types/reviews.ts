@@ -35,6 +35,8 @@ export type Review = {
   ai_reply_skip_reason: string | null;
   appeal_eligible: boolean;
   first_seen_at: string | null;
+  /** Phase 25a: set when the review is gone from Google (deleted, or removed after a report). */
+  deleted_on_google_at?: string | null;
 };
 
 export type ReviewTokenCosts = { reply_drafts_per_10: number; analysis_per_10: number; appeal: number; insights: number };

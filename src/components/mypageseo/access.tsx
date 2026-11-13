@@ -2,8 +2,8 @@ import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { AppShell } from "@/components/layout/shared/app-shell";
 import { PageHeader } from "@/components/layout/shared/data-display";
+import { PageSkeleton } from "@/components/layout/shared/feedback/states";
 import {
   accessDeniedReason,
   type Permission,
@@ -45,16 +45,16 @@ export function AccessDeniedPanel({
   );
 }
 
-/** Full access-denied screen inside the application shell. */
+/** Full access-denied page content (the app shell around it is drawn by the router). */
 export function AccessDeniedScreen({ description }: { description: string }) {
   return (
-    <AppShell>
+    <>
       <PageHeader
         title="Access denied"
-        description="This part of Mypageseo is not available to your account."
+        description="This part of MyPageSEO is not available to your account."
       />
       <AccessDeniedPanel description={description} />
-    </AppShell>
+    </>
   );
 }
 
@@ -73,13 +73,7 @@ export function RequireAccess({
   const access = useAccess();
   const { status } = useWorkspace();
   // Wait for the real account type before deciding, so access is never denied on a guess.
-  if (status === "loading") {
-    return (
-      <AppShell>
-        <div role="status" aria-live="polite" aria-label="Loading" className="h-64 animate-pulse rounded-lg bg-muted" />
-      </AppShell>
-    );
-  }
+  if (status === "loading") return <PageSkeleton />;
   if (access.can(permission)) return <>{children}</>;
   return <AccessDeniedScreen description={accessDeniedReason(permission, access.accountType)} />;
 }

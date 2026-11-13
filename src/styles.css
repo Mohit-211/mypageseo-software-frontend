@@ -5,10 +5,14 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Mypageseo design system.
- * Brand primary: #27424A (deep slate teal) — navigation, structure, active states.
- * Brand secondary: #C9302C (signal red) — critical/destructive actions only.
- * Semantic: green = positive, amber = attention, neutral gray = structure.
+ * MyPageSEO design system.
+ * Brand anchors (exact): deep teal #27424A (--brand: sidebar, login hero, brand ink) and signal red
+ * #C9302C (--brand-accent / --destructive: logo, avatar, destructive actions only).
+ * Interactive colour: a vivid teal from the brand hue (--primary #05747D) for buttons, links, focus
+ * and selection; aqua (--highlight) only on dark surfaces. White cards on a cool canvas (#EEF5F8).
+ * Semantic: green = good, amber = attention, red = critical only, blue = info, violet = AI.
+ * Every text pair is >= 4.5:1 and every control boundary / icon >= 3:1 (see the contrast table in
+ * the design notes); keep it that way when adding tokens.
  */
 
 @theme inline {
@@ -18,14 +22,31 @@
   --radius-xl: calc(var(--radius) + 4px);
   --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
+  --color-surface: var(--surface);
+  --color-surface-strong: var(--surface-strong);
+  --color-skeleton: var(--skeleton);
+
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-brand-accent: var(--brand-accent);
+  --color-brand-accent-foreground: var(--brand-accent-foreground);
+  --color-brand-accent-surface: var(--brand-accent-surface);
+  --color-brand-tint: var(--brand-tint);
+  --color-brand-tint-strong: var(--brand-tint-strong);
+  --color-brand-soft: var(--brand-soft);
+
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
+  --color-highlight: var(--highlight);
+  --color-highlight-foreground: var(--highlight-foreground);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
@@ -34,144 +55,181 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-hover: var(--destructive-hover);
+
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-input: var(--input);
   --color-ring: var(--ring);
+
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);
   --color-success-surface: var(--success-surface);
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
   --color-warning-surface: var(--warning-surface);
+  --color-warning-bright: var(--warning-bright);
+  --color-warning-bright-foreground: var(--warning-bright-foreground);
   --color-critical: var(--critical);
   --color-critical-foreground: var(--critical-foreground);
   --color-critical-surface: var(--critical-surface);
-  --color-surface: var(--surface);
-  --color-surface-strong: var(--surface-strong);
-  --color-brand-tint: var(--brand-tint);
-  --color-brand-tint-strong: var(--brand-tint-strong);
-  --color-brand-soft: var(--brand-soft);
-  --color-brand-accent: var(--brand-accent);
-  --color-brand-accent-foreground: var(--brand-accent-foreground);
-  --color-brand-accent-surface: var(--brand-accent-surface);
   --color-info: var(--info);
   --color-info-foreground: var(--info-foreground);
   --color-info-surface: var(--info-surface);
+  --color-ai: var(--ai);
+  --color-ai-foreground: var(--ai-foreground);
+  --color-ai-surface: var(--ai-surface);
+  --color-ai-hover: var(--ai-hover);
+  --color-ai-bright: var(--ai-bright);
+
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
   --color-chart-6: var(--chart-6);
+  --color-chart-7: var(--chart-7);
+  --color-chart-7-ink: var(--chart-7-ink);
+  --color-chart-8: var(--chart-8);
+
   --color-sidebar: var(--sidebar);
+  --color-sidebar-deep: var(--sidebar-deep);
   --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-muted: var(--sidebar-muted);
+  --color-sidebar-icon: var(--sidebar-icon);
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
   --color-sidebar-accent: var(--sidebar-accent);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-icon: var(--sidebar-icon);
-  --color-sidebar-muted: var(--sidebar-muted);
-  --color-sidebar-deep: var(--sidebar-deep);
-  --shadow-card: 0 1px 2px 0 oklch(0.25 0.02 220 / 0.06);
-  --shadow-raised: 0 2px 8px -2px oklch(0.25 0.02 220 / 0.12);
+
+  /* Elevation: soft and tinted with the cool ink, never grey-black.
+     card = resting surfaces, raised = hover lift and small popovers, elevated = menus, dialogs, toasts. */
+  --shadow-card: 0 1px 2px 0 oklch(0.3 0.035 230 / 0.06), 0 1px 3px 0 oklch(0.3 0.035 230 / 0.07);
+  --shadow-raised: 0 10px 24px -8px oklch(0.3 0.04 230 / 0.18), 0 3px 6px -3px oklch(0.3 0.035 230 / 0.1);
+  --shadow-elevated: 0 24px 48px -16px oklch(0.25 0.04 230 / 0.3), 0 8px 16px -8px oklch(0.25 0.035 230 / 0.14);
 }
 
 :root {
-  --radius: 0.375rem;
+  --radius: 0.5rem;
 
-  /* Cool off-white canvas; never warm/cream. */
-  --background: oklch(0.975 0.003 220);
-  --foreground: oklch(0.245 0.012 220);
+  /* Canvas and surfaces: crisp white cards on a faintly cool canvas. */
+  --background: oklch(0.966 0.008 225); /* #eef5f8 app canvas (page background only) */
+  --foreground: oklch(0.235 0.022 230); /* #132027 ink */
   --surface: oklch(1 0 0);
-  --surface-strong: oklch(0.964 0.004 220);
-
-  /* Brand tints derived from #27424A, used sparingly for structure. */
-  --brand-tint: oklch(0.963 0.008 200);
-  --brand-tint-strong: oklch(0.925 0.018 200);
-  --brand-soft: oklch(0.5 0.045 205);
-
+  --surface-strong: oklch(0.975 0.006 225); /* #f3f8fa table header / toolbar band inside cards */
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.245 0.012 220);
+  --card-foreground: oklch(0.235 0.022 230);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.245 0.012 220);
+  --popover-foreground: oklch(0.235 0.022 230);
+  /* Loading placeholders: >= 1.35:1 on the white card and on the canvas, so loading never looks empty. */
+  --skeleton: oklch(0.86 0.02 222); /* #c4d4da */
 
-  /* #27424A */
-  --primary: oklch(0.366 0.031 214);
-  --primary-foreground: oklch(0.985 0.002 220);
+  /* Brand anchors (exact). */
+  --brand: oklch(0.361 0.036 218.6); /* #27424a */
+  --brand-foreground: oklch(0.985 0.003 210);
+  --brand-accent: oklch(0.551 0.19 27.2); /* #c9302c */
+  --brand-accent-foreground: oklch(1 0 0);
+  --brand-accent-surface: oklch(0.962 0.018 22);
+  --brand-tint: oklch(0.955 0.025 200); /* #def6f7 selected and "you" rows, brand chips */
+  --brand-tint-strong: oklch(0.915 0.045 200); /* #c1edef strong selection, ::selection */
+  --brand-soft: oklch(0.6 0.1 198); /* #0d9296 decorative bars and icons (>= 3:1) */
 
-  --secondary: oklch(0.955 0.004 220);
-  --secondary-foreground: oklch(0.3 0.01 220);
+  /* Interactive: buttons, links, focus, selection. */
+  --primary: oklch(0.51 0.086 205); /* #05747d */
+  --primary-foreground: oklch(1 0 0);
+  --primary-hover: oklch(0.45 0.077 207); /* #01616b */
+  /* Bright aqua for highlight moments on dark surfaces (sidebar active state, login hero, progress). */
+  --highlight: oklch(0.8 0.13 190); /* #2fd8d0 never text on light surfaces */
+  --highlight-foreground: oklch(0.235 0.022 230);
 
-  --muted: oklch(0.958 0.003 220);
-  --muted-foreground: oklch(0.515 0.008 220);
+  --secondary: oklch(0.948 0.011 225); /* #e6f0f3 */
+  --secondary-foreground: oklch(0.27 0.025 228);
+  --muted: oklch(0.955 0.009 225); /* #eaf2f5 */
+  --muted-foreground: oklch(0.48 0.02 228); /* #526067 */
+  --accent: oklch(0.952 0.018 205); /* #e2f3f5 hover wash with a hint of teal */
+  --accent-foreground: oklch(0.235 0.022 230);
 
-  --accent: oklch(0.94 0.005 220);
-  --accent-foreground: oklch(0.3 0.01 220);
+  --destructive: oklch(0.551 0.19 27.2); /* #c9302c */
+  --destructive-foreground: oklch(1 0 0);
+  --destructive-hover: oklch(0.48 0.18 27); /* #ac1a1c */
 
-  /* #C9302C */
-  --destructive: oklch(0.531 0.185 27.5);
-  --destructive-foreground: oklch(0.99 0.002 220);
+  --border: oklch(0.9 0.012 225); /* #d6e0e4 hairlines, card outlines */
+  --border-strong: oklch(0.83 0.016 225); /* #bdcacf header rules, outline buttons, hover outlines */
+  --input: oklch(0.63 0.022 228); /* #7c8c94 form-control boundary, >= 3:1 on card and canvas */
+  --ring: oklch(0.51 0.086 205); /* = primary: 5.5:1 on the card, 5:1 on the canvas */
 
-  /* Secondary brand accent, used for emphasis and attention moments. */
-  --brand-accent: oklch(0.531 0.185 27.5);
-  --brand-accent-foreground: oklch(0.99 0.002 220);
-  --brand-accent-surface: oklch(0.958 0.032 25);
+  /* Semantic. Each -foreground is the text colour ON the solid fill, except warning (see below). */
+  --success: oklch(0.51 0.125 152); /* #177a40 */
+  --success-foreground: oklch(1 0 0);
+  --success-surface: oklch(0.962 0.04 155); /* #defbe7 */
 
-  --border: oklch(0.903 0.004 220);
-  --input: oklch(0.888 0.005 220);
-  --ring: oklch(0.366 0.031 214);
+  --warning: oklch(0.64 0.15 58); /* #ce710c icons, bars, dots; >= 3:1 on card, canvas, track */
+  --warning-foreground: oklch(0.47 0.115 50); /* #8c4411 warning TEXT on light surfaces (not on --warning) */
+  --warning-surface: oklch(0.968 0.032 85); /* #fef3dd */
+  --warning-bright: oklch(0.82 0.16 80); /* #fab72a star fills, map 11-20 marker; text on it = ink */
+  --warning-bright-foreground: oklch(0.235 0.022 230);
 
-  --success: oklch(0.52 0.11 155);
-  --success-foreground: oklch(0.99 0.002 85);
-  --success-surface: oklch(0.958 0.028 155);
+  --critical: oklch(0.53 0.19 27); /* #c22826 */
+  --critical-foreground: oklch(1 0 0);
+  --critical-surface: oklch(0.962 0.018 22); /* #ffeeed */
 
-  --warning: oklch(0.68 0.13 62);
-  --warning-foreground: oklch(0.34 0.09 45);
-  --warning-surface: oklch(0.962 0.04 72);
+  --info: oklch(0.51 0.14 252); /* #1767b3 a real blue */
+  --info-foreground: oklch(1 0 0);
+  --info-surface: oklch(0.958 0.02 245); /* #e7f3fe */
 
-  --critical: oklch(0.531 0.185 27.5);
-  --critical-foreground: oklch(0.99 0.002 85);
-  --critical-surface: oklch(0.958 0.032 25);
+  /* AI features (AI replies, AI posts, AI insights) get one recognisable colour. */
+  --ai: oklch(0.51 0.19 290); /* #6948c9 */
+  --ai-foreground: oklch(1 0 0);
+  --ai-surface: oklch(0.958 0.02 292); /* #f1effe */
+  --ai-hover: oklch(0.45 0.18 290); /* #5937af */
+  --ai-bright: oklch(0.8 0.11 292); /* #bfb1ff AI icons on the dark sidebar (>= 4:1 there) */
 
-  /* "Info" stays inside the brand family — no blue. */
-  --info: oklch(0.45 0.045 205);
-  --info-foreground: oklch(0.99 0.002 85);
-  --info-surface: oklch(0.955 0.014 205);
+  /* Data visualisation: 8 categorical slots in a fixed order, never cycled. Validated on the white card:
+     worst adjacent CVD dE 10.9 (target 8), normal-vision dE 19.0 (floor 15), all 8 >= 3:1.
+     Scatter / map / small-multiple forms: max 3 series. Text never wears a chart colour. */
+  --chart-1: oklch(0.6 0.1 198); /* #0d9296 teal: "you" / primary series */
+  --chart-2: oklch(0.65 0.175 45); /* #e2641b orange */
+  --chart-3: oklch(0.52 0.165 258); /* #2065c5 blue */
+  --chart-4: oklch(0.58 0.15 145); /* #33903c green */
+  --chart-5: oklch(0.52 0.2 292); /* #7046cf violet */
+  --chart-6: oklch(0.56 0.19 25); /* #cc3336 red */
+  --chart-7: oklch(0.665 0.135 80); /* #bf890d ochre */
+  --chart-8: oklch(0.58 0.21 350); /* #cd2e8b magenta */
+  /* chart-7 is too light for an icon on its own tint; this darker ochre keeps module icons >= 3:1. */
+  --chart-7-ink: oklch(0.58 0.12 75); /* #a36e09 */
 
-  /* Data visualization: teal primary, red accent, warm neutrals. */
-  --chart-1: oklch(0.366 0.031 214);
-  --chart-2: oklch(0.531 0.185 27.5);
-  --chart-3: oklch(0.55 0.05 205);
-  --chart-4: oklch(0.68 0.13 62);
-  --chart-5: oklch(0.52 0.11 155);
-  --chart-6: oklch(0.52 0.06 45);
-
-  --sidebar: oklch(0.305 0.028 214);
-  --sidebar-foreground: oklch(0.96 0.004 85);
-  --sidebar-primary: oklch(0.985 0.002 85);
-  --sidebar-primary-foreground: oklch(0.305 0.028 214);
-  --sidebar-accent: oklch(0.368 0.032 214);
-  --sidebar-accent-foreground: oklch(0.985 0.002 85);
-  --sidebar-border: oklch(0.375 0.03 214);
-  --sidebar-ring: oklch(0.6 0.04 214);
-  /* Icons, section labels and the gradient's lower stop. */
-  --sidebar-icon: oklch(0.8 0.05 200);
-  --sidebar-muted: oklch(0.7 0.02 214);
-  --sidebar-deep: oklch(0.255 0.026 218);
+  /* Sidebar: the brand teal, deepening toward the bottom. */
+  --sidebar: oklch(0.361 0.036 218.6); /* #27424a */
+  --sidebar-deep: oklch(0.27 0.03 224); /* #152a31 */
+  --sidebar-foreground: oklch(0.955 0.008 210); /* #eaf2f3 */
+  --sidebar-muted: oklch(0.82 0.025 215); /* #b3c9ce */
+  --sidebar-icon: oklch(0.83 0.06 200); /* #99d4d7 */
+  --sidebar-primary: oklch(0.8 0.13 190); /* #2fd8d0 active indicator + active icon */
+  --sidebar-primary-foreground: oklch(0.235 0.022 230);
+  --sidebar-accent: oklch(0.43 0.045 214); /* #31565f active row background */
+  --sidebar-accent-foreground: oklch(1 0 0);
+  --sidebar-border: oklch(0.42 0.03 218); /* #3b5158 */
+  --sidebar-ring: oklch(0.8 0.13 190);
 }
 
 @layer base {
   * {
-    border-color: var(--color-border);
+    border-color: var(--border);
+  }
+
+  html {
+    /* The canvas, not white, shows behind the shell while a lazy page loads. */
+    background-color: var(--background);
   }
 
   body {
-    background-color: var(--color-background);
-    color: var(--color-foreground);
+    background-color: var(--background);
+    color: var(--foreground);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   h1,
@@ -182,14 +240,77 @@
     font-weight: 600;
   }
 
-  /* Tabular figures everywhere numbers matter in SEO data. */
+  h1,
+  h2 {
+    text-wrap: balance;
+  }
+
+  ::selection {
+    background-color: var(--brand-tint-strong);
+    color: var(--foreground);
+  }
+
+  /* A visible focus ring for plain links, buttons and focusable widgets that don't draw their own
+     (components with a ring set focus-visible:outline-none, which wins over this base rule). */
+  :where(a[href], button, summary, [role="button"], [role="link"], [role="tab"], [tabindex]:not([tabindex="-1"])):focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  /* The teal ring is too dark on the deep-teal sidebar; the aqua sidebar ring reads there (6:1). */
+  :where([aria-label="Sidebar"], [data-surface="dark"])
+    :where(a[href], button, summary, [role="button"], [role="link"], [tabindex]:not([tabindex="-1"])):focus-visible {
+    outline-color: var(--sidebar-ring);
+  }
+
+  /* Tabular figures everywhere numbers sit in columns. */
   table,
   .tabular {
     font-variant-numeric: tabular-nums;
   }
+
+  /* Motion is decoration: people who ask for less get none. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* A page that already shows its PageHeader doesn't need the skeleton's header placeholder. */
+[data-page-header] ~ [data-page-skeleton] [data-skeleton-header],
+[data-page-header] ~ * [data-page-skeleton] [data-skeleton-header] {
+  display: none;
 }
 
 @utility data-grid-scroll {
   overflow-x: auto;
   scrollbar-width: thin;
+}
+
+/*
+ * A sideways scroller on a card that shows a soft shadow on each side with more to see (CSS only):
+ * card-coloured covers scroll with the content and hide a shadow once its edge is reached, so
+ * nothing shows when everything fits. Rows with their own background hide the shadow behind them.
+ */
+@utility scroll-shadow-x {
+  background:
+    linear-gradient(to right, var(--card) 30%, transparent) left center / 2.5rem 100% no-repeat local,
+    linear-gradient(to left, var(--card) 30%, transparent) right center / 2.5rem 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, color-mix(in oklab, var(--foreground) 18%, transparent), transparent) left center / 0.875rem 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, color-mix(in oklab, var(--foreground) 18%, transparent), transparent) right center / 0.875rem 100% no-repeat scroll,
+    var(--card);
+}
+
+/* One focus treatment for hand-rolled controls: `focus-ring`. */
+@utility focus-ring {
+  &:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
 }

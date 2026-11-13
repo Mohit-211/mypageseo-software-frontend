@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { APIProvider, AdvancedMarker, Map, useMap } from "@vis.gl/react-google-maps";
-import type { RankBucket } from "@/api";
-import { BUCKET_LABEL, BUCKET_MARKER_CLASS } from "@/lib/rankings/format";
+import { BUCKET_MARKER_CLASS } from "@/lib/rankings/format";
 import { cn } from "@/lib/utils";
-import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_MAP_ID, type GridMapPoint, type LatLng, type MapPin } from "./map-types";
+import { GridLegend, PinsLegend } from "./map-legend";
+import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_MAP_ID, MARKER_TOUCH_AREA, PIN_KIND_CLASS, type GridMapPoint, type LatLng, type MapPin } from "./map-types";
 
 /**
  * Google Maps versions of the ranking maps (Grid, Map Ranking, setup center).
@@ -38,25 +38,30 @@ function FitBounds({ points, singleZoom = 13 }: { points: LatLng[]; singleZoom?:
   return null;
 }
 
-function BaseMap({ className, label, children }: { className: string; label: string; children: React.ReactNode }) {
+function BaseMap({ className, label, footer, children }: { className: string; label: string; footer?: React.ReactNode; children: React.ReactNode }) {
   return (
     <APIProvider apiKey={GOOGLE_MAPS_API_KEY} language="en">
-      <div className={cn("relative overflow-hidden rounded-md border border-border bg-muted", className)} role="region" aria-label={label}>
-        <Map
-          mapId={GOOGLE_MAPS_MAP_ID}
-          defaultCenter={{ lat: 39.5, lng: -98.35 }}
-          defaultZoom={4}
-          // Scroll zooms only with Ctrl / two fingers, so the page still scrolls past the map.
-          gestureHandling="cooperative"
-          disableDefaultUI
-          zoomControl
-          fullscreenControl
-          clickableIcons={false}
-          reuseMaps
-          style={{ width: "100%", height: "100%" }}
-        >
-          {children}
-        </Map>
+      <div className={cn("relative isolate flex flex-col overflow-hidden rounded-lg border border-border bg-muted", className)} role="region" aria-label={label}>
+        <div className="min-h-0 flex-1">
+          <Map
+            mapId={GOOGLE_MAPS_MAP_ID}
+            defaultCenter={{ lat: 39.5, lng: -98.35 }}
+            defaultZoom={4}
+            // Scroll zooms only with Ctrl / two fingers, so the page still scrolls past the map.
+            gestureHandling="cooperative"
+            // Fit the points tightly on raster maps too (vector Map IDs zoom fractionally already).
+            isFractionalZoomEnabled
+            disableDefaultUI
+            zoomControl
+            fullscreenControl
+            clickableIcons={false}
+            reuseMaps
+            style={{ width: "100%", height: "100%" }}
+          >
+            {children}
+          </Map>
+        </div>
+        {footer}
       </div>
     </APIProvider>
   );
@@ -65,7 +70,7 @@ function BaseMap({ className, label, children }: { className: string; label: str
 /** A small card above a marker while it's hovered or focused. */
 function HoverLabel({ children }: { children: React.ReactNode }) {
   return (
-    <span className="pointer-events-none absolute bottom-full left-1/2 mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-foreground px-2.5 py-1.5 text-xs font-medium text-background shadow-lg">
+    <span className="pointer-events-none absolute bottom-full left-1/2 mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-foreground px-2.5 py-1.5 text-xs font-medium text-white shadow-raised">
       {children}
       <span className="absolute left-1/2 top-full -translate-x-1/2 border-x-4 border-t-4 border-x-transparent border-t-foreground" />
     </span>
@@ -80,11 +85,11 @@ export function GoogleGridMap({ points, center, className }: { points: GridMapPo
   const size = points.length > 81 ? 24 : points.length > 25 ? 28 : 34;
 
   return (
-    <BaseMap className={className ?? "h-[460px] w-full"} label="Search grid map">
+    <BaseMap className={className ?? "h-[460px] w-full"} label="Search grid map" footer={<GridLegend />}>
       <FitBounds points={all} />
       <AdvancedMarker position={center} zIndex={1} title="Business center">
         <span className="relative flex size-12 items-center justify-center" aria-hidden>
-          <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary/25" />
+          <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary/25 motion-reduce:animate-none" />
           <span className="relative size-12 rounded-full border-2 border-primary bg-primary/10" />
         </span>
       </AdvancedMarker>
@@ -97,9 +102,11 @@ export function GoogleGridMap({ points, center, className }: { points: GridMapPo
           >
             <span
               className={cn(
-                "flex items-center justify-center rounded-full border-2 font-semibold tabular shadow-md ring-1 ring-black/10 transition-transform duration-150",
+                "flex items-center justify-center rounded-full border-2 font-semibold tabular-nums shadow-md ring-1 ring-foreground/10 transition-transform duration-150 motion-reduce:transition-none",
+                // Marker numerals are the one place 11px text is allowed.
                 size > 30 ? "text-xs" : "text-[11px]",
                 hovered === point.key && "scale-125",
+                MARKER_TOUCH_AREA,
                 BUCKET_MARKER_CLASS[point.bucket],
               )}
               style={{ width: size, height: size }}
@@ -110,36 +117,15 @@ export function GoogleGridMap({ points, center, className }: { points: GridMapPo
           </span>
         </AdvancedMarker>
       ))}
-      <GridLegend />
     </BaseMap>
   );
 }
 
-const LEGEND: { bucket: RankBucket; label: string }[] = [
-  { bucket: "pack", label: "1–3" },
-  { bucket: "visible", label: "4–10" },
-  { bucket: "low", label: "11–20" },
-  { bucket: "invisible", label: "21+" },
-  { bucket: "not_found", label: "Not found" },
-];
-
-function GridLegend() {
-  return (
-    <div className="pointer-events-none absolute bottom-3 left-3 flex flex-wrap gap-x-3 gap-y-1 rounded-md bg-background/95 px-3 py-2 text-[11px] text-foreground shadow-md ring-1 ring-black/5 backdrop-blur">
-      {LEGEND.map((entry) => (
-        <span key={entry.bucket} className="flex items-center gap-1.5" title={BUCKET_LABEL[entry.bucket]}>
-          <span className={cn("size-2.5 rounded-full border", BUCKET_MARKER_CLASS[entry.bucket])} />
-          {entry.label}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-const PIN_STYLE: Record<MapPin["kind"], { body: string; tail: string; size: number; z: number }> = {
-  self: { body: "bg-primary text-primary-foreground ring-4 ring-primary/25", tail: "bg-primary", size: 34, z: 3000 },
-  competitor: { body: "bg-info text-white ring-2 ring-info/25", tail: "bg-info", size: 28, z: 2000 },
-  other: { body: "bg-background text-foreground ring-1 ring-black/15", tail: "bg-background", size: 26, z: 100 },
+/** Pin shapes by kind; the colours come from `PIN_KIND_CLASS` (shared with the legend and the fallback map). */
+const PIN_STYLE: Record<MapPin["kind"], { ring: string; tail: string; size: number; z: number }> = {
+  self: { ring: "ring-4 ring-primary/25", tail: "bg-primary", size: 34, z: 3000 },
+  competitor: { ring: "ring-2 ring-info/25", tail: "bg-info", size: 28, z: 2000 },
+  other: { ring: "ring-1 ring-border-strong", tail: "bg-card", size: 26, z: 100 },
 };
 
 /** Map Ranking results as numbered pins; your business and tracked competitors stand out. */
@@ -156,7 +142,11 @@ export function GooglePinsMap({
   const all = useMemo(() => (searchPoint ? [...pins, searchPoint] : pins), [pins, searchPoint]);
 
   return (
-    <BaseMap className={className ?? "h-[420px] w-full"} label="Map of the search results">
+    <BaseMap
+      className={className ?? "h-[420px] w-full"}
+      label="Map of the search results"
+      footer={pins.length > 1 ? <PinsLegend searchPoint={Boolean(searchPoint)} /> : undefined}
+    >
       <FitBounds points={all} />
       {searchPoint ? (
         <AdvancedMarker position={searchPoint} zIndex={1} title="Search point">
@@ -178,16 +168,18 @@ export function GooglePinsMap({
             >
               <span
                 className={cn(
-                  "flex items-center justify-center rounded-full border-2 border-white text-xs font-bold tabular shadow-lg transition-transform duration-150",
+                  "flex items-center justify-center rounded-full border-2 text-xs font-bold tabular-nums shadow-raised transition-transform duration-150 motion-reduce:transition-none",
                   active && "scale-110",
-                  style.body,
+                  MARKER_TOUCH_AREA,
+                  PIN_KIND_CLASS[pin.kind],
+                  style.ring,
                 )}
                 style={{ width: style.size, height: style.size }}
               >
                 {pin.rank ?? <span className="size-2.5 rounded-full bg-current" />}
               </span>
               {/* The pin's point, so it reads as a location, not a badge. */}
-              <span className={cn("-mt-1.5 size-2.5 rotate-45 border-b-2 border-r-2 border-white shadow-sm", style.tail)} aria-hidden />
+              <span className={cn("-mt-1.5 size-2.5 rotate-45 border-b-2 border-r-2 shadow-sm", pin.kind === "other" ? "border-border-strong" : "border-white", style.tail)} aria-hidden />
               {active || pin.kind === "self" ? (
                 <HoverLabel>
                   {pin.rank === null ? "" : `#${pin.rank} `}

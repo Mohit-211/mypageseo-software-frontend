@@ -12,6 +12,7 @@ import { useCanEdit } from "@/hooks/use-access";
 import { LOCATIONS_QUERY_KEY, useLocation } from "@/lib/locations/use-locations";
 import { centerDescription } from "@/lib/rankings/format";
 import { rankingsKey, useRefreshState } from "@/lib/rankings/use-rankings";
+import { cn } from "@/lib/utils";
 
 /** The new center, chosen but not saved yet (saving re-runs the rankings, so it's confirmed first). */
 type Choice =
@@ -48,12 +49,19 @@ function errorOf(err: unknown, choice: Choice): SaveError {
 }
 
 /** "Change": moves the business center chosen at setup and re-runs the rankings around it at once. */
-function ChangeCenterButtonEditor({ locationId, className }: { locationId: string; className?: string }) {
+function ChangeCenterButtonEditor({ locationId, className, label = "Change" }: { locationId: string; className?: string; label?: string }) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Button variant="link" size="sm" className={className ?? "h-auto p-0 text-xs"} onClick={() => setOpen(true)}>
-        Change
+      {/* An inline link in a line of small print: an invisible hit area makes it about 40px tall
+          without moving the line. */}
+      <Button
+        variant="link"
+        size="sm"
+        className={cn("relative after:absolute after:-inset-x-1.5 after:-inset-y-3 after:content-['']", className ?? "h-auto p-0 text-xs")}
+        onClick={() => setOpen(true)}
+      >
+        {label}
       </Button>
       {open ? <ChangeCenterDialog locationId={locationId} onClose={() => setOpen(false)} /> : null}
     </>
@@ -95,7 +103,8 @@ function ChangeCenterDialog({ locationId, onClose }: { locationId: string; onClo
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: LOCATIONS_QUERY_KEY }),
         queryClient.invalidateQueries({ queryKey: rankingsKey(locationId) }),
-        queryClient.invalidateQueries({ queryKey: ["billing", "tokens"] }),
+        // A re-run spends tokens: every balance (header pill, AI Studio, AI cost chips) reads under "billing".
+        queryClient.invalidateQueries({ queryKey: ["billing"] }),
       ]);
       onClose();
     } catch (err) {
@@ -231,6 +240,7 @@ function ChangeCenterDialog({ locationId, onClose }: { locationId: string; onClo
 }
 
 /** Hidden for a read-only client_user. */
-export function ChangeCenterButton(props: { locationId: string; className?: string }) {
+/** "Change" next to the center it changes; pass `label="Change center"` where it stands alone. Hidden for a read-only user. */
+export function ChangeCenterButton(props: { locationId: string; className?: string; label?: string }) {
   return useCanEdit() ? <ChangeCenterButtonEditor {...props} /> : null;
 }

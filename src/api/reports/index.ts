@@ -4,6 +4,16 @@ import type { ReportDetail, ReportRecord, ReportsListResponse } from "../types/r
 
 export type ReportType = "rank_tracker" | "gbp_audit" | "competitor_analysis" | "citation" | "reputation" | "full";
 
+/**
+ * A row of `GET reports` with the fields the shared `ReportRecord` type leaves out:
+ * `trigger` ("schedule" = made for a monthly email), `expires_at` (PDF kept until) and `archived_at`.
+ */
+export type ReportRow = ReportRecord & {
+  trigger?: "manual" | "schedule" | string;
+  expires_at?: string | null;
+  archived_at?: string | null;
+};
+
 /** `GET reports`, newest first. */
 export async function getReports(
   params: {

@@ -6,10 +6,13 @@
  * refresh token (POST auth/refresh); only a failed refresh, or no valid refresh
  * token, signs the user out. Clearing notifies every `useIsAuthenticated`
  * caller, so the route guards redirect straight away.
+ *
+ * A kept session is shared by every open tab, so their renewal timers fire
+ * together; `refreshToken()` lets one tab renew and the others pick up its
+ * tokens (see api/auth/refresh-token.ts).
  */
 import { useEffect, useSyncExternalStore } from "react";
 import { refreshToken } from "@/api/auth/refresh-token";
-import { isOnboardingPending } from "@/api/onboarding-storage";
 import {
   clearAccessToken,
   getAccessToken,
@@ -17,6 +20,7 @@ import {
   getValidRefreshToken,
   hasUsableSession,
   isTokenExpired,
+  serverNow,
   subscribeToAccessToken,
 } from "@/api/token-storage";
 
@@ -48,7 +52,9 @@ export function useIsAuthenticated(): boolean {
     }
     const expiry = getTokenExpiry(token);
     if (expiry === null) return;
-    const timer = setTimeout(renewOrSignOut, Math.min(Math.max(expiry - Date.now(), 0), MAX_TIMEOUT_MS));
+    // `exp` is on the backend's clock, so count down on it too (a wrong device clock would
+    // otherwise renew every new token at once, over and over).
+    const timer = setTimeout(renewOrSignOut, Math.min(Math.max(expiry - serverNow(), 0), MAX_TIMEOUT_MS));
     return () => clearTimeout(timer);
   }, [authenticated, token]);
 
@@ -59,12 +65,14 @@ export function useIsAuthenticated(): boolean {
 export type AuthRedirectState = { from?: string };
 
 /**
- * Where a signed-in user belongs: an unfinished setup first, then the page they
- * were bounced from, then the dashboard. Used by `GuestOnly` and the login page
- * so both land on the same place.
+ * Where a signed-in user belongs: the page they were bounced from, else the dashboard. Used by
+ * `/`, the sign-in pages and the login form so all of them land on the same place.
+ *
+ * An unfinished setup no longer hijacks every visit: verifying the email goes to /onboarding
+ * once (VerifyEmailPage), and after that the dashboard's "Finish setting up · N of M" card (shown
+ * while `isOnboardingPending()`) leads back to it.
  */
 export function getPostLoginPath(state: unknown): string {
-  if (isOnboardingPending()) return "/onboarding";
   const from = (state as AuthRedirectState | null)?.from;
   // Only same-app paths; never bounce back to an auth page.
   if (typeof from === "string" && from.startsWith("/") && !from.startsWith("//")) {

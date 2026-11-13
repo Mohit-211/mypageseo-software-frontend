@@ -1,28 +1,43 @@
-import type { ComponentProps } from "react";
-import { useCanEdit } from "@/hooks/use-access";
-import type { ReactNode } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
-import { ArrowLeft, LoaderCircle, RefreshCw } from "lucide-react";
+import type { ComponentProps, ReactNode } from "react";
+import { Link } from "react-router-dom";
 import {
-  apiErrorData,
-  isApiError,
-  refreshLocation,
-  type ChangeLabel,
-  type OverallRank,
-  type RankCell,
-  type RankStatus,
-  type RankStatusText,
-} from "@/api";
+  ArrowLeft,
+  CalendarClock,
+  Crosshair,
+  Grid3x3,
+  Info,
+  LoaderCircle,
+  MapPinned,
+  RefreshCw,
+  Repeat,
+  SearchX,
+  Tags,
+  TrendingUp,
+  TriangleAlert,
+  type LucideIcon,
+} from "lucide-react";
+import type { ChangeLabel, OverallRank, RankBucket, RankCell, RankStatus, RankStatusText, RunMeta } from "@/api";
 import { PageHeader, TrendIndicator } from "@/components/layout/shared/data-display";
-import { RankingsNavigation, type RankingView } from "@/components/location/location-workspace";
 import { EmptyState, ErrorState } from "@/components/layout/shared/feedback/states";
+import { StatusBadge } from "@/components/layout/shared/status-badge";
+import type { ModuleTone } from "@/components/layout/shared/module-tone";
+import { GroupFilter } from "@/components/keywords/group-filter";
+import { BackgroundActivity } from "@/components/location/background-activity";
+import { ChangeCenterButton } from "@/components/location/change-center-dialog";
+import { FirstRunProgress } from "@/components/ranking/first-run-progress";
+import { GridSettingsButton } from "@/components/ranking/grid-settings-dialog";
+import { RankReportButton } from "@/components/report/rank-report-button";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useCanEdit } from "@/hooks/use-access";
+import { bandFor, BAND_PILL } from "@/lib/keywords/bands";
+import { keywordsPath } from "@/lib/keywords/paths";
+import { locationSetupPath } from "@/lib/locations/location-actions";
 import {
   BUCKET_CLASS,
   BUCKET_LABEL,
+  BUCKET_SAMPLE,
   CHANGE_LABEL_TEXT,
   RANKINGS_SOURCE_NOTE,
   RANK_STATUS_TEXT,
@@ -32,27 +47,11 @@ import {
   formatDistance,
   formatRunDate,
 } from "@/lib/rankings/format";
-import { GridSettingsButton } from "@/components/ranking/grid-settings-dialog";
-import { ChangeCenterButton } from "@/components/location/change-center-dialog";
-import { BackgroundActivity } from "@/components/location/background-activity";
-import { RankReportButton } from "@/components/report/rank-report-button";
-import { GroupFilter } from "@/components/ranking/keyword-controls";
-import { FirstRunProgress } from "@/components/ranking/first-run-progress";
-import { InfoTip } from "@/components/layout/shared/info-tip";
 import { GLOSSARY } from "@/lib/rankings/glossary";
-import type { RankBucket } from "@/api";
-import { locationSetupPath } from "@/lib/locations/location-actions";
-import {
-  rankingErrorState,
-  rankingsKey,
-  useRankRuns,
-  useRefreshState,
-} from "@/lib/rankings/use-rankings";
 import { useRankingsContext, useRunParam } from "@/lib/rankings/rankings-context";
-import type { RunMeta } from "@/api";
+import { rankingErrorState, useRankRuns } from "@/lib/rankings/use-rankings";
+import { refreshLabel, useRefreshRankings } from "@/lib/rankings/use-refresh-rankings";
 import { cn } from "@/lib/utils";
-import { useNow } from "@/hooks/use-now";
-
 
 function cellTitle(cell: RankCell) {
   if (cell.status === "error") return "We couldn't get results from Google for this point";
@@ -64,7 +63,7 @@ function cellTitle(cell: RankCell) {
   return parts.join(" · ");
 }
 
-/** One rank, coloured by bucket. A failed search shows "—", never "60+". */
+/** One rank, coloured by bucket. A failed search shows "–", never "60+". */
 export function RankCellView({ cell, className }: { cell: RankCell | undefined; className?: string }) {
   if (!cell) return <span className={cn("text-xs text-muted-foreground", className)}>—</span>;
   const text = cell.status === "error" ? "–" : cell.status === "not_found" ? "60+" : cell.display;
@@ -72,7 +71,7 @@ export function RankCellView({ cell, className }: { cell: RankCell | undefined; 
     <span
       title={cellTitle(cell)}
       className={cn(
-        "inline-flex min-w-9 items-center justify-center rounded border px-1.5 py-0.5 text-xs font-semibold tabular",
+        "inline-flex min-w-9 items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums",
         BUCKET_CLASS[cell.bucket] ?? BUCKET_CLASS.error,
         className,
       )}
@@ -83,13 +82,24 @@ export function RankCellView({ cell, className }: { cell: RankCell | undefined; 
   );
 }
 
-export function BucketLegend() {
-  const buckets: RankBucket[] = ["pack", "visible", "low", "invisible", "not_found", "error"];
+const LEGEND_BUCKETS: RankBucket[] = ["pack", "visible", "low", "invisible", "not_found", "error"];
+
+/**
+ * The rank colours, explained once under a table or grid. Each key is a mini pill with a sample value,
+ * the way the cells look (a pale swatch alone barely shows on the footer, and it hides the coloured
+ * numeral that tells the pills apart).
+ */
+export function BucketLegend({ className }: { className?: string }) {
   return (
-    <ul className="flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-muted-foreground" aria-label="Rank colours">
-      {buckets.map((bucket) => (
+    <ul className={cn("flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-muted-foreground", className)} aria-label="Rank colours">
+      {LEGEND_BUCKETS.map((bucket) => (
         <li key={bucket} className="flex items-center gap-1.5">
-          <span aria-hidden className={cn("size-3 rounded-sm border", BUCKET_CLASS[bucket])} />
+          <span
+            aria-hidden
+            className={cn("inline-flex min-w-7 items-center justify-center rounded-md border px-1 text-xs font-semibold tabular-nums", BUCKET_CLASS[bucket])}
+          >
+            {BUCKET_SAMPLE[bucket]}
+          </span>
           {BUCKET_LABEL[bucket]}
         </li>
       ))}
@@ -97,32 +107,45 @@ export function BucketLegend() {
   );
 }
 
-/** `change` is previous − current: positive means improved. Null = no comparable earlier run. */
-export function RankChange({ change, label }: { change: number | null | undefined; label?: ChangeLabel | null | undefined }) {
+/**
+ * `change` is previous − current: positive means improved. Null = no comparable earlier run.
+ * `neutral` (a competitor's row) shows the movement in grey: a competitor slipping isn't bad news.
+ */
+export function RankChange({
+  change,
+  label,
+  neutral = false,
+}: {
+  change: number | null | undefined;
+  label?: ChangeLabel | null | undefined;
+  neutral?: boolean;
+}) {
   if (label === "entered_top_60" || label === "dropped_out_of_top_60") {
     return (
-      <span className={cn("text-xs font-medium", label === "entered_top_60" ? "text-success" : "text-critical")}>
+      <StatusBadge tone={neutral ? "neutral" : label === "entered_top_60" ? "success" : "critical"} size="sm">
         {CHANGE_LABEL_TEXT[label]}
-      </span>
+      </StatusBadge>
     );
   }
   if (change == null) return <span className="text-xs text-muted-foreground">—</span>;
   return (
     <TrendIndicator
+      variant="chip"
       direction={change > 0 ? "up" : change < 0 ? "down" : "flat"}
       value={Math.abs(change).toFixed(1)}
       positive={change > 0}
+      tone={neutral ? "neutral" : "auto"}
     />
   );
 }
 
-/** Overall change, noting when it covers only some keywords (after keyword edits). */
-export function OverallChange({ overall }: { overall: OverallRank | undefined }) {
+/** Overall change, noting when it covers only some keywords (after keyword edits). `neutral` as on RankChange. */
+export function OverallChange({ overall, neutral = false }: { overall: OverallRank | undefined; neutral?: boolean }) {
   if (!overall || overall.comparable_keywords === 0) return <span className="text-xs text-muted-foreground">—</span>;
   const note = comparableNote(overall.comparable_keywords, overall.keywords_total);
   return (
     <span className="inline-flex flex-wrap items-center gap-1.5">
-      <RankChange change={overall.change} />
+      <RankChange change={overall.change} neutral={neutral} />
       {note && overall.change != null ? <span className="text-xs text-muted-foreground">({note})</span> : null}
     </span>
   );
@@ -145,7 +168,7 @@ export function AvgRank({
   return (
     <span
       title={tip}
-      className={cn("font-semibold tabular", status === "no_data" ? "text-xs font-medium text-muted-foreground" : "text-foreground")}
+      className={cn("font-semibold tabular-nums", status === "no_data" ? "text-xs font-medium text-muted-foreground" : "text-foreground")}
     >
       {text}
     </span>
@@ -153,8 +176,43 @@ export function AvgRank({
 }
 
 /**
+ * An average rank as a soft pill in its band colour (top 3 green, 4–10 blue, 11–20 amber, 21+ red,
+ * "60+" grey), the way keyword tables show a keyword's position at a glance.
+ */
+export function AvgRankPill({
+  value,
+  status,
+  display,
+  statusText,
+  className,
+}: {
+  value: number | null | undefined;
+  status?: RankStatus | null | undefined;
+  display?: string | null | undefined;
+  statusText?: RankStatusText | undefined;
+  className?: string;
+}) {
+  const text = avgRankText(value, status, display);
+  const band = bandFor({ avgRank: value ?? null, status: status ?? null, foundRate: null, top3Rate: null }, value != null || Boolean(status));
+  const tip = status ? (statusText?.[status] ?? RANK_STATUS_TEXT[status]).tooltip : value == null ? "Not measured yet" : undefined;
+  return (
+    <span
+      title={tip}
+      className={cn(
+        "inline-flex min-w-12 items-center justify-center rounded-md border px-2 py-0.5 text-sm font-semibold tabular-nums",
+        value == null && !status ? "border-dashed border-border-strong bg-card text-muted-foreground" : BAND_PILL[band],
+        status === "no_data" && "text-xs font-medium",
+        className,
+      )}
+    >
+      {value == null && !status ? "—" : text}
+    </span>
+  );
+}
+
+/**
  * The error states shared by the ranking pages, chosen by `data.reason`. While the
- * first run is in progress it polls the run history and reloads once a run is done.
+ * first run is in progress it shows its progress and reloads once a run is done.
  */
 export function RankingsError({
   error,
@@ -180,14 +238,22 @@ export function RankingsError({
     case "location_not_found":
       return (
         <EmptyState
+          variant="no-results"
           title="Location not found"
           description="It may have been deleted, or it isn't in this organization."
-          action={<Button asChild variant="outline"><Link to="/locations"><ArrowLeft aria-hidden /> Back to locations</Link></Button>}
+          action={
+            <Button asChild variant="outline">
+              <Link to="/locations">
+                <ArrowLeft aria-hidden /> Back to locations
+              </Link>
+            </Button>
+          }
         />
       );
     case "run_not_found":
       return (
         <EmptyState
+          variant="no-results"
           title="Run not found"
           description="That ranking run doesn't exist for this location."
           action={<Button variant="outline" onClick={onLatest}>Show the latest results</Button>}
@@ -196,6 +262,8 @@ export function RankingsError({
     case "run_not_finished":
       return (
         <EmptyState
+          variant="unavailable"
+          tone="rankings"
           title="This run hasn't finished"
           description={`The selected run is ${state.status ?? "still in progress"}. Its results appear once it's done.`}
           action={<Button variant="outline" onClick={onLatest}>Show the latest results</Button>}
@@ -204,14 +272,17 @@ export function RankingsError({
     case "group_not_found":
       return (
         <EmptyState
+          variant="no-results"
           title="Keyword group not found"
-          description="It may have been deleted. Showing all keywords instead is one click away."
+          description="It may have been deleted. Show every keyword instead."
           action={onClearGroup ? <Button variant="outline" onClick={onClearGroup}>Show all keywords</Button> : undefined}
         />
       );
     case "keyword_not_in_run":
       return (
         <EmptyState
+          variant="no-results"
+          icon={SearchX}
           title="Keyword not in this run"
           description="The keyword was added or removed after this run. Choose another keyword or run."
           action={onClearKeyword ? <Button variant="outline" onClick={onClearKeyword}>Show all keywords</Button> : undefined}
@@ -220,9 +291,16 @@ export function RankingsError({
     case "point_not_in_run":
       return (
         <EmptyState
+          variant="no-results"
           title="This point wasn't searched in this run"
           description={state.available.length > 0 ? `Available points: ${state.available.join(", ")}.` : "Older runs only have the center point."}
-          action={onPoint && state.available[0] ? <Button variant="outline" onClick={() => onPoint(state.available[0]!)}>Show {state.available[0]}</Button> : undefined}
+          action={
+            onPoint && state.available[0] ? (
+              <Button variant="outline" onClick={() => onPoint(state.available[0]!)}>
+                Show {state.available[0]}
+              </Button>
+            ) : undefined
+          }
         />
       );
     default:
@@ -230,23 +308,56 @@ export function RankingsError({
   }
 }
 
-/** 404 `no_completed_run`: the first run's progress, or "finish setup" when there's no run at all. */
+/**
+ * 404 `no_completed_run`: the first run's progress, or "finish setup" when there's no run at all. A
+ * read-only client user can't change setup, so they get what's happening and a way to see the keywords.
+ */
 function FirstRunPending({ locationId }: { locationId: string }) {
+  const canEdit = useCanEdit();
   return (
     <FirstRunProgress
       locationId={locationId}
       fallback={
-        <EmptyState
-          title="No ranking run yet"
-          description="Finish this location's setup (keywords and competitors) to start the first ranking run."
-          action={<Button asChild><Link to={locationSetupPath(locationId)}>Continue setup</Link></Button>}
-        />
+        canEdit ? (
+          <EmptyState
+            icon={TrendingUp}
+            tone="rankings"
+            title="No ranking run yet"
+            description="Finish this location's setup (keywords and competitors) to start the first ranking run."
+            action={
+              <Button asChild>
+                <Link to={locationSetupPath(locationId)}>Continue setup</Link>
+              </Button>
+            }
+            secondaryAction={
+              <Button asChild variant="outline">
+                <Link to={keywordsPath(locationId)}>
+                  <Tags aria-hidden /> Manage keywords
+                </Link>
+              </Button>
+            }
+          />
+        ) : (
+          <EmptyState
+            icon={TrendingUp}
+            tone="rankings"
+            title="No ranking run yet"
+            description="Your agency is finishing this location's setup. Rankings show here after its first ranking run."
+            action={
+              <Button asChild variant="outline">
+                <Link to={keywordsPath(locationId)}>
+                  <Tags aria-hidden /> See keywords
+                </Link>
+              </Button>
+            }
+          />
+        )
       }
     />
   );
 }
 
-/** "Latest" or an older done/partial run from `GET rank-runs`. */
+/** "Latest run" or an older done/partial run from `GET rank-runs`. */
 export function RunPicker({
   locationId,
   runId,
@@ -259,13 +370,15 @@ export function RunPicker({
   const runs = useRankRuns(locationId);
   const list = runs.data?.runs ?? [];
   if (list.length <= 1 && !runId) return null;
+  const latest = list.find((run) => run.status === "done" || run.status === "partial");
   return (
     <Select value={runId ?? "latest"} onValueChange={(value) => onChange(value === "latest" ? undefined : value)}>
-      <SelectTrigger className="w-full bg-background sm:w-64" aria-label="Ranking run">
+      <SelectTrigger className="h-9 w-full justify-start sm:w-64 [&>svg:last-child]:ml-auto" aria-label="Ranking run">
+        <CalendarClock aria-hidden className="size-4 text-muted-foreground" />
         <SelectValue placeholder="Latest run" />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="latest">Latest run</SelectItem>
+        <SelectItem value="latest">Latest run{latest ? ` · ${formatRunDate(latest.run_at)}` : ""}</SelectItem>
         {list.map((run) => {
           const usable = run.status === "done" || run.status === "partial";
           return (
@@ -282,130 +395,207 @@ export function RunPicker({
 }
 
 /** Manual rankings refresh: costs tokens, at most once per 24 h; the monthly refresh is free. */
-function RefreshRankingsButtonEditor({ locationId }: { locationId: string }) {
-  const queryClient = useQueryClient();
-  const navigate = useNavigate();
-  const state = useRefreshState(locationId);
-  const active = state.data?.rankings.active_run ?? null;
-  const nextAllowed = state.data?.rankings.next_allowed_at ?? null;
-  const now = useNow();
-  const waiting = nextAllowed !== null && new Date(nextAllowed).getTime() > now;
-  const cost = state.data?.tokens.cost.rankings;
-
-  const run = async () => {
-    try {
-      const result = await refreshLocation(locationId, ["rankings"]);
-      const rankings = result.rankings;
-      if (rankings && "skipped" in rankings) {
-        toast.message(`Rankings can be refreshed again ${formatRunDate(rankings.next_allowed_at, true)}.`);
-      } else {
-        toast.success(rankings?.existing ? "A ranking run is already in progress." : "Ranking run started. It takes a few minutes.");
-      }
-    } catch (err) {
-      if (isApiError(err) && err.reason === "insufficient_tokens") {
-        const data = apiErrorData(err);
-        toast.error(`Not enough tokens: this refresh costs ${String(data.cost ?? cost ?? "?")}, your balance is ${String(data.balance ?? "?")}.`, {
-          action: { label: "Buy tokens", onClick: () => navigate("/settings/billing") },
-        });
-      } else if (isApiError(err) && err.reason === "read_only") {
-        toast.error("Your access is read-only, so you can't start a refresh.");
-      } else if (isApiError(err) && err.status === 429) {
-        const next = (apiErrorData(err).rankings as { next_allowed_at?: string } | undefined)?.next_allowed_at ?? apiErrorData(err).next_allowed_at;
-        toast.error(`Rankings were refreshed recently. Try again ${typeof next === "string" ? formatRunDate(next, true) : "in 24 hours"}.`);
-      } else {
-        toast.error(isApiError(err) && err.message ? err.message : "The refresh couldn't be started. Try again.");
-      }
-    } finally {
-      void queryClient.invalidateQueries({ queryKey: rankingsKey(locationId) });
-      void queryClient.invalidateQueries({ queryKey: ["billing", "tokens"] });
-    }
-  };
-
-  const label = active
-    ? "Run in progress"
-    : waiting
-      ? `Next refresh ${formatRunDate(nextAllowed, true)}`
-      : `Refresh rankings${cost != null ? ` (${cost} token${cost === 1 ? "" : "s"})` : ""}`;
-
+function RefreshRankingsButtonEditor({ locationId, label }: { locationId: string; label?: string }) {
+  const refresh = useRefreshRankings(locationId);
   return (
-    <Button variant="outline" size="sm" disabled={!state.data || Boolean(active) || waiting} onClick={() => void run()}>
-      {active ? <LoaderCircle aria-hidden className="animate-spin" /> : <RefreshCw aria-hidden />}
-      {label}
+    <Button
+      variant="outline"
+      disabled={!refresh.canStart}
+      aria-busy={refresh.starting || undefined}
+      title={
+        refresh.blockedReason ??
+        (refresh.waitingUntil ? "A manual refresh is allowed once every 24 hours. The automatic monthly run is free." : undefined)
+      }
+      onClick={() => void refresh.start()}
+    >
+      {refresh.active || refresh.starting ? <LoaderCircle aria-hidden className="animate-spin" /> : <RefreshCw aria-hidden />}
+      {refreshLabel(refresh, label)}
     </Button>
-  );
-}
-
-/** Tabs, title, run picker, filters and actions shared by the ranking pages. */
-export function RankingsPageHeader({
-  locationId,
-  view,
-  title,
-  description,
-  run,
-  scope,
-  actions,
-  groupFilter = false,
-}: {
-  locationId: string;
-  view: RankingView;
-  title: string;
-  description: string;
-  run?: RunMeta | undefined;
-  /** What this page measured (`scope.description`), shown under the title. */
-  scope?: string | null | undefined;
-  actions?: ReactNode;
-  /** Show the keyword-group filter (Rank Tracker, Keywords, grid). */
-  groupFilter?: boolean;
-}) {
-  const [runId, setRunId] = useRunParam();
-  const radius = run?.config.radius_km;
-  const { location } = useRankingsContext();
-  // The run's own center (frozen with it); older runs fall back to the location's current one.
-  const measuredAround = centerDescription(run?.center?.source ? run.center : location.center);
-  return (
-    <>
-      <RankingsNavigation locationId={locationId} activeView={view} />
-      <PageHeader
-        title={title}
-        description={description}
-        meta={
-          <div className="space-y-0.5 text-xs text-muted-foreground">
-            {run ? (
-              <p>
-                Run of {formatRunDate(run.run_at, true)}
-                {run.status === "partial" ? " · partial: some searches failed; those points show “–”" : ""} · {run.config.grid_size}×{run.config.grid_size} grid
-                {radius ? `, ${formatDistance(radius)} from center to edge` : `, points ${run.config.spacing_km} km apart`}
-              </p>
-            ) : null}
-            {scope || measuredAround ? (
-              <p className="flex flex-wrap items-center gap-x-2 font-medium text-foreground">
-                {scope ? `Measured: ${scope}` : measuredAround}
-                {location.center?.source ? <ChangeCenterButton locationId={locationId} /> : null}
-              </p>
-            ) : null}
-            <p className="flex items-center gap-1">
-              {RANKINGS_SOURCE_NOTE}
-              <InfoTip label="Where are rankings measured from?">{GLOSSARY.businessCenter}</InfoTip>
-            </p>
-          </div>
-        }
-        actions={
-          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
-            {groupFilter ? <GroupFilter locationId={locationId} /> : null}
-            <RunPicker locationId={locationId} runId={runId} onChange={setRunId} />
-            <RefreshRankingsButton locationId={locationId} />
-            <GridSettingsButton locationId={locationId} />
-            {actions}
-            {run ? <RankReportButton locationId={locationId} runId={run.run_id} runAt={run.run_at} /> : null}
-          </div>
-        }
-      />
-      <BackgroundActivity locationId={locationId} className="mb-4" />
-    </>
   );
 }
 
 /** Hidden for a read-only client_user. */
 export function RefreshRankingsButton(props: ComponentProps<typeof RefreshRankingsButtonEditor>) {
   return useCanEdit() ? <RefreshRankingsButtonEditor {...props} /> : null;
+}
+
+/** One fact in the "About this data" popover. */
+function AboutRow({ icon: Icon, label, children }: { icon: LucideIcon; label: string; children: ReactNode }) {
+  return (
+    <div className="flex gap-2.5">
+      <Icon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+      <div className="min-w-0">
+        <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
+        <dd className="text-sm text-foreground">{children}</dd>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The run, grid, center and data source behind a ranking page, one click away instead of a block
+ * of small print under every title.
+ */
+function AboutRankingData({ locationId, run, scope }: { locationId: string; run: RunMeta | undefined; scope: string | null | undefined }) {
+  const { location } = useRankingsContext();
+  const refresh = useRefreshRankings(locationId);
+  // The run's own center (frozen with it); older runs fall back to the location's current one.
+  const measuredAround = centerDescription(run?.center?.source ? run.center : location.center);
+  const radius = run?.config.radius_km;
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="ghost" size="sm" className="h-7 gap-1 px-1.5 text-xs font-medium text-muted-foreground hover:text-foreground">
+          <Info aria-hidden className="size-3.5" /> About this data
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-[min(26rem,calc(100vw-2rem))] p-0">
+        <div className="border-b border-border px-4 py-3">
+          <p className="text-sm font-semibold text-foreground">About this data</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">{RANKINGS_SOURCE_NOTE}</p>
+        </div>
+        <dl className="space-y-3 px-4 py-3">
+          {run ? (
+            <AboutRow icon={CalendarClock} label="Ranking run">
+              {formatRunDate(run.run_at, true)}
+              {run.status === "partial" ? (
+                <span className="mt-0.5 block text-xs text-warning-foreground">Partial: some searches failed, and those points show “–”.</span>
+              ) : null}
+            </AboutRow>
+          ) : null}
+          {run ? (
+            <AboutRow icon={Grid3x3} label="Grid">
+              {run.config.grid_size}×{run.config.grid_size} points,{" "}
+              {radius ? `${formatDistance(radius)} from center to edge` : `${run.config.spacing_km} km apart`}
+            </AboutRow>
+          ) : null}
+          {scope || measuredAround ? (
+            <AboutRow icon={Crosshair} label="Measured">
+              {scope ?? measuredAround?.replace(/^Measured around: /, "Around ")}
+            </AboutRow>
+          ) : null}
+          <AboutRow icon={Repeat} label="Updates">
+            {refresh.nextAutomaticRun
+              ? `Automatically every month, for free. Next run ${formatRunDate(refresh.nextAutomaticRun)}.`
+              : "Automatic monthly runs are off; refresh by hand."}
+            {refresh.cost != null ? ` A manual refresh costs ${refresh.cost} token${refresh.cost === 1 ? "" : "s"}.` : ""}
+          </AboutRow>
+        </dl>
+        <p className="border-t border-border bg-surface-strong px-4 py-3 text-xs text-muted-foreground">{GLOSSARY.businessCenter}</p>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/** "Around your Google Maps pin" / "Around Tampa, FL": the center in a few words for the meta line. */
+function shortCenter(center: { source?: string | null; label?: string | null } | null | undefined): string | null {
+  if (!center?.source) return null;
+  if (center.source === "place") return "Your Google Maps pin";
+  return center.label ? `Around ${center.label}` : "Around the chosen city or ZIP";
+}
+
+/**
+ * Header shared by the ranking pages: PageHeader v2 (TrendingUp, rankings tone), a one-line summary
+ * of the data with an "About this data" popover, the page's actions (Manage keywords, Refresh, Report)
+ * and a toolbar row (group filter, run picker, grid settings).
+ */
+export function RankingsPageHeader({
+  locationId,
+  title,
+  description,
+  run,
+  scope,
+  actions,
+  groupFilter = false,
+  keywordsLink = true,
+  icon = TrendingUp,
+  tone = "rankings",
+}: {
+  locationId: string;
+  /** @deprecated The rankings tab bar is gone (the sidebar navigates between ranking pages); ignored. */
+  view?: string;
+  title: string;
+  description: string;
+  run?: RunMeta | undefined;
+  /** What this page measured (`scope.description`), shown in "About this data". */
+  scope?: string | null | undefined;
+  /** Extra secondary actions, before the report button (e.g. "Manage competitors"). */
+  actions?: ReactNode;
+  /** Show the keyword-group filter (Rank Overview, Rank Tracker, grid). */
+  groupFilter?: boolean;
+  /** Show "Manage keywords" (default). */
+  keywordsLink?: boolean;
+  /** The page's module icon and tone (Competitors uses its own). */
+  icon?: LucideIcon;
+  tone?: ModuleTone;
+}) {
+  const [runId, setRunId] = useRunParam();
+  const { location } = useRankingsContext();
+  const canEdit = useCanEdit();
+  const around = shortCenter(run?.center?.source ? run.center : location.center);
+
+  return (
+    <>
+      <PageHeader
+        icon={icon}
+        tone={tone}
+        title={title}
+        description={description}
+        meta={
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
+            {run ? (
+              <span className="inline-flex items-center gap-1.5" title={formatRunDate(run.run_at, true)}>
+                <CalendarClock aria-hidden className="size-3.5" />
+                {runId ? "Run of" : "Updated"} {formatRunDate(run.run_at)}
+              </span>
+            ) : null}
+            {run?.status === "partial" ? (
+              <StatusBadge tone="warning" size="sm" icon={TriangleAlert}>
+                Partial run
+              </StatusBadge>
+            ) : null}
+            {run ? (
+              <span className="inline-flex items-center gap-1.5">
+                <Grid3x3 aria-hidden className="size-3.5" />
+                {run.config.grid_size}×{run.config.grid_size} grid
+              </span>
+            ) : null}
+            {around ? (
+              <span className="inline-flex items-center gap-1.5">
+                <MapPinned aria-hidden className="size-3.5" />
+                {around}
+                {location.center?.source ? <ChangeCenterButton locationId={locationId} label="Change center" className="h-auto p-0 text-xs" /> : null}
+              </span>
+            ) : null}
+            <AboutRankingData locationId={locationId} run={run} scope={scope} />
+          </div>
+        }
+        actions={
+          <>
+            {keywordsLink ? (
+              <Button asChild variant="outline">
+                <Link to={keywordsPath(locationId)}>
+                  {/* A read-only client user can look at the keywords but not change them. */}
+                  <Tags aria-hidden /> {canEdit ? "Manage keywords" : "See keywords"}
+                </Link>
+              </Button>
+            ) : null}
+            {actions}
+            <RefreshRankingsButton locationId={locationId} />
+            {/* The page's one filled action leads on phones, where the actions stack under the title. */}
+            {run && canEdit ? (
+              <span className="inline-flex max-sm:order-first">
+                <RankReportButton locationId={locationId} runId={run.run_id} runAt={run.run_at} />
+              </span>
+            ) : null}
+          </>
+        }
+      >
+        {groupFilter ? <GroupFilter locationId={locationId} /> : null}
+        <RunPicker locationId={locationId} runId={runId} onChange={setRunId} />
+        <GridSettingsButton locationId={locationId} />
+      </PageHeader>
+      <BackgroundActivity locationId={locationId} />
+    </>
+  );
 }

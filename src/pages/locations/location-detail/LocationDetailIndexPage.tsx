@@ -1,351 +1,87 @@
-import { Link, generatePath } from "react-router-dom";
-import { avgRankText } from "@/lib/rankings/format";
-import { formatDate as formatLocalDate, formatShortDate } from "@/lib/datetime";
-import type { ReactNode } from "react";
-import { AlertTriangle, ArrowLeft, ArrowRight, Building2, FileBarChart, ListChecks, RefreshCw, TrendingUp, Users } from "lucide-react";
-import { isApiError, type LocationOverview, type Unavailable } from "@/api";
-import { AppShell } from "@/components/layout/shared/app-shell";
-import { PageHeader, Panel, TrendIndicator } from "@/components/layout/shared/data-display";
-import { LocationHeader, LocationNavigation } from "@/components/location/location-workspace";
-import { locationSetupPath } from "@/lib/locations/location-actions";
-import { EmptyState, ErrorState, PageSkeleton } from "@/components/layout/shared/feedback/states";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import { CanEdit } from "@/components/mypageseo/can-edit";
-import { useGbpConnect } from "@/lib/gbp/use-gbp-connect";
-import { useLocationOverview } from "@/lib/locations/use-locations";
-import { useRequiredParams } from "@/hooks/use-required-params";
-import { centerDescription } from "@/lib/rankings/format";
-import { ChangeCenterButton } from "@/components/location/change-center-dialog";
+import { Gauge } from "lucide-react";
+import { PageHeader, SectionHeader } from "@/components/layout/shared/data-display";
+import { SectionError } from "@/components/layout/shared/feedback/states";
 import { BackgroundActivity } from "@/components/location/background-activity";
-import { FirstRunProgress } from "@/components/ranking/first-run-progress";
+import { ClientLinkCard } from "@/components/location/client-link-card";
+import { LocationHero } from "@/components/location/location-hero";
+import { LocationModuleTiles } from "@/components/location/location-modules";
+import { LocationStatusBanner } from "@/components/location/location-status-banner";
 import { ReportMenuButton } from "@/components/report/rank-report-button";
+import { FirstRunProgress } from "@/components/ranking/first-run-progress";
+import { useLocationRoute } from "@/lib/locations/location-route-context";
+import { isBlockingStatus } from "@/lib/locations/location-status";
+import { useLocationOverview } from "@/lib/locations/use-locations";
 import { REPORT_CREATE_ERRORS } from "@/lib/reports/report-meta";
-import { citationsUnavailableText, coverageText } from "@/lib/citations/citations";
+import { useWhiteLabelAudience } from "@/pages/white-label/white-label-audience";
 
-const description =
-  "Everything tracked for this location: rankings, Google Business Profile health, citations, competitors and reports.";
-
-const modules: { label: string; to: string; icon: typeof TrendingUp; summary: string }[] = [
-  { label: "Rankings", to: "/locations/:locationId/rankings", icon: TrendingUp, summary: "Keyword positions, keyword groups, map rankings and the local search grid." },
-  { label: "GBP", to: "/locations/:locationId/gbp", icon: Building2, summary: "Profile performance, search terms, the GBP Score and competitor comparison." },
-  { label: "Citations", to: "/locations/:locationId/citations", icon: ListChecks, summary: "Directory listings, NAP consistency, duplicates and missing listings." },
-  { label: "Competitors", to: "/locations/:locationId/competitors", icon: Users, summary: "Local competitors tracked against this location." },
-  { label: "Reports", to: "/locations/:locationId/reports", icon: FileBarChart, summary: "Reports generated or scheduled for this location." },
-];
-
-/** Copy for a section's `{ available: false, reason }`. */
-const UNAVAILABLE_COPY: Record<string, string> = {
-  no_keywords: "No keywords yet.",
-  no_ranking_data: "No ranking run has finished yet.",
-  gbp_not_connected: "Google Business Profile isn't connected.",
-  no_report: "No report yet; it's generated after the first sync.",
-  no_competitors: "No competitors tracked.",
-  v4_access_pending: "Waiting for Google to grant review access.",
-};
-
-function unavailableText(section: Unavailable) {
-  return UNAVAILABLE_COPY[section.reason] ?? "Not available yet.";
-}
-
+/**
+ * A location's overview: the hub of everything for it (there is no tab bar). Who the location is
+ * (hero), what blocks it (status banner), what's running, its client link (agencies), then one
+ * tile per section with its key number, each opening that section.
+ *
+ * The header comes from the location layout at once; the summaries (`GET locations/:id/overview`,
+ * started by the route loader) fill the tiles in.
+ */
 function LocationOverviewPage() {
-  const { locationId } = useRequiredParams("locationId");
-  const overview = useLocationOverview(locationId);
-
-  if (overview.isPending) {
-    return (
-      <AppShell>
-        <PageSkeleton />
-      </AppShell>
-    );
-  }
-
-  if (overview.isError) {
-    const notFound = isApiError(overview.error) && overview.error.status === 404;
-    return (
-      <AppShell>
-        {notFound ? (
-          <EmptyState
-            title="Location not found"
-            description="This location isn't available. Choose one from your locations list."
-            action={
-              <Button asChild variant="outline">
-                <Link to="/locations"><ArrowLeft aria-hidden /> Back to locations</Link>
-              </Button>
-            }
-          />
-        ) : (
-          <ErrorState description="We couldn't load this location. Try again without leaving this page." onRetry={() => void overview.refetch()} />
-        )}
-      </AppShell>
-    );
-  }
-
+  const { location } = useLocationRoute();
+  const overview = useLocationOverview(location.location_id);
+  const { whiteLabel } = useWhiteLabelAudience();
   const data = overview.data;
-  const reviews = data.reviews.available ? data.reviews : null;
+  // The newest of the two: the overview carries the same header fields plus the summaries.
+  const header = data ?? location;
+  const firstRun = data && !data.rankings.available && data.rankings.reason === "no_ranking_data";
 
   return (
-    <AppShell>
-      <LocationHeader
-        location={{
-          id: data.location_id,
-          ...(data.client ? { clientId: data.client.client_id } : {}),
-          businessName: data.name,
-          area: [data.city, data.state, data.country].filter(Boolean).join(", "),
-          ...(reviews?.rating != null ? { rating: reviews.rating } : {}),
-          ...(reviews?.count != null ? { reviewCount: reviews.count } : {}),
-        }}
-      />
-      <LocationNavigation locationId={data.location_id} activeSection="overview" />
+    <>
       <PageHeader
-        title="Location Overview"
-        description={description}
+        icon={Gauge}
+        tone="locations"
+        title="Overview"
+        // The hero right below names the location, so the eyebrow would only repeat it.
+        showLocation={false}
+        description="Everything about this location at a glance. Open a section to see more and act on it."
         actions={
           <ReportMenuButton
-            locationId={data.location_id}
-            unavailable={data.citations?.available === false && data.citations.reason === "no_citations_yet" ? { citation: REPORT_CREATE_ERRORS.no_citations_yet! } : undefined}
+            // One filled button per page: while the status banner offers its fix, that's the primary action.
+            variant={isBlockingStatus(header.status) ? "outline" : "default"}
+            locationId={location.location_id}
+            unavailable={
+              data?.citations?.available === false && data.citations.reason === "no_citations_yet"
+                ? { citation: REPORT_CREATE_ERRORS.no_citations_yet! }
+                : undefined
+            }
           />
-        }
-        meta={
-          centerDescription(data.center) ? (
-            <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-              {centerDescription(data.center)} — rankings are measured from here.
-              <ChangeCenterButton locationId={data.location_id} />
-            </p>
-          ) : undefined
         }
       />
 
-      <StatusBanner location={data} />
-      {/* Before the first finished run: how long until the first data (otherwise the usual activity line). */}
-      {!data.rankings.available && data.rankings.reason === "no_ranking_data" ? (
-        <FirstRunProgress locationId={data.location_id} className="mb-6" fallback={<BackgroundActivity locationId={data.location_id} className="mb-6" />} />
+      <LocationStatusBanner location={header} />
+
+      {/* Before the first finished check: how long until the first data; otherwise what's running. */}
+      {firstRun ? (
+        <FirstRunProgress locationId={location.location_id} fallback={<BackgroundActivity locationId={location.location_id} />} />
       ) : (
-        <BackgroundActivity locationId={data.location_id} className="mb-6" />
+        <BackgroundActivity locationId={location.location_id} />
       )}
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <RankingsSummary data={data} />
-        <GbpSummary data={data} />
-        <PerformanceSummary data={data} />
-        <ReviewsSummary data={data} />
-        <CompetitorsSummary data={data} />
-        <CitationsSummary data={data} />
+      <div className="grid gap-6 xl:grid-cols-3">
+        <LocationHero location={header} overview={data} className={whiteLabel ? "xl:col-span-2" : "xl:col-span-3"} />
+        {whiteLabel ? <ClientLinkCard locationId={location.location_id} /> : null}
       </div>
-      {data.attribution ? (
-        <p className="-mt-4 mb-6 text-[11px] text-muted-foreground">Ratings, reviews and competitor names: {data.attribution.text}</p>
-      ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {modules.map((module) => {
-          const Icon = module.icon;
-          return (
-            <Link
-              key={module.label}
-              to={generatePath(module.to, { locationId: data.location_id })}
-              className="group rounded-lg border border-border bg-surface p-4 transition-colors hover:border-primary/40 hover:bg-secondary/40"
-            >
-              <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                <Icon className="size-4 text-brand-soft" aria-hidden />
-                {module.label}
-                <ArrowRight className="ml-auto size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden />
-              </span>
-              <p className="mt-2 text-sm text-muted-foreground">{module.summary}</p>
-            </Link>
-          );
-        })}
-      </div>
-    </AppShell>
-  );
-}
-
-function StatusBanner({ location }: { location: LocationOverview }) {
-  const { connect } = useGbpConnect();
-  if (location.status === "setup_required") {
-    return (
-      <Alert className="mb-6">
-        <ListChecks aria-hidden />
-        <AlertTitle>Setup isn't finished</AlertTitle>
-        <AlertDescription>
-          <p>Add keywords and competitors to start tracking this location.</p>
-          <CanEdit>
-            <Button asChild size="sm" className="mt-3">
-              <Link to={locationSetupPath(location.location_id)}>Continue setup</Link>
-            </Button>
-          </CanEdit>
-        </AlertDescription>
-      </Alert>
-    );
-  }
-  if (location.status === "gbp_disconnected") {
-    return (
-      <Alert className="mb-6 border-warning/40 bg-warning-surface/40">
-        <AlertTriangle aria-hidden />
-        <AlertTitle>Google Business Profile disconnected</AlertTitle>
-        <AlertDescription>
-          <p>
-            This location's profile was unbound{location.gbp_disconnected_at ? ` on ${formatLocalDate(location.gbp_disconnected_at)}` : ""}.
-            Rankings keep working, but profile data, reviews and posts no longer update.
-          </p>
-          <CanEdit>
-            <Button size="sm" className="mt-3" onClick={() => connect()}>
-              <RefreshCw aria-hidden /> Connect GBP again
-            </Button>
-          </CanEdit>
-        </AlertDescription>
-      </Alert>
-    );
-  }
-  if (location.status === "reconnect_required") {
-    return (
-      <Alert className="mb-6 border-critical/25 bg-critical-surface/40">
-        <AlertTriangle aria-hidden />
-        <AlertTitle>Google access needs to be restored</AlertTitle>
-        <AlertDescription>
-          <p>Google refused the stored access for this location's account, so profile data has stopped syncing.</p>
-          <CanEdit>
-            <Button size="sm" className="mt-3" onClick={() => connect()}>
-              <RefreshCw aria-hidden /> Reconnect Google
-            </Button>
-          </CanEdit>
-        </AlertDescription>
-      </Alert>
-    );
-  }
-  return null;
-}
-
-function Summary({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <Panel title={title}>
-      <div className="min-h-16 space-y-1">{children}</div>
-    </Panel>
-  );
-}
-
-const Muted = ({ children }: { children: ReactNode }) => <p className="text-sm text-muted-foreground">{children}</p>;
-const Big = ({ children }: { children: ReactNode }) => <p className="text-2xl font-semibold tabular text-foreground">{children}</p>;
-
-function formatDate(iso: string | null | undefined) {
-  if (!iso) return null;
-  return formatShortDate(iso, "") || null;
-}
-
-function percent(change: number | null) {
-  return change == null ? null : `${Math.abs(change * 100).toFixed(1)}%`;
-}
-
-function RankingsSummary({ data }: { data: LocationOverview }) {
-  const section = data.rankings;
-  if (!section.available) return <Summary title="Average rank"><Muted>{unavailableText(section)}</Muted></Summary>;
-  const change = section.change;
-  return (
-    <Summary title="Average rank">
-      <Big>{avgRankText(section.overall_avg_rank, section.overall_status, section.overall_display)}</Big>
-      {change != null ? (
-        // `change` is previous − current: positive means improved.
-        <TrendIndicator direction={change > 0 ? "up" : change < 0 ? "down" : "flat"} value={Math.abs(change).toFixed(1)} positive={change > 0} />
-      ) : null}
-      <Muted>
-        {section.keywords} keyword{section.keywords === 1 ? "" : "s"}
-        {formatDate(section.run_at) ? ` · last run ${formatDate(section.run_at)}` : ""}
-      </Muted>
-    </Summary>
-  );
-}
-
-function GbpSummary({ data }: { data: LocationOverview }) {
-  const section = data.gbp;
-  if (!section.available) return <Summary title="GBP score"><Muted>{unavailableText(section)}</Muted></Summary>;
-  return (
-    <Summary title="GBP score">
-      <Big>
-        {section.score == null ? "—" : section.score}
-        {section.grade ? <span className="ml-2 text-base font-medium text-muted-foreground">{section.grade}</span> : null}
-      </Big>
-      {section.partial ? <Muted>Some pillars aren't scored yet.</Muted> : null}
-      {section.top_fixes.length > 0 ? <Muted>Top fix: {section.top_fixes[0]!.label}</Muted> : null}
-    </Summary>
-  );
-}
-
-function PerformanceSummary({ data }: { data: LocationOverview }) {
-  const section = data.performance;
-  if (!section.available) return <Summary title="Profile performance"><Muted>{unavailableText(section)}</Muted></Summary>;
-  const impressionsChange = percent(section.impressions_change);
-  return (
-    <Summary title={`Profile performance (${section.range})`}>
-      <Big>{section.impressions == null ? "—" : section.impressions.toLocaleString()}</Big>
-      <Muted>
-        impressions{impressionsChange ? ` (${(section.impressions_change ?? 0) >= 0 ? "+" : "−"}${impressionsChange})` : ""}
-      </Muted>
-      <Muted>{section.actions == null ? "—" : section.actions.toLocaleString()} actions (calls, website, directions)</Muted>
-    </Summary>
-  );
-}
-
-function ReviewsSummary({ data }: { data: LocationOverview }) {
-  const section = data.reviews;
-  if (!section.available) return <Summary title="Reviews"><Muted>{unavailableText(section)}</Muted></Summary>;
-  return (
-    <Summary title="Reviews">
-      <Big>{section.rating == null ? "—" : section.rating.toFixed(1)}</Big>
-      <Muted>
-        {section.count == null ? "—" : section.count.toLocaleString()} reviews
-        {section.unreplied != null ? ` · ${section.unreplied} unreplied` : ""}
-      </Muted>
-    </Summary>
-  );
-}
-
-function CompetitorsSummary({ data }: { data: LocationOverview }) {
-  const section = data.competitors;
-  if (!section.available) return <Summary title="Competitors"><Muted>{unavailableText(section)}</Muted></Summary>;
-  return (
-    <Summary title="Competitors">
-      <Big>{section.public_score == null ? "—" : section.public_score}</Big>
-      <Muted>your public score · {section.tracked} tracked, {section.compared} compared</Muted>
-      {section.best_competitor ? (
-        <Muted>
-          Strongest: {section.best_competitor.name}
-          {section.best_competitor.public_score != null ? ` (${section.best_competitor.public_score})` : ""}
-        </Muted>
-      ) : null}
-    </Summary>
-  );
-}
-
-function CitationsSummary({ data }: { data: LocationOverview }) {
-  const section = data.citations;
-  const link = (
-    <Link to={`/locations/${data.location_id}/citations`} className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
-      Open citations <ArrowRight className="size-3.5" aria-hidden />
-    </Link>
-  );
-  if (!section) return null;
-  if (!section.available) {
-    return (
-      <Summary title="Citation Health">
-        <Muted>{citationsUnavailableText(section.reason)}</Muted>
-        {section.reason === "not_checked_yet" ? link : null}
-      </Summary>
-    );
-  }
-  const change = section.score_change;
-  return (
-    <Summary title="Citation Health">
-      <Big>
-        {section.score == null ? "—" : section.score}
-        {section.grade ? <span className="ml-2 text-base font-medium text-muted-foreground">{section.grade}</span> : null}
-      </Big>
-      {change ? <TrendIndicator direction={change > 0 ? "up" : "down"} value={`${Math.abs(change)} pts`} positive={change > 0} /> : null}
-      <Muted>
-        {coverageText(section.coverage, section.listings)}
-        {section.counts.nap_wrong > 0 ? ` · ${section.counts.nap_wrong} wrong NAP` : ""}
-        {section.counts.not_found > 0 ? ` · ${section.counts.not_found} not listed` : ""}
-      </Muted>
-      {link}
-    </Summary>
+      <section aria-label="Sections">
+        <SectionHeader title="Sections" description="Each one opens the full page, with everything you can do there." />
+        {overview.isError && !data ? (
+          <SectionError
+            title="The summaries couldn't be loaded"
+            description="The sections still open from the sidebar. Try loading the summaries again."
+            onRetry={() => void overview.refetch()}
+          />
+        ) : (
+          <LocationModuleTiles location={header} overview={data} loading={overview.isPending} />
+        )}
+        {data?.attribution ? <p className="mt-3 text-xs text-muted-foreground">Ratings, reviews and competitor names: {data.attribution.text}</p> : null}
+      </section>
+    </>
   );
 }
 

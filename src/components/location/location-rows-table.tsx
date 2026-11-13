@@ -1,37 +1,30 @@
-import { ExternalLink, Link2Off, ListChecks, MapPin, RefreshCw, Star, Tag, Trash2 } from "lucide-react";
-import { avgRankText } from "@/lib/rankings/format";
-import { cn } from "@/lib/utils";
-import { formatDate as formatLocalDate } from "@/lib/datetime";
+import type { ReactNode } from "react";
+import { Link } from "react-router-dom";
+import { ArrowRight, ExternalLink, Link2, Link2Off, ListTodo, RefreshCw, Star, Tag, Trash2 } from "lucide-react";
 import type { LocationRow, LocationSortField, LocationStatus } from "@/api";
 import { DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import {
-  MobileField,
-  MobileListRow,
   RowActions,
   SortableTh,
   TableBody,
-  TableCard,
   TableHead,
   TablePagination,
-  TableRow,
   TableScroll,
   Th,
   tdClass,
+  tdNumberClass,
   type SortOrder,
 } from "@/components/layout/shared/data-table";
-import { StatusBadge, TrendIndicator } from "@/components/layout/shared/data-display";
+import { LocationAvatar, LocationStatusBadge, RankFigure, ScoreChip } from "@/components/location/location-badges";
+import { useNow } from "@/hooks/use-now";
+import { avgRankText } from "@/lib/rankings/format";
+import { formatDate, formatRelative } from "@/lib/datetime";
+import { locationPath } from "@/lib/mypageseo/section-links";
+import { cn } from "@/lib/utils";
 
-const statusMeta: Record<LocationStatus, { label: string; tone: "success" | "warning" | "critical" | "neutral" }> = {
-  active: { label: "Active", tone: "success" },
-  setup_required: { label: "Setup required", tone: "warning" },
-  gbp_not_connected: { label: "No GBP", tone: "neutral" },
-  gbp_disconnected: { label: "GBP disconnected", tone: "warning" },
-  reconnect_required: { label: "Reconnect Google", tone: "critical" },
-};
-
+/** Kept for older imports: the status badge of a locations row. */
 export function LocationRowStatusBadge({ status }: { status: LocationStatus }) {
-  const meta = statusMeta[status] ?? { label: status, tone: "neutral" as const };
-  return <StatusBadge tone={meta.tone}>{meta.label}</StatusBadge>;
+  return <LocationStatusBadge status={status} />;
 }
 
 /** Write actions are left out for a read-only client_user, which hides their menu items. */
@@ -45,7 +38,101 @@ export type LocationRowActions = {
   onSetClient?: ((location: LocationRow) => void) | undefined;
 };
 
-/** The locations table over `GET locations` rows. Sorting and paging happen on the server. */
+// The ::after pads the small text button out to a finger-sized target without moving the layout.
+const INLINE_ACTION =
+  "relative z-10 inline-flex cursor-pointer items-center gap-1 rounded-sm text-xs font-semibold text-primary underline-offset-4 outline-hidden after:absolute after:-inset-x-1.5 after:-inset-y-2.5 after:content-[''] hover:text-primary-hover hover:underline focus-visible:ring-2 focus-visible:ring-ring";
+
+/** "Toronto, Canada" (and the client for agencies). */
+function placeLine(location: LocationRow, agency: boolean): string {
+  const place = [location.city, location.country].filter(Boolean).join(", ") || "No address";
+  return agency && location.client ? `${place} · ${location.client.name}` : place;
+}
+
+/** The one fix a status needs, right next to it (setup, reconnect). */
+function StatusFix({ location, actions }: { location: LocationRow; actions: LocationRowActions }) {
+  const stop = (event: { stopPropagation: () => void }) => event.stopPropagation();
+  if (location.status === "setup_required" && actions.onContinueSetup) {
+    return (
+      <button
+        type="button"
+        className={INLINE_ACTION}
+        onClick={(event) => {
+          stop(event);
+          actions.onContinueSetup?.(location);
+        }}
+      >
+        Continue setup <ArrowRight aria-hidden className="size-3.5" />
+      </button>
+    );
+  }
+  if ((location.status === "reconnect_required" || location.status === "gbp_disconnected") && actions.onReconnect) {
+    return (
+      <button
+        type="button"
+        className={INLINE_ACTION}
+        onClick={(event) => {
+          stop(event);
+          actions.onReconnect?.(location);
+        }}
+      >
+        <Link2 aria-hidden className="size-3.5" /> {location.status === "reconnect_required" ? "Reconnect" : "Connect again"}
+      </button>
+    );
+  }
+  return null;
+}
+
+function Reviews({ location }: { location: LocationRow }) {
+  const rating = location.reviews?.rating;
+  if (rating == null) return <span className="text-sm text-muted-foreground">—</span>;
+  const count = location.reviews?.count;
+  return (
+    <span className="inline-flex items-center gap-1 whitespace-nowrap text-sm text-foreground">
+      <Star className="size-3.5 fill-warning-bright text-warning" aria-hidden />
+      <span className="font-semibold tabular-nums">{rating.toFixed(1)}</span>
+      {count != null ? <span className="text-xs tabular-nums text-muted-foreground">({count.toLocaleString()})</span> : null}
+    </span>
+  );
+}
+
+function Citations({ location, align = "end" }: { location: LocationRow; align?: "start" | "end" }) {
+  const citations = location.citations;
+  if (citations?.score == null) return <span className="text-sm text-muted-foreground">—</span>;
+  return (
+    <span className={cn("inline-flex flex-col", align === "end" ? "items-end" : "items-start")}>
+      <ScoreChip score={citations.score} grade={citations.grade} label="Citation score" />
+      {citations.nap_wrong > 0 ? <span className="text-xs text-warning-foreground">{citations.nap_wrong} with wrong details</span> : null}
+    </span>
+  );
+}
+
+function Rank({ location }: { location: LocationRow }) {
+  if (!location.rank || (location.rank.overall_avg_rank == null && !location.rank.status)) return <span className="text-sm text-muted-foreground">—</span>;
+  return <RankFigure text={avgRankText(location.rank.overall_avg_rank, location.rank.status, location.rank.display)} change={location.rank.change} />;
+}
+
+function Refreshed({ iso, now }: { iso: string | null; now: number }) {
+  if (!iso) return <span className="text-sm text-muted-foreground">Not yet</span>;
+  return (
+    <time dateTime={iso} title={formatDate(iso)} className="whitespace-nowrap text-sm text-muted-foreground">
+      {formatRelative(iso, now)}
+    </time>
+  );
+}
+
+function MobileMetric({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <span className="min-w-0">
+      <span className="block text-xs text-muted-foreground">{label}</span>
+      <span className="mt-0.5 block">{children}</span>
+    </span>
+  );
+}
+
+/**
+ * The locations table over `GET locations` rows. Sorting and paging happen on the server; a row
+ * opens the location's overview. Below `md` the rows become cards (no sideways scrolling).
+ */
 export function LocationRowsTable({
   locations,
   agency,
@@ -59,6 +146,8 @@ export function LocationRowsTable({
   onSort,
   onPageChange,
   actions,
+  toolbar,
+  empty,
 }: {
   locations: LocationRow[];
   agency: boolean;
@@ -72,175 +161,129 @@ export function LocationRowsTable({
   onSort: (sort: LocationSortField) => void;
   onPageChange: (page: number) => void;
   actions: LocationRowActions;
+  /** Search and filters, drawn inside the card above the rows. */
+  toolbar?: ReactNode;
+  /**
+   * Shown under the toolbar instead of the rows when `locations` is empty (no search results). The
+   * toolbar stays the same element, so the search box keeps focus while the results come and go.
+   */
+  empty?: ReactNode;
 }) {
+  const now = useNow();
+  if (locations.length === 0 && empty) {
+    return (
+      <div className="min-w-0 overflow-hidden rounded-xl border border-border bg-card shadow-card">
+        {toolbar}
+        {empty}
+      </div>
+    );
+  }
   return (
-    <TableCard>
+    <div className="min-w-0 overflow-hidden rounded-xl border border-border bg-card shadow-card">
+      {toolbar}
       <div className="hidden md:block">
-        <TableScroll minWidth={1080} label="Locations">
+        <TableScroll minWidth={960} label="Locations">
           <TableHead>
-            <SortableTh label="Location" value="name" active={sort} order={order} onSort={onSort} className="min-w-[240px]" />
-            <SortableTh label="City" value="city" active={sort} order={order} onSort={onSort} />
-            {agency ? <Th className="min-w-[140px]">Client</Th> : null}
-            <SortableTh label="Avg. rank" value="rank" active={sort} order={order} onSort={onSort} />
-            <SortableTh label="GBP score" value="gbp_score" active={sort} order={order} onSort={onSort} />
-            <SortableTh label="Reviews" value="rating" active={sort} order={order} onSort={onSort} />
-            <SortableTh label="Citations" value="citation_score" active={sort} order={order} onSort={onSort} />
+            <SortableTh label="Location" value="name" active={sort} order={order} onSort={onSort} className="min-w-[260px]" />
             <Th>Status</Th>
-            <SortableTh label="Last refreshed" value="last_refreshed" active={sort} order={order} onSort={onSort} />
+            <SortableTh label="Avg. rank" value="rank" active={sort} order={order} onSort={onSort} align="right" />
+            <SortableTh label="Profile score" value="gbp_score" active={sort} order={order} onSort={onSort} align="right" />
+            <SortableTh label="Reviews" value="rating" active={sort} order={order} onSort={onSort} align="right" />
+            <SortableTh label="Citations" value="citation_score" active={sort} order={order} onSort={onSort} align="right" />
+            <SortableTh label="Refreshed" value="last_refreshed" active={sort} order={order} onSort={onSort} align="right" />
             <Th className="w-12" srOnly>
               Actions
             </Th>
           </TableHead>
           <TableBody>
             {locations.map((location) => (
-              <TableRow key={location.location_id}>
+              <tr key={location.location_id} onClick={() => actions.onOpen(location)} className="group cursor-pointer transition-colors hover:bg-accent/60">
                 <td className={tdClass}>
-                  <button type="button" onClick={() => actions.onOpen(location)} className="group text-left">
-                    <span className="flex items-center gap-2 text-sm font-semibold text-foreground group-hover:text-primary">
-                      <MapPin className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-                      {location.name}
+                  <span className="flex min-w-0 items-center gap-3">
+                    <LocationAvatar name={location.name} />
+                    <span className="min-w-0">
+                      <Link
+                        to={locationPath(location.location_id)}
+                        onClick={(event) => event.stopPropagation()}
+                        className="block truncate rounded-sm font-semibold text-foreground outline-hidden group-hover:text-primary focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        {location.name}
+                      </Link>
+                      <span className="mt-0.5 block truncate text-xs text-muted-foreground">{placeLine(location, agency)}</span>
                     </span>
-                    <span className="mt-1 block pl-5.5 text-xs text-muted-foreground">
-                      {location.source === "gbp" ? "Google Business Profile" : "Added from Places search"}
-                    </span>
-                  </button>
+                  </span>
                 </td>
-                <td className={tdClass}>{placeLabel(location)}</td>
-                {agency ? <td className={tdClass}>{location.client?.name ?? "—"}</td> : null}
-                <td className={tdClass}><RankCell location={location} /></td>
-                <td className={tdClass}><GbpScoreCell location={location} /></td>
-                <td className={tdClass}><ReviewsCell location={location} /></td>
-                <td className={tdClass}><CitationsCell location={location} /></td>
-                <td className={tdClass}><LocationRowStatusBadge status={location.status} /></td>
-                <td className={tdClass}><span className="text-sm text-muted-foreground">{formatDate(location.last_refreshed_at)}</span></td>
-                <td className="px-2 py-3.5"><RowMenu location={location} agency={agency} actions={actions} /></td>
-              </TableRow>
+                <td className={tdClass}>
+                  <span className="flex flex-col items-start gap-1">
+                    <LocationStatusBadge status={location.status} size="sm" />
+                    <StatusFix location={location} actions={actions} />
+                  </span>
+                </td>
+                <td className={tdNumberClass}>
+                  <Rank location={location} />
+                </td>
+                <td className={tdNumberClass}>
+                  <ScoreChip score={location.gbp?.score} grade={location.gbp?.grade} label="Profile score" />
+                </td>
+                <td className={tdNumberClass}>
+                  <Reviews location={location} />
+                </td>
+                <td className={tdNumberClass}>
+                  <Citations location={location} />
+                </td>
+                <td className={tdNumberClass}>
+                  <Refreshed iso={location.last_refreshed_at} now={now} />
+                </td>
+                <td className="px-2 py-3 text-right" onClick={(event) => event.stopPropagation()}>
+                  <RowMenu location={location} agency={agency} actions={actions} />
+                </td>
+              </tr>
             ))}
           </TableBody>
         </TableScroll>
       </div>
 
-      <div className="divide-y divide-border md:hidden">
+      <ul className="divide-y divide-border md:hidden">
         {locations.map((location) => (
-          <MobileListRow key={location.location_id}>
-            <div className="flex items-start justify-between gap-3">
-              <button type="button" onClick={() => actions.onOpen(location)} className="min-w-0 text-left">
-                <span className="block truncate text-sm font-semibold text-foreground">{location.name}</span>
-                <span className="mt-1 block text-xs text-muted-foreground">
-                  {placeLabel(location)}
-                  {agency && location.client ? ` · ${location.client.name}` : ""}
+          <li key={location.location_id} className="px-4 py-3.5">
+            <div className="flex items-start gap-3">
+              <Link to={locationPath(location.location_id)} className="group flex min-w-0 flex-1 items-start gap-3 rounded-lg outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
+                <LocationAvatar name={location.name} />
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-semibold text-foreground group-hover:text-primary">{location.name}</span>
+                  <span className="mt-0.5 block truncate text-xs text-muted-foreground">{placeLine(location, agency)}</span>
                 </span>
-              </button>
+              </Link>
               <RowMenu location={location} agency={agency} actions={actions} />
             </div>
-            <div className="mt-3 grid grid-cols-3 gap-3 border-y border-border py-3">
-              <MobileField label="Avg. rank" value={rankText(location)} />
-              <MobileField label="GBP score" value={location.gbp?.score == null ? "—" : `${location.gbp.score}${location.gbp.grade ? ` (${location.gbp.grade})` : ""}`} />
-              <MobileField label="Citations" value={<CitationsCell location={location} />} />
+            <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+              <LocationStatusBadge status={location.status} size="sm" />
+              <StatusFix location={location} actions={actions} />
             </div>
-            <div className="mt-3 flex items-center justify-between gap-3">
-              <ReviewsCell location={location} />
-              <span className="text-xs text-muted-foreground">Refreshed {formatDate(location.last_refreshed_at)}</span>
-              <LocationRowStatusBadge status={location.status} />
+            <div className="mt-3 grid grid-cols-3 gap-3 rounded-lg bg-surface-strong px-3 py-2.5">
+              <MobileMetric label="Avg. rank">
+                <Rank location={location} />
+              </MobileMetric>
+              <MobileMetric label="Profile">
+                <ScoreChip score={location.gbp?.score} grade={location.gbp?.grade} label="Profile score" />
+              </MobileMetric>
+              <MobileMetric label="Citations">
+                <Citations location={location} align="start" />
+              </MobileMetric>
             </div>
-          </MobileListRow>
+            <div className="mt-2.5 flex items-center justify-between gap-3">
+              <Reviews location={location} />
+              <span className="text-xs text-muted-foreground">
+                Refreshed <Refreshed iso={location.last_refreshed_at} now={now} />
+              </span>
+            </div>
+          </li>
         ))}
-      </div>
+      </ul>
 
-      {attribution ? (
-        <p className="border-t border-border px-4 py-2 text-[11px] text-muted-foreground">
-          Business names, ratings and reviews: {attribution}
-        </p>
-      ) : null}
-      <TablePagination
-        page={page}
-        pageCount={pageCount}
-        totalItems={total}
-        pageSize={pageSize}
-        onPageChange={onPageChange}
-        itemLabel="locations"
-      />
-    </TableCard>
-  );
-}
-
-function placeLabel(location: LocationRow) {
-  return [location.city, location.country].filter(Boolean).join(", ") || "—";
-}
-
-function formatDate(iso: string | null) {
-  if (!iso) return "—";
-  return formatLocalDate(iso);
-}
-
-const dash = <span className="text-sm text-muted-foreground">—</span>;
-
-/** "12.4", "60+" (not in the top 60) or "No data" (searches failed); "—" before the first run. */
-function rankText(location: LocationRow): string {
-  return avgRankText(location.rank?.overall_avg_rank, location.rank?.status, location.rank?.display);
-}
-
-function RankCell({ location }: { location: LocationRow }) {
-  if (!location.rank || (location.rank.overall_avg_rank == null && !location.rank.status)) return dash;
-  const change = location.rank.change;
-  return (
-    <div>
-      <span
-        className={cn("text-sm font-semibold", location.rank.status === "no_data" ? "text-muted-foreground" : "text-foreground")}
-        title="Average over the 5 tracking points, all keywords"
-      >
-        {rankText(location)}
-      </span>
-      {change != null ? (
-        // `change` is previous − current: positive means the rank improved.
-        <TrendIndicator
-          direction={change > 0 ? "up" : change < 0 ? "down" : "flat"}
-          value={Math.abs(change).toFixed(1)}
-          positive={change > 0}
-          className="mt-0.5 block"
-        />
-      ) : null}
+      {attribution ? <p className="border-t border-border px-4 py-2 text-xs text-muted-foreground">Business names, ratings and reviews: {attribution}</p> : null}
+      <TablePagination page={page} pageCount={pageCount} totalItems={total} pageSize={pageSize} onPageChange={onPageChange} itemLabel="locations" />
     </div>
-  );
-}
-
-function GbpScoreCell({ location }: { location: LocationRow }) {
-  if (location.gbp?.score == null) return dash;
-  return (
-    <span className="text-sm font-medium text-foreground">
-      {location.gbp.score}
-      <span className="text-xs font-normal text-muted-foreground">/100</span>
-      {location.gbp.grade ? <span className="ml-1.5 text-xs text-muted-foreground">{location.gbp.grade}</span> : null}
-      {location.gbp.partial ? <span className="ml-1 text-xs text-muted-foreground" title="Some pillars aren't scored yet">*</span> : null}
-    </span>
-  );
-}
-
-function ReviewsCell({ location }: { location: LocationRow }) {
-  const rating = location.reviews?.rating;
-  if (rating == null) return dash;
-  const count = location.reviews?.count;
-  return (
-    <span className="inline-flex items-center gap-1 text-sm text-foreground">
-      <Star className="size-3.5 fill-warning text-warning" aria-hidden />
-      <span className="font-medium">{rating.toFixed(1)}</span>
-      {count != null ? <span className="text-xs text-muted-foreground">({count.toLocaleString()})</span> : null}
-    </span>
-  );
-}
-
-function CitationsCell({ location }: { location: LocationRow }) {
-  const citations = location.citations;
-  if (citations?.score == null) return dash;
-  return (
-    <span className="text-sm font-medium text-foreground">
-      {citations.score}
-      <span className="text-xs font-normal text-muted-foreground">/100</span>
-      {citations.grade ? <span className="ml-1.5 text-xs text-muted-foreground">{citations.grade}</span> : null}
-      {citations.nap_wrong > 0 ? (
-        <span className="mt-0.5 block text-xs font-normal text-warning-foreground">{citations.nap_wrong} wrong NAP</span>
-      ) : null}
-    </span>
   );
 }
 
@@ -252,12 +295,12 @@ function RowMenu({ location, agency, actions }: { location: LocationRow; agency:
       </DropdownMenuItem>
       {location.status === "setup_required" && actions.onContinueSetup ? (
         <DropdownMenuItem onSelect={() => actions.onContinueSetup?.(location)}>
-          <ListChecks aria-hidden /> Continue setup
+          <ListTodo aria-hidden /> Continue setup
         </DropdownMenuItem>
       ) : null}
       {location.status === "gbp_disconnected" && actions.onReconnect ? (
         <DropdownMenuItem onSelect={() => actions.onReconnect?.(location)}>
-          <RefreshCw aria-hidden /> Connect GBP again
+          <RefreshCw aria-hidden /> Connect Google again
         </DropdownMenuItem>
       ) : null}
       {location.status === "reconnect_required" && actions.onReconnect ? (
@@ -272,7 +315,7 @@ function RowMenu({ location, agency, actions }: { location: LocationRow; agency:
       ) : null}
       {location.gbp_connected && actions.onUnbind ? (
         <DropdownMenuItem onSelect={() => actions.onUnbind?.(location)}>
-          <Link2Off aria-hidden /> Unbind GBP
+          <Link2Off aria-hidden /> Disconnect Google profile
         </DropdownMenuItem>
       ) : null}
       {actions.onDelete ? (

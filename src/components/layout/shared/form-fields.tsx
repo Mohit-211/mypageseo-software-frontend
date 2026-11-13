@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
-import { AlertCircle, CheckCircle2, Info, Loader2, Save } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { AlertCircle, AlertTriangle, CheckCircle2, Info, Loader2, Save } from "lucide-react";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -24,7 +24,7 @@ import {
 import { cn } from "@/lib/utils";
 
 /**
- * Canonical Mypageseo form primitives.
+ * Canonical MyPageSEO form primitives.
  *
  * Every application form (settings, team, reports, automations, clients,
  * white-label, onboarding) composes these so labels, required markers,
@@ -109,7 +109,7 @@ export function FormField({
 }) {
   return (
     <div className={className}>
-      <Label htmlFor={htmlFor} className="text-[13px] font-medium text-foreground">
+      <Label htmlFor={htmlFor} className="text-sm font-medium leading-5 text-foreground">
         {label}
         {required ? (
           <span className="ml-0.5 text-critical" aria-hidden>
@@ -295,7 +295,7 @@ export function FormSelectField({
 /* Form-level messages                                                        */
 /* -------------------------------------------------------------------------- */
 
-export type FormAlertTone = "critical" | "info" | "success";
+export type FormAlertTone = "critical" | "warning" | "info" | "success";
 
 /**
  * Form-level message: a failed submission, a surfaced backend error, or an
@@ -312,15 +312,16 @@ export function FormAlert({
   children: ReactNode;
   className?: string;
 }) {
-  const Icon = tone === "success" ? CheckCircle2 : tone === "info" ? Info : AlertCircle;
+  const Icon = tone === "success" ? CheckCircle2 : tone === "info" ? Info : tone === "warning" ? AlertTriangle : AlertCircle;
   return (
     <div
       role={tone === "critical" ? "alert" : "status"}
       className={cn(
-        "flex items-start gap-2 rounded-md border px-3 py-2.5 text-sm text-foreground",
-        tone === "critical" && "border-critical/25 bg-critical-surface",
+        "flex items-start gap-2.5 rounded-lg border px-3.5 py-3 text-sm text-foreground",
+        tone === "critical" && "border-critical/30 bg-critical-surface",
+        tone === "warning" && "border-warning/40 bg-warning-surface",
         tone === "success" && "border-success/30 bg-success-surface",
-        tone === "info" && "border-border bg-secondary",
+        tone === "info" && "border-info/30 bg-info-surface",
         className,
       )}
     >
@@ -328,13 +329,14 @@ export function FormAlert({
         className={cn(
           "mt-0.5 size-4 shrink-0",
           tone === "critical" && "text-critical",
+          tone === "warning" && "text-warning",
           tone === "success" && "text-success",
-          tone === "info" && "text-primary",
+          tone === "info" && "text-info",
         )}
         aria-hidden
       />
       <div className="min-w-0">
-        {title ? <p className="font-medium">{title}</p> : null}
+        {title ? <p className="font-semibold">{title}</p> : null}
         <div className={cn("text-sm", title && "mt-0.5 text-muted-foreground")}>{children}</div>
       </div>
     </div>
@@ -362,7 +364,7 @@ export function SubmitButton({
   icon?: ReactNode;
 } & Omit<React.ComponentProps<typeof Button>, "children">) {
   return (
-    <Button {...props} type={props.type ?? "submit"} disabled={pending || props.disabled}>
+    <Button {...props} type={props.type ?? "submit"} disabled={pending || props.disabled} aria-busy={pending || undefined}>
       {pending ? (
         <>
           <Loader2 className="size-4 animate-spin" aria-hidden />
@@ -388,6 +390,8 @@ export function SubmitButton({
  */
 export function FormSaveBar({
   dirty,
+  canSave,
+  statusText,
   saving,
   hasErrors,
   savedAt,
@@ -398,7 +402,15 @@ export function FormSaveBar({
   savedLabel = "Changes saved",
   pendingLabel,
 }: {
+  /** The form differs from what's saved: "You have unsaved changes." and Discard. */
   dirty: boolean;
+  /**
+   * Save is possible (defaults to `dirty`). True without `dirty` for a form that was never saved and
+   * can be saved as it is; Discard stays off then, since there is nothing to undo.
+   */
+  canSave?: boolean | undefined;
+  /** The status line when there is nothing else to say (no error, no unsaved changes, not just saved). */
+  statusText?: ReactNode;
   saving: boolean;
   hasErrors: boolean;
   savedAt: string | null;
@@ -410,21 +422,43 @@ export function FormSaveBar({
   /** Label on the save button while saving (defaults to "Saving…"). */
   pendingLabel?: string;
 }) {
+  const saveable = canSave ?? dirty;
   return (
-    <div className="sticky bottom-0 -mx-1 border-t border-border bg-background/95 px-1 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+    // Floats at the bottom of the viewport while the form scrolls; it lifts (stronger shadow, teal
+    // edge) when there is something to save.
+    <div
+      className={cn(
+        "sticky bottom-3 z-20 rounded-xl border bg-card/95 px-4 py-3 backdrop-blur transition-[box-shadow,border-color] supports-[backdrop-filter]:bg-card/85",
+        saveable ? "border-primary/35 shadow-elevated" : "border-border shadow-card",
+      )}
+    >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-h-5 text-sm" aria-live="polite">
           {error ? (
-            <span className="text-critical">{error}</span>
+            <span className="flex items-center gap-1.5 font-medium text-critical">
+              <AlertCircle className="size-4 shrink-0" aria-hidden />
+              {error}
+            </span>
           ) : hasErrors ? (
-            <span className="text-critical">{FORM_VALIDATION_SUMMARY}</span>
+            <span className="flex items-center gap-1.5 font-medium text-critical">
+              <AlertCircle className="size-4 shrink-0" aria-hidden />
+              {FORM_VALIDATION_SUMMARY}
+            </span>
           ) : savedAt ? (
-            <span className="flex items-center gap-1.5 text-success">
-              <CheckCircle2 className="size-4" aria-hidden />
+            <span className="flex items-center gap-1.5 font-medium text-success">
+              <CheckCircle2 className="size-4 shrink-0" aria-hidden />
               {savedLabel} at {savedAt}
             </span>
           ) : dirty ? (
-            <span className="text-muted-foreground">You have unsaved changes.</span>
+            <span className="flex items-center gap-2 text-foreground">
+              <span aria-hidden className="size-2 shrink-0 rounded-full bg-warning" />
+              You have unsaved changes.
+            </span>
+          ) : statusText ? (
+            <span className="flex items-center gap-2 text-foreground">
+              <Info className="size-4 shrink-0 text-info" aria-hidden />
+              {statusText}
+            </span>
           ) : null}
         </div>
         <div className="flex items-center gap-2">
@@ -441,7 +475,7 @@ export function FormSaveBar({
             pending={saving}
             {...(pendingLabel ? { pendingLabel } : {})}
             onClick={onSave}
-            disabled={!dirty || disabled}
+            disabled={!saveable || disabled}
             icon={<Save className="size-4" aria-hidden />}
           >
             Save changes
@@ -490,11 +524,7 @@ export function ConfirmDialog({
           <AlertDialogAction
             onClick={onConfirm}
             disabled={pending}
-            className={
-              destructive
-                ? "bg-critical text-critical-foreground hover:bg-critical/90"
-                : undefined
-            }
+            className={destructive ? buttonVariants({ variant: "destructive" }) : undefined}
           >
             {pending ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
             {confirmLabel}

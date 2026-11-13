@@ -9,8 +9,9 @@ export async function inspectInvitation(token: string): Promise<InvitationInfo> 
 }
 
 /**
- * New email: `{ token, name, password }` creates a verified account and signs in.
- * Existing account: `{ token }` adds the membership; the user then logs in.
+ * New email: `{ token, name, password }` creates a verified account and signs in
+ * (kept across browser restarts, like a normal sign-in). Existing account:
+ * `{ token }` adds the membership; the user then signs in.
  * 400 `account_details_required`.
  */
 export async function acceptInvitation(body: {
@@ -19,6 +20,6 @@ export async function acceptInvitation(body: {
   password?: string;
 }): Promise<InvitationAcceptResult> {
   const result = unwrapData<InvitationAcceptResult>(await api.post(ENDPOINTS.auth.acceptInvitation, body, { auth: false }));
-  if (!result.login_required) startSession(result.tokens, false, result);
+  if (!result.login_required) startSession(result.tokens, true, result);
   return result;
 }

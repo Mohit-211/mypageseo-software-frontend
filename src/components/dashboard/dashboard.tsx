@@ -1,821 +1,253 @@
-import { Link } from "react-router-dom";
-import {
-  CartesianGrid,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import { AlertTriangle, ArrowRight, MessageSquareWarning, Star } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import {
-  ChartContainer,
-  MetricCard,
-  Panel,
-  ScoreIndicator,
-  SectionHeader,
-  StatusBadge,
-  TrendIndicator,
-} from "@/components/layout/shared/data-display";
-import { EmptyState, MetricSkeletonGrid } from "@/components/layout/shared/feedback/states";
-import { healthTone } from "@/lib/health-tone";
-import { locationSetupPath } from "@/lib/locations/location-actions";
-import type {
-  AgencyDashboard,
-  BusinessDashboard,
-  MetricPoint,
-  PerformanceView,
-  RecommendedAction,
-} from "@/lib/dashboard/dashboard-data";
+import { Building2, CalendarRange, MapPin, RefreshCw, X } from "lucide-react";
+import type { DashboardSort, GbpReport, RankTrackerResponse } from "@/api";
+import { KpiTile } from "@/components/layout/shared/kpi-tile";
+import { ChartSkeleton, ListSkeleton, TableSkeleton } from "@/components/layout/shared/feedback/states";
+import type { SortOrder } from "@/components/layout/shared/data-table";
+import { AgencyKpis, BusinessKpis } from "@/components/dashboard/dashboard-kpis";
+import { CompetitorsCard } from "@/components/dashboard/competitors-card";
+import { BusinessLocationsCard } from "@/components/dashboard/locations-card";
+import { NextStepsPanel, NextStepsSkeleton } from "@/components/dashboard/next-steps";
+import { ProfilePerformanceCard } from "@/components/dashboard/performance-card";
+import { PortfolioCard } from "@/components/dashboard/portfolio-table";
+import { AgencyWhatChanged, BusinessWhatChanged } from "@/components/dashboard/what-changed";
+import type { AgencyDashboardModel, BusinessDashboardModel } from "@/lib/dashboard/dashboard-data";
+import { competitorLines, keywordMoves } from "@/lib/dashboard/focus-data";
+import type { WritingMode } from "@/lib/dashboard/replies";
+import { formatShortDate } from "@/lib/datetime";
+import { locationPath } from "@/lib/mypageseo/section-links";
 
-/* ---------------------------------- utils --------------------------------- */
+/** The one location every block describes, or null for all of them. */
+export type DashboardFocus = { id: string; name: string };
 
-/** A number, or "—" when the backend doesn't provide it yet. */
-function show(value: number | null | undefined, digits?: number): string | number {
-  if (value === null || value === undefined) return "—";
-  return digits === undefined ? value : value.toFixed(digits);
+type FocusData = {
+  report: GbpReport | undefined;
+  reportLoading: boolean;
+  tracker: RankTrackerResponse | undefined;
+  trackerLoading: boolean;
+};
+
+function topFixOf(report: GbpReport | undefined): string | null {
+  return report?.gbp_score.available ? (report.gbp_score.top_fixes[0]?.label ?? null) : null;
 }
 
-function formatChange(change: number, suffix = "", digits?: number) {
-  const abs = Math.abs(change);
-  return `${abs.toFixed(digits ?? (abs < 10 ? 1 : 0))}${suffix}`;
-}
+/* ----------------------------------------------------------------------- business -- */
 
-function MetricTrend({
-  metric,
-  suffix = "",
-  lowerIsBetter = false,
-  digits,
+/**
+ * Business "Today": next steps first, the four health numbers, profile performance next to what
+ * changed, then competitors (one location in view) or the locations side by side (all of them).
+ */
+export function BusinessDashboardView({
+  model,
+  focus,
+  focusData,
+  multiLocation,
+  onFocus,
+  nextStepsPrimary = true,
+  writing = "ai",
+  performanceScope,
 }: {
-  metric: MetricPoint;
-  suffix?: string;
-  lowerIsBetter?: boolean;
-  digits?: number;
+  model: BusinessDashboardModel;
+  focus: DashboardFocus | null;
+  focusData: FocusData;
+  multiLocation: boolean;
+  onFocus: (locationId: string) => void;
+  /** False while the setup card above holds the page's primary action. */
+  nextStepsPrimary?: boolean;
+  /** What the person can write right now (reply and post buttons follow it). */
+  writing?: WritingMode;
+  /** Whose profile the performance numbers cover ("Your Google profile"…). */
+  performanceScope?: string;
 }) {
-  if (metric.change === undefined || metric.change === null) return null;
-  const direction = metric.change > 0 ? "up" : metric.change < 0 ? "down" : "flat";
-  const positive = lowerIsBetter ? metric.change < 0 : metric.change > 0;
+  const { report, reportLoading, tracker, trackerLoading } = focusData;
   return (
-    <TrendIndicator direction={direction} value={formatChange(metric.change, suffix, digits)} positive={positive} />
-  );
-}
-
-const severityTone = {
-  critical: "critical",
-  attention: "warning",
-  info: "neutral",
-} as const;
-
-const severityLabel = {
-  critical: "Critical",
-  attention: "Needs attention",
-  info: "Recommended",
-} as const;
-
-/* ------------------------------ shared sections ---------------------------- */
-
-/** Google Business Profile performance over the selected period vs the one before. */
-function ProfilePerformance({ performance, rangeDays, connectTo }: { performance: PerformanceView; rangeDays: number; connectTo: string }) {
-  if (!performance.available) {
-    return (
-      <section>
-        <SectionHeader title="Profile performance" description={`Google Business Profile views and actions, last ${rangeDays} days`} />
-        <div className="flex flex-col gap-3 rounded-lg border border-dashed border-border bg-surface px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-muted-foreground">
-            {performance.reason === "gbp_not_connected"
-              ? "Connect a Google Business Profile to see how many people find the business and what they do next."
-              : "Performance figures appear after the first sync with Google. Google reports them a few days behind."}
-          </p>
-          {performance.reason === "gbp_not_connected" ? (
-            <Button asChild variant="outline" size="sm" className="shrink-0 self-start sm:self-auto">
-              <Link to={connectTo}>Connect Google <ArrowRight className="size-3.5" /></Link>
-            </Button>
-          ) : null}
-        </div>
-      </section>
-    );
-  }
-  return (
-    <section>
-      <SectionHeader
-        title="Profile performance"
-        description={`Google Business Profile, last ${performance.days} days${performance.latestDate ? ` up to ${performance.latestDate}` : ""}${performance.partial ? " · some days have no data yet" : ""}`}
-      />
-      <div className="grid grid-cols-1 overflow-hidden rounded-lg border border-border bg-surface shadow-card sm:grid-cols-2 xl:grid-cols-5 xl:divide-x xl:divide-border">
-        {performance.metrics.map((metric) => (
-          <MetricCard
-            key={metric.key}
-            label={metric.label}
-            value={metric.value === null ? "—" : metric.value.toLocaleString()}
-            trend={<MetricTrend metric={metric} suffix="%" />}
-            caption={metric.caption}
-          />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-export function RecommendedActions({ actions }: { actions: RecommendedAction[] }) {
-  if (actions.length === 0) {
-    return (
-      <section>
-        <SectionHeader
-          title="Recommended actions"
-          description="Prioritised from current issues and changes"
+    <>
+      <NextStepsPanel steps={model.nextSteps} showLocation={!focus && multiLocation} primary={nextStepsPrimary} writing={writing} />
+      <BusinessKpis model={model} focusId={focus?.id ?? null} topFix={focus ? topFixOf(report) : null} writing={writing} />
+      <div className="grid gap-6 xl:grid-cols-3">
+        <ProfilePerformanceCard
+          className="xl:col-span-2"
+          performance={model.performance}
+          days={model.rangeDays}
+          report={focus ? report : null}
+          reportLoading={Boolean(focus) && reportLoading}
+          detailsTo={focus ? locationPath(focus.id, "gbp") : undefined}
+          {...(performanceScope ? { scopeLabel: performanceScope } : {})}
         />
-        <div className="rounded-lg border border-border bg-success-surface/50 px-4 py-6">
-          <p className="text-sm font-medium text-foreground">Nothing needs attention right now</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Rankings, profile health, reviews and citations are all within their expected range for
-            this period.
-          </p>
-        </div>
-      </section>
-    );
-  }
-
-  return (
-    <section>
-      <SectionHeader
-        title="Recommended actions"
-        description="Prioritised from current issues and changes"
-      />
-      <div className="overflow-x-auto rounded-lg border border-border bg-surface shadow-card">
-        <div className="hidden grid-cols-[132px_minmax(260px,1fr)_160px] border-b border-border bg-surface-strong px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-muted-foreground sm:grid">
-          <span>Priority</span>
-          <span>Recommended next step</span>
-          <span className="text-right">Action</span>
-        </div>
-        <ul className="divide-y divide-border">
-        {actions.map((action) => (
-          <li
-            key={action.id}
-            className="grid gap-3 px-4 py-3.5 transition-colors hover:bg-muted/35 sm:grid-cols-[132px_minmax(260px,1fr)_160px] sm:items-center"
-          >
-            <StatusBadge tone={severityTone[action.severity]} className="w-fit">
-              {severityLabel[action.severity]}
-            </StatusBadge>
-            <div className="min-w-0">
-              <span className="text-sm font-medium text-foreground">{action.title}</span>
-              <p className="mt-1 text-sm text-muted-foreground">{action.reason}</p>
-            </div>
-            <Button asChild variant="outline" size="sm" className="w-fit shrink-0 sm:justify-self-end">
-              <Link to={action.to}>
-                {action.actionLabel}
-                <ArrowRight className="size-3.5" />
-              </Link>
-            </Button>
-          </li>
-        ))}
-        </ul>
+        <BusinessWhatChanged model={model} moves={focus ? keywordMoves(tracker) : null} focusId={focus?.id ?? null} />
       </div>
-    </section>
+      {focus ? (
+        <CompetitorsCard
+          lines={competitorLines(tracker, report, focus.name)}
+          loading={trackerLoading}
+          noRankings={!trackerLoading && !tracker}
+          locationId={focus.id}
+          attribution={report?.attribution?.text ?? null}
+        />
+      ) : model.locations.length > 1 ? (
+        <BusinessLocationsCard rows={model.locations} onFocus={onFocus} />
+      ) : null}
+    </>
   );
 }
 
-/* ----------------------------- business dashboard -------------------------- */
+/* ------------------------------------------------------------------------- agency -- */
 
-export function BusinessDashboardView({ data }: { data: BusinessDashboard }) {
-  const { rankMovement } = data;
-  const rankValues = data.rankSeries.flatMap((p) =>
-    [p.averageRank, p.previousAverageRank].filter((v): v is number => typeof v === "number"),
-  );
-  const rankLow = rankValues.length > 0 ? Math.min(...rankValues) : 1;
-  const rankHigh = rankValues.length > 0 ? Math.max(...rankValues) : 10;
-  const rankDomain: [number, number] = [
-    Math.max(1, Math.floor(rankLow - 1)),
-    Math.ceil(rankHigh + 1),
-  ];
-
+/** Agency "Today": next steps across clients, portfolio numbers, what changed and the portfolio table. */
+export function AgencyDashboardView({
+  model,
+  focus,
+  focusData,
+  sort,
+  order,
+  onSort,
+  onPage,
+  tableBusy,
+  nextStepsPrimary = true,
+  writing = "ai",
+  performanceScope,
+}: {
+  model: AgencyDashboardModel;
+  focus: DashboardFocus | null;
+  focusData: FocusData;
+  sort: DashboardSort;
+  order: SortOrder;
+  onSort: (field: DashboardSort) => void;
+  onPage: (page: number) => void;
+  tableBusy: boolean;
+  /** False while the setup card above holds the page's primary action. */
+  nextStepsPrimary?: boolean;
+  /** What the person can write right now (reply and post buttons follow it). */
+  writing?: WritingMode;
+  /** Whose profiles the performance numbers cover ("Your clients' Google profiles combined"…). */
+  performanceScope?: string;
+}) {
   return (
-    <div className="flex flex-col gap-8">
-      <section>
-        <SectionHeader title="Performance summary" description={data.comparisonLabel} />
-        <div className="grid grid-cols-1 overflow-hidden rounded-lg border border-border bg-surface shadow-card sm:grid-cols-2 xl:grid-cols-5 xl:divide-x xl:divide-border">
-          <MetricCard
-            label="Top-3 rate" accent="brand"
-            value={data.visibilityScore.value == null ? "—" : `${data.visibilityScore.value}%`}
-            trend={<MetricTrend metric={data.visibilityScore} suffix=" pts" />}
-            caption="Tracking points where you're in the Maps top 3"
-          />
-          <MetricCard
-            label="Average Rank" accent="teal"
-            value={data.averageRankDisplay ?? show(data.averageRank.value, 1)}
-            trend={<MetricTrend metric={data.averageRank} lowerIsBetter />}
-            caption={
-              data.averageRankDisplay === "No data"
-                ? "We couldn't get results from Google; measured again at the next refresh"
-                : `Average over the 5 tracking points, all keywords${rankMovement.tracked === null ? "" : ` (${rankMovement.tracked})`}`
-            }
-          />
-          <MetricCard
-            label="GBP Health" accent="green"
-            value={show(data.gbpHealth.value)}
-            trend={<MetricTrend metric={data.gbpHealth} suffix=" pts" />}
-            caption="Profile completeness and issues"
-          />
-          <MetricCard
-            label="Review Rating" accent="amber"
-            value={
-              <span className="inline-flex items-center gap-1.5">
-                {show(data.reviewRating.value, 1)}
-                <Star className="size-4 text-warning" aria-hidden />
-              </span>
-            }
-            trend={<MetricTrend metric={data.reviewRating} digits={2} />}
-            caption={data.reviewCount === null ? "No reviews yet" : `${data.reviewCount.toLocaleString()} reviews`}
-          />
-          <MetricCard
-            label="Citation Health" accent="clay"
-            value={show(data.citationHealth.value)}
-            trend={<MetricTrend metric={data.citationHealth} suffix=" pts" />}
-            caption={data.citationCaption}
-          />
-        </div>
-      </section>
-
-      <ProfilePerformance performance={data.performance} rangeDays={data.rangeDays} connectTo={data.focusLocationId ? `/locations/${data.focusLocationId}/gbp` : "/locations"} />
-
-      <div className="grid gap-8 xl:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
-        <section className="min-w-0">
-          <SectionHeader
-            title="What changed"
-            description="Ranking movement across tracked keywords"
-            actions={
-              <Button asChild variant="outline" size="sm">
-                <Link to={data.focusLocationId ? `/locations/${data.focusLocationId}/rankings/keywords` : "/rankings/keywords"}>
-                  View rankings <ArrowRight className="size-3.5" />
-                </Link>
-              </Button>
-            }
-          />
-          <div className="rounded-lg border border-border bg-surface shadow-card">
-            <div className="grid grid-cols-3 divide-x divide-border border-b border-border bg-surface-strong">
-              <MovementStat label="Improved" value={rankMovement.improved} tone="success" />
-              <MovementStat label="Declined" value={rankMovement.declined} tone="critical" />
-              <MovementStat label="Unchanged" value={rankMovement.unchanged} tone="neutral" />
-            </div>
-          {data.rankSeries.length > 0 ? (
-              <div className="p-4">
-                <ChartContainer
-                  title="Average rank over time"
-                  description="Lower is better. One point per ranking run."
-                  height={240}
-                >
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={data.rankSeries} margin={{ top: 8, right: 8, bottom: 0, left: -12 }}>
-                  <CartesianGrid stroke="var(--border)" vertical={false} />
-                  <XAxis
-                    dataKey="period"
-                    tickLine={false}
-                    axisLine={{ stroke: "var(--border)" }}
-                    tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
-                  />
-                  <YAxis
-                    reversed
-                    domain={rankDomain}
-                    tickLine={false}
-                    axisLine={false}
-                    width={40}
-                    tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      borderRadius: 6,
-                      border: "1px solid var(--border)",
-                      fontSize: 12,
-                    }}
-                    formatter={(value: number, name: string) => [
-                      typeof value === "number" ? value.toFixed(1) : "—",
-                      name === "averageRank" ? "This period" : "Previous period",
-                    ]}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="previousAverageRank"
-                    stroke="var(--muted-foreground)"
-                    strokeDasharray="4 4"
-                    strokeWidth={1.5}
-                    dot={false}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="averageRank"
-                    stroke="var(--primary)"
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </ChartContainer>
-              </div>
-          ) : (
-            <EmptyState
-              title="No ranking history yet"
-              description="Ranking history appears after the first scheduled collection for this location."
-              className="m-4"
-            />
-          )}
-          </div>
-        </section>
-
-        <AttentionSummary data={data} />
+    <>
+      <NextStepsPanel steps={model.nextSteps} showLocation={!focus} primary={nextStepsPrimary} writing={writing} />
+      <AgencyKpis model={model} />
+      <div className="grid gap-6 xl:grid-cols-3">
+        <ProfilePerformanceCard
+          className="xl:col-span-2"
+          performance={model.performance}
+          days={model.rangeDays}
+          report={focus ? focusData.report : null}
+          reportLoading={Boolean(focus) && focusData.reportLoading}
+          detailsTo={focus ? locationPath(focus.id, "gbp") : undefined}
+          {...(performanceScope ? { scopeLabel: performanceScope } : {})}
+        />
+        <AgencyWhatChanged model={model} writing={writing} />
       </div>
+      <PortfolioCard portfolio={model.portfolio} sort={sort} order={order} onSort={onSort} onPage={onPage} busy={tableBusy} />
+    </>
+  );
+}
 
-      <div className="grid gap-8 xl:grid-cols-2">
-        <section>
-          <SectionHeader
-            title="GBP health"
-            description="What is driving the profile health score"
-            actions={
-              <Button asChild variant="outline" size="sm">
-                <Link to={data.focusLocationId ? `/locations/${data.focusLocationId}/gbp/audit` : "/gbp/audit"}>
-                  Open audit <ArrowRight className="size-3.5" />
-                </Link>
-              </Button>
-            }
-          />
-          <div className="rounded-lg border border-border bg-surface">
-            <div className="flex items-center justify-between gap-4 border-b border-border px-4 py-3">
-              <div>
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  GBP Health Score
-                </p>
-                <p className="mt-1 text-2xl font-semibold tabular text-foreground">
-                  {show(data.gbpHealth.value)}
-                  <span className="ml-1 text-sm font-normal text-muted-foreground">/ 100</span>
-                </p>
-              </div>
-              <StatusBadge
-                tone={
-                  data.gbpHealth.value === null
-                    ? "neutral"
-                    : healthTone(data.gbpHealth.value) === "healthy"
-                      ? "success"
-                      : healthTone(data.gbpHealth.value) === "attention"
-                        ? "warning"
-                        : "critical"
-                }
+/* ------------------------------------------------------------------- scope + state -- */
+
+/**
+ * Under the title: what the numbers cover (the organization's locations, or one location with a
+ * way back to all), the period, and when the data was last refreshed.
+ */
+export function DashboardScopeLine({
+  organizationName,
+  locationCount,
+  focus,
+  focusCity,
+  days,
+  refreshedAt,
+  nextRefreshAt,
+  onShowAll,
+}: {
+  organizationName: string | null;
+  locationCount: number;
+  focus: DashboardFocus | null;
+  focusCity: string | null;
+  days: number;
+  refreshedAt: string | null;
+  nextRefreshAt: string | null;
+  /** Shown when one location was picked out of several. */
+  onShowAll?: (() => void) | undefined;
+}) {
+  const chip = "inline-flex min-h-7 max-w-full items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground shadow-xs";
+  return (
+    <ul className="flex flex-wrap items-center gap-2">
+      <li className={chip}>
+        {focus ? (
+          <>
+            <MapPin aria-hidden className="size-3.5 shrink-0 text-primary" />
+            <span className="sr-only">Showing one location:</span>
+            <span className="truncate">{focus.name}</span>
+            {focusCity ? <span className="shrink-0 text-muted-foreground">· {focusCity}</span> : null}
+            {onShowAll ? (
+              <button
+                type="button"
+                onClick={onShowAll}
+                aria-label="Show all locations"
+                title="Show all locations"
+                className="relative -mr-1 ml-0.5 grid size-5 shrink-0 cursor-pointer place-items-center rounded-full text-muted-foreground outline-hidden after:absolute after:-inset-2 after:content-[''] hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
               >
-                {data.gbpFactors.filter((f) => f.status !== "healthy").length} areas need work
-              </StatusBadge>
-            </div>
-            {data.gbpFactors.length === 0 ? (
-              <p className="p-4 text-sm text-muted-foreground">The breakdown appears once the location's GBP report is ready.</p>
+                <X aria-hidden className="size-3.5" />
+              </button>
             ) : null}
-            <ul className="grid gap-4 p-4 empty:hidden sm:grid-cols-2">
-              {data.gbpFactors.map((factor) => (
-                <li key={factor.label}>
-                  <ScoreIndicator
-                    label={factor.label}
-                    score={factor.score}
-                    detail={factor.detail}
-                    tone={factor.status}
-                  />
-                </li>
-              ))}
-            </ul>
-          </div>
-        </section>
+          </>
+        ) : (
+          <>
+            <Building2 aria-hidden className="size-3.5 shrink-0 text-primary" />
+            <span className="truncate">{organizationName ?? "Your organization"}</span>
+            <span className="shrink-0 text-muted-foreground">· {locationCount === 1 ? "1 location" : `All ${locationCount} locations`}</span>
+          </>
+        )}
+      </li>
+      <li className={chip}>
+        <CalendarRange aria-hidden className="size-3.5 shrink-0 text-primary" />
+        Last {days} days vs the {days} before
+      </li>
+      {refreshedAt ? (
+        <li className={`${chip} text-muted-foreground`} title={nextRefreshAt ? `Next automatic update: ${formatShortDate(nextRefreshAt)}` : undefined}>
+          <RefreshCw aria-hidden className="size-3.5 shrink-0 text-primary" />
+          Updated {formatShortDate(refreshedAt)}
+          <span className="sr-only">{nextRefreshAt ? `, next update ${formatShortDate(nextRefreshAt)}` : ""}</span>
+        </li>
+      ) : null}
+    </ul>
+  );
+}
 
-        <section className="min-w-0 flex flex-col gap-8">
-          <div>
-            <SectionHeader
-              title="Reviews and reputation"
-              description="Recent review activity for this location"
-              actions={
-                <Button asChild variant="outline" size="sm">
-                  <Link to={data.focusLocationId ? `/locations/${data.focusLocationId}/reputation` : "/reputation/reviews"}>
-                    Open reviews <ArrowRight className="size-3.5" />
-                  </Link>
-                </Button>
-              }
-            />
-            <div className="rounded-lg border border-border bg-surface">
-              <div className="grid grid-cols-2 divide-x divide-border border-b border-border sm:grid-cols-4">
-                <Stat label="Rating" value={String(show(data.reviewRating.value, 1))} />
-                <Stat label="Total reviews" value={data.reviewCount === null ? "—" : data.reviewCount.toLocaleString()} />
-                <Stat label={`Last ${data.rangeDays} days`} value={data.reviews.newInRange === null ? "—" : `+${data.reviews.newInRange}`} />
-                <Stat
-                  label="Avg. response"
-                  value={
-                    data.reviews.averageResponseHours === null
-                      ? "—"
-                      : `${data.reviews.averageResponseHours}h`
-                  }
-                />
-              </div>
-              <div className="flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <StatusBadge tone={(data.reviews.unanswered ?? 0) > 0 ? "warning" : "success"}>
-                      {data.reviews.unanswered ?? "—"} unanswered
-                    </StatusBadge>
-                  </div>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {(data.reviews.unanswered ?? 0) > 0
-                      ? "Unanswered reviews reduce response rate and reputation signals."
-                      : "Every review has received a response."}
-                  </p>
-                </div>
-                {(data.reviews.unanswered ?? 0) > 0 ? (
-                  <Button asChild size="sm" className="shrink-0 self-start sm:self-auto">
-                    <Link to={data.focusLocationId ? `/locations/${data.focusLocationId}/reputation` : "/reputation/reviews"}>Respond to reviews</Link>
-                  </Button>
-                ) : null}
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <SectionHeader
-              title="Competitor context"
-              description="Your position against tracked competitors"
-              actions={
-                <Button asChild variant="outline" size="sm">
-                  <Link to={data.focusLocationId ? `/locations/${data.focusLocationId}/rankings/competitors` : "/competitors"}>
-                    View competitors <ArrowRight className="size-3.5" />
-                  </Link>
-                </Button>
-              }
-            />
-            {data.competitors.length > 1 ? (
-              <div
-                role="region"
-                aria-label="Competitor comparison"
-                tabIndex={0}
-                className="overflow-x-auto rounded-lg border border-border bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-              >
-                <table className="w-full min-w-[520px] text-sm">
-                  <caption className="sr-only">
-                    Competitor comparison by average rank, rating, reviews and photos
-                  </caption>
-                  <thead>
-                    <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
-                      <th scope="col" className="px-4 py-2.5 font-medium">Business</th>
-                      <th scope="col" className="px-4 py-2.5 text-right font-medium">Avg. rank</th>
-                      <th scope="col" className="px-4 py-2.5 text-right font-medium">Rating</th>
-                      <th scope="col" className="px-4 py-2.5 text-right font-medium">Reviews</th>
-                      <th scope="col" className="px-4 py-2.5 text-right font-medium">Photos</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {data.competitors.map((row) => (
-                      <tr key={`${row.name}-${row.isYou ? "you" : ""}`} className={row.isYou ? "bg-accent/50" : undefined}>
-                        <td className="px-4 py-2.5">
-                          <span className="font-medium text-foreground">{row.name}</span>
-                          {row.isYou ? (
-                            <span className="ml-2 text-xs text-muted-foreground">You</span>
-                          ) : null}
-                        </td>
-                        <td className="px-4 py-2.5 text-right tabular">{row.averageRank == null && row.averageRankDisplay ? row.averageRankDisplay : show(row.averageRank, 1)}</td>
-                        <td className="px-4 py-2.5 text-right tabular">{show(row.rating, 1)}</td>
-                        <td className="px-4 py-2.5 text-right tabular">{row.reviews === null ? "—" : row.reviews.toLocaleString()}</td>
-                        <td className="px-4 py-2.5 text-right tabular">{row.photos ?? "—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <EmptyState
-                title="No competitors tracked"
-                description="Add competitors to compare rank, rating, review volume and photo counts against your location."
-                action={
-                  <Button asChild size="sm">
-                    <Link to={data.focusLocationId ? locationSetupPath(data.focusLocationId) : "/locations"}>Add competitors</Link>
-                  </Button>
-                }
-              />
-            )}
-          </div>
-        </section>
-      </div>
-
-      <RecommendedActions actions={data.actions} />
+/**
+ * While another period or location loads, the figures on screen stay at full strength (fading them
+ * would drop text below readable contrast); a thin bar along the top says new numbers are coming.
+ */
+export function RefetchBar({ active }: { active: boolean }) {
+  if (!active) return null;
+  return (
+    <div role="status" aria-label="Updating the dashboard" className="pointer-events-none fixed inset-x-0 top-0 z-[90] h-0.5 overflow-hidden">
+      <div className="h-full w-full animate-pulse bg-linear-to-r from-primary via-highlight to-primary" />
     </div>
   );
 }
 
-function MovementStat({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: number;
-  tone: "success" | "critical" | "neutral";
-}) {
-  const color =
-    tone === "success" ? "text-success" : tone === "critical" ? "text-critical" : "text-foreground";
-  return (
-    <div className="px-4 py-3">
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className={`mt-1 text-2xl font-semibold tabular ${color}`}>{value}</p>
-    </div>
-  );
-}
-
-function AttentionSummary({ data }: { data: BusinessDashboard }) {
-  const factors = data.gbpFactors.filter((factor) => factor.status !== "healthy");
-  const topFactors = factors.slice(0, 2);
-
-  return (
-    <section>
-      <SectionHeader title="Needs attention" description="Issues affecting this location" />
-      <div className="rounded-lg border border-border bg-surface shadow-card">
-        <ul className="divide-y divide-border">
-          {topFactors.map((factor) => (
-            <li key={factor.label} className="flex gap-3 px-4 py-3.5">
-              <span className={factor.status === "critical" ? "text-critical" : "text-warning-foreground"}>
-                <AlertTriangle className="mt-0.5 size-4" aria-hidden />
-              </span>
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-foreground">{factor.label}</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">{factor.detail}</p>
-              </div>
-            </li>
-          ))}
-          <li className="flex gap-3 px-4 py-3.5">
-            <span className={(data.reviews.unanswered ?? 0) > 0 ? "text-warning-foreground" : "text-success"}>
-              <MessageSquareWarning className="mt-0.5 size-4" aria-hidden />
-            </span>
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-foreground">Review responses</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                {(data.reviews.unanswered ?? 0) > 0
-                  ? `${data.reviews.unanswered} reviews are waiting for a response.`
-                  : "Every review has received a response."}
-              </p>
-            </div>
-          </li>
-        </ul>
-        <div className="border-t border-border px-4 py-3">
-          <Button asChild variant="link" size="sm" className="h-auto justify-start p-0">
-            <Link to={data.focusLocationId ? `/locations/${data.focusLocationId}/gbp/audit` : "/gbp/audit"}>
-              Review all findings <ArrowRight className="size-3.5" />
-            </Link>
-          </Button>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="px-4 py-3">
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="mt-1 text-lg font-semibold tabular text-foreground">{value}</p>
-    </div>
-  );
-}
-
-/* ------------------------------ agency dashboard --------------------------- */
-
-export function AgencyDashboardView({ data }: { data: AgencyDashboard }) {
-  return (
-    <div className="flex flex-col gap-8">
-      <section>
-        <SectionHeader title="Portfolio summary" description={data.comparisonLabel} />
-        <div className="grid grid-cols-1 overflow-hidden rounded-lg border border-border bg-surface shadow-card sm:grid-cols-2 xl:grid-cols-5 xl:divide-x xl:divide-border">
-          <MetricCard label="Clients" accent="brand" value={data.clientCount} caption="Active in this workspace" />
-          <MetricCard label="Locations" accent="teal" value={data.locationCount} caption="Across all clients" />
-          <MetricCard
-            label="Avg. top-3 rate" accent="green"
-            value={data.averageVisibility.value == null ? "—" : `${data.averageVisibility.value}%`}
-            trend={<MetricTrend metric={data.averageVisibility} suffix=" pts" />}
-            caption="Portfolio average"
-          />
-          <MetricCard
-            label="Avg. GBP Health" accent="clay"
-            value={show(data.averageGbpHealth.value)}
-            trend={<MetricTrend metric={data.averageGbpHealth} suffix=" pts" />}
-            caption="Portfolio average"
-          />
-          <MetricCard
-            label="Avg. Citation Health" accent="amber"
-            value={show(data.averageCitationScore)}
-            caption={data.averageCitationScore === null ? "No listings checked yet" : "Locations with checked listings"}
-          />
-        </div>
-      </section>
-
-      <ProfilePerformance performance={data.performance} rangeDays={data.rangeDays} connectTo="/locations" />
-
-      <section>
-        <SectionHeader title="Needs attention" description="Where to act across the portfolio" />
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <AttentionCard
-            label="Locations declining"
-            value={data.attention.decliningLocations}
-            tone="critical"
-            caption="Visibility down this period"
-            to="/rankings/keywords"
-            action="Inspect rankings"
-          />
-          <AttentionCard
-            label="Unanswered reviews"
-            value={data.attention.unansweredReviews}
-            tone="warning"
-            caption="Across all client locations"
-            to="/reputation/reviews"
-            action="Open reviews"
-          />
-          <AttentionCard
-            label="GBP issues"
-            value={data.attention.gbpIssues}
-            tone="warning"
-            caption="Open audit findings"
-            to="/gbp/audit"
-            action="Open audit"
-          />
-          <Panel className="flex flex-col justify-between">
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Report status
-              </p>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                <StatusBadge tone="success">{data.attention.reports.ready ?? "—"} ready</StatusBadge>
-                <StatusBadge tone="neutral">{data.attention.reports.scheduled ?? "—"} scheduled</StatusBadge>
-                <StatusBadge tone="critical">{data.attention.reports.failed ?? "—"} failed</StatusBadge>
-              </div>
-            </div>
-            <Button asChild variant="link" size="sm" className="mt-3 h-auto justify-start p-0">
-              <Link to="/reports">
-                Open reports <ArrowRight className="size-3.5" />
-              </Link>
-            </Button>
-          </Panel>
-        </div>
-      </section>
-
-      <section>
-        <SectionHeader
-          title="Portfolio"
-          description="Client locations by visibility and open work"
-          actions={
-            <Button asChild variant="outline" size="sm">
-              <Link to="/clients">
-                Manage clients <ArrowRight className="size-3.5" />
-              </Link>
-            </Button>
-          }
-        />
-        <div className="overflow-x-auto rounded-lg border border-border bg-surface">
-          <table className="w-full min-w-[760px] text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <th className="px-4 py-2.5 font-medium">Client</th>
-                <th className="px-4 py-2.5 font-medium">Location</th>
-                <th className="px-4 py-2.5 text-right font-medium" title="Average over the 5 tracking points, all keywords">Avg. rank</th>
-                <th className="px-4 py-2.5 text-right font-medium">Top 3</th>
-                <th className="px-4 py-2.5 text-right font-medium">Trend</th>
-                <th className="px-4 py-2.5 text-right font-medium">GBP health</th>
-                <th className="px-4 py-2.5 text-right font-medium">Citations</th>
-                <th className="px-4 py-2.5 text-right font-medium">Unanswered</th>
-                <th className="px-4 py-2.5 text-right font-medium">Issues</th>
-                <th className="px-4 py-2.5" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {data.portfolio.map((row) => (
-                <tr key={row.locationId} className="hover:bg-muted/40">
-                  <td className="px-4 py-2.5">
-                    {row.clientId ? (
-                      <Link to={`/clients/${row.clientId}`} className="font-medium text-foreground hover:underline">
-                        {row.clientName}
-                      </Link>
-                    ) : (
-                      <span className="text-muted-foreground">{row.clientName}</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <span className="text-foreground">{row.locationName}</span>
-                    <span className="block text-xs text-muted-foreground">{row.area}</span>
-                  </td>
-                  <td className="px-4 py-2.5 text-right tabular">{row.averageRank ?? "—"}</td>
-                  <td className="px-4 py-2.5 text-right tabular">{row.visibility == null ? "—" : `${row.visibility}%`}</td>
-                  <td className="px-4 py-2.5">
-                    <div className="flex justify-end">
-                      {row.visibilityChange === null ? (
-                        <span className="text-muted-foreground">—</span>
-                      ) : (
-                        <TrendIndicator
-                          direction={row.visibilityChange > 0 ? "up" : row.visibilityChange < 0 ? "down" : "flat"}
-                          value={formatChange(row.visibilityChange, " pts")}
-                          positive={row.visibilityChange > 0}
-                        />
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-2.5 text-right tabular">{show(row.gbpHealth)}</td>
-                  <td className="px-4 py-2.5 text-right tabular">
-                    {row.citationScore === null ? (
-                      "—"
-                    ) : (
-                      <Link to={`/locations/${row.locationId}/citations`} className="hover:underline">
-                        {row.citationScore}
-                        {row.citationNapWrong > 0 ? <span className="ml-1.5 text-xs text-warning-foreground">{row.citationNapWrong} wrong</span> : null}
-                      </Link>
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5 text-right tabular">
-                    {row.unansweredReviews === null ? (
-                      "—"
-                    ) : row.unansweredReviews > 0 ? (
-                      <span className="text-warning-foreground">{row.unansweredReviews}</span>
-                    ) : (
-                      "0"
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5 text-right tabular">
-                    {row.openIssues > 0 ? (
-                      <span className="text-critical">{row.openIssues}</span>
-                    ) : (
-                      "0"
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5 text-right">
-                    <Button asChild variant="ghost" size="sm">
-                      <Link to={`/locations/${row.locationId}`}>Open</Link>
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <RecommendedActions actions={data.actions} />
-    </div>
-  );
-}
-
-function AttentionCard({
-  label,
-  value,
-  caption,
-  tone,
-  to,
-  action,
-}: {
-  label: string;
-  value: number | null;
-  caption: string;
-  tone: "critical" | "warning";
-  to: string;
-  action: string;
-}) {
-  return (
-    <Panel className="flex flex-col justify-between">
-      <div>
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-        <p
-          className={`mt-2 text-2xl font-semibold tabular ${
-            !value ? "text-foreground" : tone === "critical" ? "text-critical" : "text-warning-foreground"
-          }`}
-        >
-          {value ?? "—"}
-        </p>
-        <p className="mt-1 text-xs text-muted-foreground">{caption}</p>
-      </div>
-      <Button asChild variant="link" size="sm" className="mt-3 h-auto justify-start p-0">
-        <Link to={to}>
-          {action} <ArrowRight className="size-3.5" />
-        </Link>
-      </Button>
-    </Panel>
-  );
-}
-
-/* --------------------------------- loading -------------------------------- */
-
+/** Loading: the same frame as the dashboard (next steps, tiles, charts, table), so nothing jumps. */
 export function DashboardSkeleton({ agency = false }: { agency?: boolean }) {
+  const tiles = agency ? ["Clients", "Locations", "Top 3 rate", "Profile score", "Citation score"] : ["Average rank", "Profile score", "Reviews", "Citation score"];
   return (
-    <div className="flex flex-col gap-8">
-      <MetricSkeletonGrid count={agency ? 4 : 5} />
-      <div className="rounded-lg border border-border bg-surface p-4">
-        <Skeleton className="h-3 w-40" />
-        <Skeleton className="mt-4 h-[220px] w-full" />
-      </div>
-      <div className="overflow-hidden rounded-lg border border-border bg-surface">
-        <div className="border-b border-border px-4 py-3">
-          <Skeleton className="h-3 w-32" />
-        </div>
-        {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="flex items-center gap-4 border-b border-border px-4 py-3 last:border-0">
-            <Skeleton className="h-3 w-1/3" />
-            <Skeleton className="h-3 w-1/5" />
-            <Skeleton className="ml-auto h-3 w-16" />
-          </div>
+    <div role="status" aria-label="Loading the dashboard" className="space-y-6">
+      <NextStepsSkeleton />
+      <div className={agency ? "grid gap-4 sm:grid-cols-2 lg:grid-cols-6 xl:grid-cols-5" : "grid gap-4 sm:grid-cols-2 xl:grid-cols-4"}>
+        {tiles.map((label, index) => (
+          <KpiTile
+            key={label}
+            label={label}
+            value=""
+            loading
+            className={agency ? (index < 3 ? "lg:col-span-2 xl:col-span-1" : index === 3 ? "lg:col-span-3 xl:col-span-1" : "sm:col-span-2 lg:col-span-3 xl:col-span-1") : undefined}
+          />
         ))}
       </div>
+      <div className="grid gap-6 xl:grid-cols-3">
+        <ChartSkeleton className="xl:col-span-2" />
+        <ListSkeleton rows={4} />
+      </div>
+      <TableSkeleton rows={4} columns={agency ? 7 : 5} />
     </div>
   );
 }

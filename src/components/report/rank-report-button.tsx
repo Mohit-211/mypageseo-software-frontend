@@ -1,12 +1,9 @@
 import type { ComponentProps } from "react";
-import { useCanEdit } from "@/hooks/use-access";
-import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, ChevronDown, FileText, LoaderCircle } from "lucide-react";
-import { createReport, getReport, isApiError, type ReportType } from "@/api";
-import { ReportActions } from "@/components/report/report-actions";
-import { Button } from "@/components/ui/button";
+import { useState } from "react";
+import { ChevronDown, FileText } from "lucide-react";
+import type { ReportType } from "@/api";
+import { Button, type ButtonProps } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,77 +11,93 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { useCanEdit } from "@/hooks/use-access";
 import { formatRunDate } from "@/lib/rankings/format";
-import { REPORT_ACTIVE_STATUSES, REPORT_CREATE_ERRORS, REPORT_TYPES, REPORT_TYPE_LABEL } from "@/lib/reports/report-meta";
+import { REPORT_TYPES, REPORT_TYPE_LABEL } from "@/lib/reports/report-meta";
+import { useGenerateReport, type GenerateRequest } from "@/lib/reports/use-generate-report";
+import { useWriteBlock } from "@/lib/white-label/write-block";
+import { ReportProgress } from "./generate-report-dialog";
 
 /**
- * "Report" on the Rank Tracker: generates the Rank Tracker PDF for the run being
+ * "PDF report" on the Rank Tracker: generates the Rank Tracker PDF for the run being
  * shown, then offers download, share and email in place.
  */
 export function RankReportButton({ locationId, runId, runAt }: { locationId: string; runId: string; runAt: string }) {
   return <ReportButton locationId={locationId} type="rank_tracker" runId={runId} subtitle={`For the ranking run of ${formatRunDate(runAt, true)}.`} />;
 }
 
-/** "Report" on a page: makes that report type's PDF for the location, then download / share / email in place. */
+/** One click: the report is queued at once and its progress shows in a dialog, without leaving the page. */
+function useReportJob() {
+  const job = useGenerateReport();
+  const [open, setOpen] = useState(false);
+  const [request, setRequest] = useState<GenerateRequest | null>(null);
+  const run = (next: GenerateRequest) => {
+    setRequest(next);
+    setOpen(true);
+    void job.start(next);
+  };
+  return { job, open, setOpen, request, run };
+}
+
+/** "PDF report" on a page: makes that report type's PDF for the location, then download / share / email in place. */
 function ReportButtonEditor({
   locationId,
   type,
   runId,
   range,
   subtitle,
+  variant = "default",
 }: {
   locationId: string;
   type: ReportType;
   runId?: string;
   range?: string;
   subtitle: string;
+  /** "outline" where the page has another primary action (one filled button per page). */
+  variant?: ButtonProps["variant"];
 }) {
-  const [open, setOpen] = useState(false);
+  const { job, open, setOpen, request, run } = useReportJob();
+  const block = useWriteBlock();
   return (
     <>
-      <Button size="sm" onClick={() => setOpen(true)}>
-        <FileText aria-hidden /> Report
-      </Button>
-      {open ? (
-        <ReportDialog
-          locationId={locationId}
-          type={type}
-          {...(runId ? { runId } : {})}
-          {...(range ? { range } : {})}
-          subtitle={subtitle}
-          onClose={() => setOpen(false)}
-        />
-      ) : null}
+      <span title={block.reason ?? undefined}>
+        <Button
+          variant={variant}
+          disabled={block.blocked}
+          onClick={() => run({ location_id: locationId, type, ...(runId ? { run_id: runId } : {}), ...(range ? { range } : {}) })}
+        >
+          <FileText aria-hidden /> PDF report
+        </Button>
+      </span>
+      <ReportJobDialog open={open} onOpenChange={setOpen} job={job} type={type} subtitle={subtitle} onRetry={request ? () => run(request) : undefined} />
     </>
   );
 }
 
 /**
- * "Report" with a menu of every report type, for pages that cover the whole location.
+ * "PDF report" with a menu of every report type, for pages that cover the whole location.
  * `unavailable` disables a type with the reason shown in its place (e.g. no citation list yet).
  */
 function ReportMenuButtonEditor({
   locationId,
   unavailable,
+  variant = "default",
 }: {
   locationId: string;
   unavailable?: Partial<Record<ReportType, string>> | undefined;
+  /** "outline" where the page has another primary action. */
+  variant?: ButtonProps["variant"];
 }) {
-  const [type, setType] = useState<ReportType | null>(null);
+  const { job, open, setOpen, request, run } = useReportJob();
+  const block = useWriteBlock();
+  const type = request?.type ?? "full";
   const chosen = REPORT_TYPES.find((entry) => entry.value === type);
   return (
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button size="sm">
-            <FileText aria-hidden /> Report <ChevronDown aria-hidden className="size-3.5" />
+          <Button variant={variant} disabled={block.blocked} title={block.reason ?? undefined}>
+            <FileText aria-hidden /> PDF report <ChevronDown aria-hidden className="size-3.5" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-72">
@@ -95,7 +108,7 @@ function ReportMenuButtonEditor({
               <DropdownMenuItem
                 key={entry.value}
                 disabled={Boolean(reason)}
-                onSelect={() => setType(entry.value)}
+                onSelect={() => run({ location_id: locationId, type: entry.value })}
                 className="flex-col items-start gap-0.5"
               >
                 <span className="font-medium">{entry.label}</span>
@@ -105,79 +118,42 @@ function ReportMenuButtonEditor({
           })}
         </DropdownMenuContent>
       </DropdownMenu>
-      {type && chosen ? <ReportDialog locationId={locationId} type={type} subtitle={chosen.description} onClose={() => setType(null)} /> : null}
+      <ReportJobDialog
+        open={open}
+        onOpenChange={setOpen}
+        job={job}
+        type={type}
+        subtitle={chosen?.description ?? ""}
+        onRetry={request ? () => run(request) : undefined}
+      />
     </>
   );
 }
 
-function ReportDialog({
-  locationId,
+function ReportJobDialog({
+  open,
+  onOpenChange,
+  job,
   type,
-  runId,
-  range,
   subtitle,
-  onClose,
+  onRetry,
 }: {
-  locationId: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  job: ReturnType<typeof useGenerateReport>;
   type: ReportType;
-  runId?: string;
-  range?: string;
   subtitle: string;
-  onClose: () => void;
+  onRetry?: (() => void) | undefined;
 }) {
-  const [reportId, setReportId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const started = useRef(false);
-
-  // Create once per opening (a repeat while one is generating returns the same report).
-  useEffect(() => {
-    if (started.current) return;
-    started.current = true;
-    createReport({ location_id: locationId, type, ...(runId ? { run_id: runId } : {}), ...(range ? { range } : {}) })
-      .then((report) => setReportId(report.report_id))
-      .catch((err: unknown) => {
-        const reason = isApiError(err) ? err.reason : undefined;
-        setError((reason && REPORT_CREATE_ERRORS[reason]) ?? "The report couldn't be created. Try again.");
-      });
-  }, [locationId, type, runId, range]);
-
-  const report = useQuery({
-    queryKey: ["reports", reportId],
-    queryFn: ({ signal }) => getReport(reportId!, signal),
-    enabled: Boolean(reportId),
-    refetchInterval: (query) =>
-      !query.state.data || REPORT_ACTIVE_STATUSES.includes(query.state.data.report.status) ? 3_000 : false,
-  });
-  const status = report.data?.report.status;
-
+  const label = REPORT_TYPE_LABEL[type] ?? "Report";
   return (
-    <Dialog open onOpenChange={(next) => (next ? undefined : onClose())}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{REPORT_TYPE_LABEL[type] ?? "Report"}</DialogTitle>
+          <DialogTitle>{label}</DialogTitle>
           <DialogDescription>{subtitle}</DialogDescription>
         </DialogHeader>
-        {error ? (
-          <p role="alert" className="text-sm text-critical">{error}</p>
-        ) : status === "ready" && reportId ? (
-          <div className="space-y-4">
-            <p className="flex items-center gap-2 text-sm text-foreground">
-              <CheckCircle2 aria-hidden className="size-4 text-success" /> Your report is ready.
-            </p>
-            <ReportActions reportId={reportId} />
-            <Button asChild variant="link" className="h-auto p-0">
-              <Link to={`/locations/${locationId}/reports/${reportId}`}>View it in the app</Link>
-            </Button>
-          </div>
-        ) : status === "failed" ? (
-          <p role="alert" className="text-sm text-critical">
-            The report couldn't be generated{report.data?.report.failure_reason ? `: ${report.data.report.failure_reason}` : "."}
-          </p>
-        ) : (
-          <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
-            <LoaderCircle aria-hidden className="size-4 animate-spin" /> Generating the PDF. This usually takes under a minute; you can close this and find it under Reports.
-          </p>
-        )}
+        <ReportProgress job={job} typeLabel={label} onBack={onRetry} onClose={() => onOpenChange(false)} />
       </DialogContent>
     </Dialog>
   );

@@ -1,6 +1,7 @@
 import { useCallback, useState, useSyncExternalStore } from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { disconnectGbp, isApiError, type GbpDisconnectResult } from "@/api";
+import { ONBOARDING_QUERY_KEY } from "../locations/onboarding-state";
 import { LOCATIONS_QUERY_KEY } from "../locations/use-locations";
 import { GBP_QUERY_KEY } from "./use-gbp";
 
@@ -52,11 +53,15 @@ export function useGbpConnect() {
   return { connect, connecting: state.open, error: null as string | null };
 }
 
-/** Refreshes everything a connect, pick, bind or disconnect can change. */
+/**
+ * Refreshes everything a connect, pick, bind or disconnect can change, including the setup
+ * checklist (`/onboarding` and the dashboard card), so a finished step turns green at once.
+ */
 export function invalidateGbpQueries(queryClient: QueryClient) {
   return Promise.all([
     queryClient.invalidateQueries({ queryKey: GBP_QUERY_KEY }),
     queryClient.invalidateQueries({ queryKey: LOCATIONS_QUERY_KEY }),
+    queryClient.invalidateQueries({ queryKey: ONBOARDING_QUERY_KEY }),
   ]);
 }
 

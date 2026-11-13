@@ -8,10 +8,12 @@ import { classifyError, failureCopy, type FailureKind } from "@/lib/mypageseo/er
 
 type Tone = "critical" | "caution" | "neutral";
 
-const TONE_CLASS: Record<Tone, { box: string; icon: string }> = {
-  critical: { box: "border-border bg-critical-surface/40", icon: "text-critical" },
-  caution: { box: "border-border bg-surface-strong", icon: "text-foreground/70" },
-  neutral: { box: "border-dashed border-primary/25 bg-brand-tint", icon: "text-primary" },
+// Failures sit on a white card: a red edge and chip only for real errors; "caution" (not found,
+// no access, slow service) stays neutral so the page doesn't look broken when it isn't.
+const TONE_CLASS: Record<Tone, { box: string; chip: string }> = {
+  critical: { box: "border-critical/25 bg-card", chip: "bg-critical-surface text-critical ring-critical/20" },
+  caution: { box: "border-border bg-card", chip: "bg-muted text-muted-foreground ring-border-strong" },
+  neutral: { box: "border-dashed border-border-strong bg-card", chip: "bg-info-surface text-info ring-info/20" },
 };
 
 const KIND_PRESENTATION: Record<
@@ -38,7 +40,7 @@ export function SectionError({
   title,
   description,
   onRetry,
-  retryLabel = "Retry",
+  retryLabel = "Try again",
   action,
   compact = false,
   className,
@@ -60,15 +62,24 @@ export function SectionError({
     <div
       role="status"
       className={cn(
-        "rounded-lg border px-4 text-left",
+        "rounded-xl border px-4 text-left shadow-card",
         TONE_CLASS[tone].box,
-        compact ? "py-3" : "py-6",
+        compact ? "py-3" : "py-5",
         className,
       )}
     >
       <div className="flex items-start gap-3">
-        <Icon className={cn("mt-0.5 size-4 shrink-0", TONE_CLASS[tone].icon)} aria-hidden />
-        <div className="min-w-0">
+        <span
+          aria-hidden
+          className={cn(
+            "grid shrink-0 place-items-center rounded-lg ring-1 ring-inset",
+            compact ? "size-8" : "size-9",
+            TONE_CLASS[tone].chip,
+          )}
+        >
+          <Icon className="size-4" aria-hidden />
+        </span>
+        <div className={cn("min-w-0", compact ? "pt-1" : "pt-0.5")}>
           <h3 className="text-sm font-semibold text-foreground">{title ?? copy.title}</h3>
           <p className="mt-1 max-w-xl text-sm text-muted-foreground">
             {description ?? copy.description}
@@ -77,7 +88,7 @@ export function SectionError({
             <div className="mt-3 flex flex-wrap items-center gap-2">
               {showRetry ? (
                 <Button variant="outline" size="sm" onClick={onRetry}>
-                  <RotateCw className="size-3.5" /> {retryLabel}
+                  <RotateCw aria-hidden /> {retryLabel}
                 </Button>
               ) : null}
               {action}
@@ -127,15 +138,15 @@ export function InlineError({
 }) {
   return (
     <span className={cn("inline-flex items-center gap-1.5 text-xs text-muted-foreground", className)}>
-      <AlertTriangle className="size-3.5 text-critical" aria-hidden />
+      <AlertTriangle className="size-3.5 shrink-0 text-critical" aria-hidden />
       {message}
       {onRetry ? (
         <button
           type="button"
           onClick={onRetry}
-          className="font-medium text-primary underline-offset-2 hover:underline"
+          className="cursor-pointer rounded-sm font-semibold text-primary underline-offset-2 outline-hidden hover:text-primary-hover hover:underline focus-visible:ring-2 focus-visible:ring-ring"
         >
-          Retry
+          Try again
         </button>
       ) : null}
     </span>
@@ -156,10 +167,12 @@ export function NotConnectedState({
 }) {
   const { Icon } = KIND_PRESENTATION.not_connected;
   return (
-    <div className={cn("rounded-lg border border-dashed border-primary/25 bg-brand-tint px-4 py-6", className)}>
+    <div className={cn("rounded-xl border px-4 py-5", TONE_CLASS.neutral.box, className)}>
       <div className="flex items-start gap-3">
-        <Icon className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
-        <div>
+        <span aria-hidden className={cn("grid size-9 shrink-0 place-items-center rounded-lg ring-1 ring-inset", TONE_CLASS.neutral.chip)}>
+          <Icon className="size-4" aria-hidden />
+        </span>
+        <div className="min-w-0 pt-0.5">
           <h3 className="text-sm font-semibold text-foreground">{title}</h3>
           <p className="mt-1 max-w-xl text-sm text-muted-foreground">{description}</p>
           {action ? <div className="mt-3">{action}</div> : null}
@@ -182,15 +195,15 @@ export function PartialDataNotice({
   return (
     <div
       className={cn(
-        "flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border bg-surface-strong px-4 py-2.5",
+        "flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-info/25 bg-info-surface px-4 py-2.5",
         className,
       )}
     >
-      <Info className="size-4 shrink-0 text-foreground/70" aria-hidden />
-      <p className="min-w-0 flex-1 text-sm text-muted-foreground">{description}</p>
+      <Info className="size-4 shrink-0 text-info" aria-hidden />
+      <p className="min-w-0 flex-1 text-sm text-foreground">{description}</p>
       {onRetry ? (
         <Button variant="outline" size="sm" onClick={onRetry}>
-          <RotateCw className="size-3.5" /> Retry
+          <RotateCw aria-hidden /> Try again
         </Button>
       ) : null}
     </div>
@@ -213,12 +226,17 @@ export function AppErrorState({
   return (
     <div
       className={cn(
-        "mx-auto max-w-xl rounded-lg border border-border bg-surface px-6 py-10 text-center shadow-card",
+        "mx-auto max-w-xl rounded-xl border border-border bg-card px-6 py-10 text-center shadow-card",
         className,
       )}
     >
-      <AlertTriangle className="mx-auto size-5 text-critical" aria-hidden />
-      <h1 className="mt-3 text-lg font-semibold text-foreground">
+      <span
+        aria-hidden
+        className="mx-auto grid size-12 place-items-center rounded-full bg-critical-surface text-critical ring-1 ring-inset ring-critical/20"
+      >
+        <AlertTriangle className="size-6" aria-hidden />
+      </span>
+      <h1 className="mt-4 text-xl font-semibold tracking-tight text-foreground">
         {failure.kind === "unknown" ? "Something went wrong" : failure.title}
       </h1>
       <p className="mt-2 text-sm text-muted-foreground">
@@ -229,7 +247,7 @@ export function AppErrorState({
       <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
         {onRetry && failure.retryable ? (
           <Button size="sm" onClick={onRetry}>
-            <RotateCw className="size-3.5" /> Try again
+            <RotateCw aria-hidden /> Try again
           </Button>
         ) : null}
         {showBack ? (

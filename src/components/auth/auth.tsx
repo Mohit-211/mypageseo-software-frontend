@@ -1,164 +1,338 @@
-import { useId, useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
-import { AlertCircle, ArrowDown, Eye, EyeOff, MapPin, TrendingUp } from "lucide-react";
+import { createContext, useContext, useId, useRef, useState, type ReactNode } from "react";
+import { Link, type To } from "react-router-dom";
+import {
+  AlertCircle,
+  Eye,
+  EyeOff,
+  MapPin,
+  Sparkles,
+  Star,
+  TrendingUp,
+  type LucideIcon,
+} from "lucide-react";
+import { hasUsableSession } from "@/api";
+import logoMarkUrl from "@/assets/logo-mark.png";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useHeadingDocumentTitle } from "@/hooks/use-document-title";
+import { getPostLoginPath } from "@/lib/auth/auth-session";
 import { cn } from "@/lib/utils";
 
 /**
- * Authentication-level UI for Mypageseo.
- * These primitives are the canonical field, selection, validation and layout
- * patterns for /login, /signup and later onboarding and account screens.
+ * Authentication-level UI for MyPageSEO: the sign-in landing page and every page
+ * around it (sign up, password reset, email verification, invitations, staff
+ * sign-in, onboarding). One layout: the brand panel on the left (a compact brand
+ * header on phones) and the form card on the right, plus the field, selection,
+ * validation and outcome patterns those forms share.
  */
 
-export function AuthWordmark({ className }: { className?: string }) {
+/* ------------------------------------------------------------------ brand -- */
+
+/**
+ * The MyPageSEO logo: the hexagon mark and the wordmark, linking home. `inverse`
+ * is for the deep-teal brand surfaces (white wordmark, the mark on a white tile).
+ *
+ * "Home" is where `/` would send the reader (the dashboard when signed in, else Sign in), linked
+ * directly: `/` itself forwards by replacing the history entry, which would drop the page the
+ * logo was clicked on from Back.
+ */
+export function AuthWordmark({ className, tone = "default" }: { className?: string; tone?: "default" | "inverse" }) {
+  const inverse = tone === "inverse";
   return (
-    <Link to="/" className={cn("inline-flex items-center gap-2", className)}>
-      <span className="grid size-7 place-items-center rounded-md bg-primary text-xs font-bold text-primary-foreground">
-        M
+    <Link
+      to={hasUsableSession() ? getPostLoginPath(null) : "/login"}
+      className={cn(
+        "inline-flex items-center gap-2.5 rounded-lg",
+        // The usual teal focus ring disappears on the deep-teal panel.
+        inverse && "focus-visible:outline-highlight",
+        className,
+      )}
+    >
+      <span
+        aria-hidden
+        className={cn("grid shrink-0 place-items-center", inverse ? "size-9 rounded-[10px] bg-card shadow-xs" : "size-8")}
+      >
+        <img src={logoMarkUrl} alt="" width={160} height={143} className={inverse ? "h-[22px] w-auto" : "h-7 w-auto"} />
       </span>
-      <span className="text-base font-semibold tracking-tight text-foreground">Mypageseo</span>
+      <span className={cn("text-lg font-semibold tracking-tight", inverse ? "text-brand-foreground" : "text-brand")}>
+        MyPage<span className={inverse ? undefined : "text-brand-accent"}>SEO</span>
+      </span>
     </Link>
   );
 }
 
-/** Balanced brand + form composition on desktop, single column on mobile. */
-export function AuthLayout({ children }: { children: ReactNode }) {
-  return (
-    <div className="min-h-screen w-full bg-background">
-      <div className="mx-auto grid min-h-screen w-full max-w-6xl grid-cols-1 gap-8 px-5 py-8 md:gap-12 md:px-8 md:py-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,460px)] lg:gap-16">
-        <aside className="flex flex-col lg:justify-center lg:py-8">
-          <AuthWordmark />
-          <p className="mt-5 max-w-md text-sm leading-relaxed text-muted-foreground lg:mt-8 lg:text-base">
-            Mypageseo helps businesses and agencies manage local search performance — Google
-            Business Profiles, local rankings, citations, competitors and client-ready reporting in
-            one workspace.
-          </p>
-          <ul className="mt-5 hidden max-w-md space-y-2 text-sm text-muted-foreground lg:block">
-            <li className="border-l-2 border-border pl-3">
-              Track local and map rankings across every location.
-            </li>
-            <li className="border-l-2 border-border pl-3">
-              Monitor Google Business Profile health, reviews and posts.
-            </li>
-            <li className="border-l-2 border-border pl-3">
-              Produce client-ready reports from the same underlying data.
-            </li>
-          </ul>
-        </aside>
+const VALUE_PROPS: { icon: LucideIcon; title: string; text: string; ai?: boolean }[] = [
+  {
+    icon: TrendingUp,
+    title: "Rankings you can see on a map",
+    text: "Track every keyword across a local search grid and spot who outranks you.",
+  },
+  {
+    icon: Star,
+    title: "Google Business Profile and reviews",
+    text: "Audit your profile, keep your details right and never miss a review.",
+  },
+  {
+    icon: Sparkles,
+    title: "AI posts and replies, white-label reports",
+    text: "Draft posts and review replies in seconds, and send branded reports to clients.",
+    ai: true,
+  },
+];
 
-        <main className="flex items-start lg:items-center">
-          <div className="w-full rounded-lg border border-border bg-surface p-5 shadow-card sm:p-7">
+/**
+ * Decorative layers of the brand surfaces: a deepening gradient, two soft glows and a map-grid dot
+ * texture. The aqua glow stays at 10% on the panel so aqua text over it keeps >= 4.5:1 (4.9:1 at
+ * its brightest); the compact header has no aqua text, so its glow can be stronger.
+ */
+function BrandBackdrop({ compact = false }: { compact?: boolean }) {
+  return (
+    <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-br from-brand via-brand to-sidebar-deep" />
+      <div
+        className={cn(
+          "absolute rounded-full blur-3xl",
+          compact ? "-right-16 -top-24 size-56 bg-highlight/20" : "-right-48 -top-56 size-[36rem] bg-highlight/10",
+        )}
+      />
+      {compact ? null : <div className="absolute -bottom-48 -left-32 size-[28rem] rounded-full bg-primary/35 blur-3xl" />}
+      <div className="absolute inset-0 opacity-[0.13] [background-image:radial-gradient(var(--brand-foreground)_1px,transparent_1.5px)] [background-size:22px_22px] [mask-image:linear-gradient(160deg,black,transparent_70%)]" />
+    </div>
+  );
+}
+
+/** Example ranks on a 5 × 5 local search grid around the business (centre = the business). */
+const GRID_RANKS = [
+  [7, 4, 3, 4, 9],
+  [4, 2, 1, 2, 5],
+  [3, 1, 1, 1, 3],
+  [5, 2, 1, 2, 4],
+  [13, 6, 3, 5, 15],
+];
+
+function gridCellClass(rank: number): string {
+  if (rank <= 3) return "bg-success text-success-foreground";
+  if (rank <= 10) return "bg-warning-bright text-warning-bright-foreground";
+  return "bg-critical text-critical-foreground";
+}
+
+/** A still of the product: one location's map rankings, rating and AI reply drafts. Illustration only. */
+function ProductPreview({ className }: { className?: string }) {
+  return (
+    <div
+      role="img"
+      aria-label="Example: a location's map rankings, its rating and review replies drafted with AI"
+      className={cn("relative max-w-[31rem]", className)}
+    >
+      <div aria-hidden className="absolute inset-0 translate-x-3 translate-y-3 rounded-2xl bg-brand-foreground/10" />
+      <div className="relative rounded-2xl bg-card p-4 text-card-foreground shadow-elevated">
+        <div className="flex items-center gap-3">
+          <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-tint text-primary">
+            <MapPin className="size-[18px]" />
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold">Riverside Dental</p>
+            <p className="truncate text-xs text-muted-foreground">Austin, TX · “dentist near me”</p>
+          </div>
+          <span className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-full bg-success-surface px-2.5 py-1 text-xs font-semibold text-success">
+            <TrendingUp className="size-3.5" />
+            Up 3 places
+          </span>
+        </div>
+
+        <div className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] items-center gap-5">
+          <div className="rounded-xl bg-brand-tint p-2.5">
+            <div className="grid grid-cols-5 gap-1.5">
+              {GRID_RANKS.flatMap((row, r) =>
+                row.map((rank, c) => (
+                  <span
+                    key={`${r}-${c}`}
+                    className={cn(
+                      "grid size-6 place-items-center rounded-full text-xs font-semibold tabular-nums",
+                      gridCellClass(rank),
+                      r === 2 && c === 2 && "ring-2 ring-primary ring-offset-2 ring-offset-brand-tint",
+                    )}
+                  >
+                    {rank}
+                  </span>
+                )),
+              )}
+            </div>
+          </div>
+
+          <dl className="min-w-0 space-y-3.5">
+            <div>
+              <dt className="text-xs text-muted-foreground">Average map rank</dt>
+              <dd className="mt-0.5 flex items-baseline gap-2">
+                <span className="text-2xl font-semibold tabular-nums">2.8</span>
+                <span className="text-xs font-semibold text-success">from 5.9</span>
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Top 3 across the area</dt>
+              <dd className="mt-1.5">
+                <span className="block h-2 overflow-hidden rounded-full bg-secondary">
+                  <span className="block h-full w-[72%] rounded-full bg-success" />
+                </span>
+                <span className="mt-1 block text-xs font-medium tabular-nums">72% of the grid</span>
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Google rating</dt>
+              <dd className="mt-0.5 flex items-center gap-1.5 text-sm font-semibold tabular-nums">
+                4.8
+                <span className="flex text-warning-bright">
+                  {[0, 1, 2, 3, 4].map((i) => (
+                    <Star key={i} className="size-3.5 fill-current" />
+                  ))}
+                </span>
+                <span className="text-xs font-normal text-muted-foreground">126 reviews</span>
+              </dd>
+            </div>
+          </dl>
+        </div>
+
+        <div className="mt-3 flex items-center gap-3 rounded-xl bg-ai-surface px-3 py-2.5">
+          <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-ai text-ai-foreground">
+            <Sparkles className="size-4" />
+          </span>
+          <p className="min-w-0 text-xs font-medium text-foreground">Replies to 3 new reviews drafted with AI</p>
+          <span className="ml-auto shrink-0 text-xs font-semibold text-ai">Review</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** The left half on wide screens: logo, pitch, value props and (optionally) the product still. */
+function BrandPanel({ showcase }: { showcase: boolean }) {
+  return (
+    <aside
+      aria-label="About MyPageSEO"
+      className="relative isolate hidden overflow-hidden text-brand-foreground lg:sticky lg:top-0 lg:flex lg:h-dvh lg:flex-col"
+    >
+      <BrandBackdrop />
+      <div className="flex h-full flex-col overflow-y-auto px-10 py-8 [scrollbar-width:none] xl:px-16 [&::-webkit-scrollbar]:hidden">
+        <AuthWordmark tone="inverse" className="self-start" />
+        <div className="my-auto max-w-xl py-6">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-highlight">
+            Local SEO for businesses and agencies
+          </p>
+          <p className="mt-3 text-4xl font-semibold leading-[1.1] tracking-tight text-balance xl:text-[2.5rem]">
+            Get found first when customers search nearby.
+          </p>
+          <p className="mt-3 max-w-lg text-base leading-relaxed text-brand-foreground/85">
+            Your rankings, Google Business Profile, reviews and reports in one place, for one location or hundreds.
+          </p>
+          <ul className="mt-6 space-y-3.5">
+            {VALUE_PROPS.map(({ icon: Icon, title, text, ai }) => (
+              <li key={title} className="flex gap-4">
+                <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-brand-foreground/10 ring-1 ring-brand-foreground/15 ring-inset">
+                  <Icon aria-hidden className={cn("size-5", ai ? "text-ai-bright" : "text-highlight")} />
+                </span>
+                <div className="min-w-0 pt-0.5">
+                  <p className="text-[15px] font-semibold leading-snug">{title}</p>
+                  <p className="mt-0.5 text-sm leading-relaxed text-brand-foreground/85">{text}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+          {/* The still only shows when the panel is tall enough to hold it without scrolling. */}
+          {showcase ? <ProductPreview className="mt-7 hidden [@media(min-height:860px)]:block" /> : null}
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+/** Phones and tablets: the brand panel shrinks to a header band above the form. */
+function CompactBrandHeader() {
+  return (
+    <header className="relative isolate overflow-hidden px-4 py-4 text-brand-foreground sm:px-6 lg:hidden">
+      <BrandBackdrop compact />
+      <AuthWordmark tone="inverse" />
+      <p className="mt-2 text-sm text-brand-foreground/85">Get found first when customers search nearby.</p>
+    </header>
+  );
+}
+
+/**
+ * The layout of every auth page. `showcase` adds the product still to the brand
+ * panel (sign in, sign up); `footer` sits under the form card (e.g. the staff
+ * sign-in link on the login page).
+ *
+ * The browser tab is named after the card's heading ("Reset your password · MyPageSEO"),
+ * following it as the page changes (a form that turns into "Check your email"); `title`
+ * names it explicitly instead.
+ */
+export function AuthLayout({
+  children,
+  showcase = false,
+  footer,
+  title,
+}: {
+  children: ReactNode;
+  showcase?: boolean;
+  footer?: ReactNode;
+  /** The tab's name, when it shouldn't follow the card's `<h1>`. */
+  title?: string;
+}) {
+  const card = useRef<HTMLDivElement>(null);
+  useHeadingDocumentTitle(card, title);
+
+  return (
+    <div className="flex min-h-dvh flex-col bg-background lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,8fr)_minmax(0,7fr)]">
+      <CompactBrandHeader />
+      <BrandPanel showcase={showcase} />
+      <div className="flex flex-1 flex-col lg:min-h-dvh">
+        <main className="flex flex-1 flex-col items-center px-4 py-6 sm:justify-center sm:px-6 sm:py-10 lg:px-10">
+          <div ref={card} className="w-full max-w-[460px] rounded-2xl border border-border bg-card p-5 shadow-raised sm:p-8 lg:shadow-elevated">
             {children}
           </div>
         </main>
+        {footer ? <div className="px-4 pb-6 text-center sm:pb-8">{footer}</div> : null}
       </div>
     </div>
   );
 }
 
-/** Product-led login composition. Other auth routes retain the compact shared layout. */
-export function LoginAuthLayout({ children }: { children: ReactNode }) {
+/** The sign-in landing page: the shared layout with the product still. */
+export function LoginAuthLayout({ children, footer }: { children: ReactNode; footer?: ReactNode }) {
   return (
-    <div className="min-h-screen bg-background px-4 py-5 sm:px-6 sm:py-8 lg:grid lg:place-items-center lg:py-10">
-      <div className="mx-auto grid w-full max-w-[1060px] overflow-hidden rounded-lg border border-border bg-surface shadow-elevated lg:min-h-[680px] lg:grid-cols-[minmax(0,1.05fr)_minmax(420px,0.95fr)]">
-        <aside className="flex min-w-0 flex-col bg-primary px-6 py-7 text-primary-foreground sm:px-9 sm:py-9 lg:px-12 lg:py-11">
-          <AuthWordmark className="[&_span:first-child]:bg-primary-foreground [&_span:first-child]:text-primary [&_span:last-child]:text-primary-foreground" />
-
-          <div className="mt-10 max-w-lg lg:mt-16">
-            <p className="text-xs font-medium uppercase text-primary-foreground/85">Local search operations</p>
-            <h2 className="mt-3 max-w-md text-3xl font-semibold leading-tight text-primary-foreground sm:text-4xl">
-              Local SEO, without the guesswork.
-            </h2>
-            <p className="mt-4 max-w-md text-sm leading-6 text-primary-foreground/75 sm:text-base">
-              Bring local rankings, Google Business Profile insights, citations, competitors and
-              reporting together in one focused platform.
-            </p>
-          </div>
-
-          <AuthProductPreview />
-        </aside>
-
-        <main className="flex min-w-0 items-center px-6 py-10 sm:px-10 lg:px-14">
-          <div className="mx-auto w-full max-w-[370px]">{children}</div>
-        </main>
-      </div>
-    </div>
+    <AuthLayout showcase footer={footer}>
+      {children}
+    </AuthLayout>
   );
 }
 
-function AuthProductPreview() {
+/* ------------------------------------------------------------------- form -- */
+
+export function AuthHeading({ title, description }: { title: string; description?: ReactNode }) {
   return (
-    <div className="mt-8 border border-primary-foreground/15 bg-primary-foreground/5 lg:mt-auto">
-      <div className="flex items-center justify-between border-b border-primary-foreground/15 px-4 py-3">
-        <div>
-          <p className="text-xs font-medium text-primary-foreground">Austin · North location</p>
-          <p className="mt-0.5 text-[11px] text-primary-foreground/80">Last 28 days</p>
-        </div>
-        <span className="flex items-center gap-1 text-xs text-success-surface">
-          <TrendingUp className="size-3.5" aria-hidden /> 8.4%
-        </span>
-      </div>
-
-      <div className="grid grid-cols-3 divide-x divide-primary-foreground/15 border-b border-primary-foreground/15">
-        <PreviewMetric label="Visibility" value="72%" />
-        <PreviewMetric label="Avg. rank" value="8.6" />
-        <PreviewMetric label="GBP health" value="84" />
-      </div>
-
-      <div className="grid gap-4 p-4 sm:grid-cols-[minmax(0,1fr)_150px]">
-        <div>
-          <div className="flex items-center justify-between text-[11px] text-primary-foreground/80">
-            <span>Ranking movement</span>
-            <span>4 weeks</span>
-          </div>
-          <div
-            role="img"
-            aria-label="Ranking trend improving over four weeks"
-            className="mt-4 flex h-16 items-end gap-1.5"
-          >
-            {["h-5", "h-7", "h-6", "h-8", "h-7", "h-10", "h-9", "h-11", "h-10", "h-12", "h-11", "h-14"].map((height, index) => (
-              <span
-                key={`${height}-${index}`}
-                className={cn("min-w-0 flex-1 bg-primary-foreground/25", height)}
-              />
-            ))}
-          </div>
-        </div>
-        <div className="border-t border-primary-foreground/15 pt-3 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
-          <p className="text-[11px] text-primary-foreground/80">Next action</p>
-          <div className="mt-2 flex gap-2">
-            <MapPin className="mt-0.5 size-3.5 shrink-0 text-primary-foreground/70" aria-hidden />
-            <p className="text-xs leading-5 text-primary-foreground/85">
-              Update hours on one location
-            </p>
-          </div>
-          <div className="mt-2 flex items-center gap-1 text-[11px] text-primary-foreground/80">
-            <ArrowDown className="size-3" aria-hidden /> 3 keywords declined
-          </div>
-        </div>
-      </div>
+    <div className="mb-6">
+      <h1 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h1>
+      {description ? <p className="mt-1.5 text-sm leading-6 text-muted-foreground">{description}</p> : null}
     </div>
   );
 }
 
-function PreviewMetric({ label, value }: { label: string; value: string }) {
+/** A text link in auth copy ("Forgot password?", "Create an account"). */
+export function AuthLink({ to, className, children }: { to: To; className?: string; children: ReactNode }) {
   return (
-    <div className="px-3 py-3.5">
-      <p className="text-[10px] text-primary-foreground/80 sm:text-[11px]">{label}</p>
-      <p className="mt-1 font-mono text-lg font-medium text-primary-foreground">{value}</p>
-    </div>
+    <Link
+      to={to}
+      className={cn(
+        "rounded-sm font-semibold text-primary underline-offset-4 hover:text-primary-hover hover:underline",
+        className,
+      )}
+    >
+      {children}
+    </Link>
   );
 }
 
-export function AuthHeading({ title, description }: { title: string; description: string }) {
-  return (
-    <div className="mb-5">
-      <h1 className="text-lg font-semibold text-foreground sm:text-xl">{title}</h1>
-      <p className="mt-1 text-sm text-muted-foreground">{description}</p>
-    </div>
-  );
-}
+/** Lets the input inside an `AuthField` point at the field's error or hint (`aria-describedby`). */
+const AuthFieldContext = createContext<{ describedBy: string | undefined } | null>(null);
 
 /** Field wrapper: label, control, inline validation message. */
 export function AuthField({
@@ -179,9 +353,10 @@ export function AuthField({
   children: ReactNode;
   className?: string;
 }) {
+  const describedBy = error ? `${htmlFor}-error` : hint ? `${htmlFor}-hint` : undefined;
   return (
-    <div className={cn("space-y-1.5", className)}>
-      <Label htmlFor={htmlFor} className="text-[13px] font-medium text-foreground">
+    <div className={cn("space-y-2", className)}>
+      <Label htmlFor={htmlFor} className="text-sm font-medium text-foreground">
         {label}
         {required ? (
           <span aria-hidden className="ml-0.5 text-critical">
@@ -189,13 +364,16 @@ export function AuthField({
           </span>
         ) : null}
       </Label>
-      {children}
+      <AuthFieldContext.Provider value={{ describedBy }}>{children}</AuthFieldContext.Provider>
       {error ? (
-        <p id={`${htmlFor}-error`} className="text-xs font-medium text-critical">
+        <p id={`${htmlFor}-error`} className="flex items-start gap-1.5 text-xs font-medium text-critical">
+          <AlertCircle aria-hidden className="mt-px size-3.5 shrink-0" />
           {error}
         </p>
       ) : hint ? (
-        <p className="text-xs text-muted-foreground">{hint}</p>
+        <p id={`${htmlFor}-hint`} className="text-xs text-muted-foreground">
+          {hint}
+        </p>
       ) : null}
     </div>
   );
@@ -206,39 +384,35 @@ export function AuthInput({
   className,
   ...props
 }: React.ComponentProps<typeof Input> & { invalid?: boolean | undefined }) {
+  const field = useContext(AuthFieldContext);
   return (
     <Input
       {...props}
       aria-invalid={invalid || undefined}
-      className={cn(
-        "h-10 bg-background text-sm",
-        invalid && "border-critical focus-visible:ring-critical/30",
-        className,
-      )}
+      aria-describedby={props["aria-describedby"] ?? field?.describedBy}
+      // 16px text on phones (smaller makes iOS zoom into the field); the base Input steps down from md.
+      className={cn("h-11 px-3.5", className)}
     />
   );
 }
 
 export function AuthPasswordInput({
   invalid,
+  className,
   ...props
 }: React.ComponentProps<typeof Input> & { invalid?: boolean | undefined }) {
   const [visible, setVisible] = useState(false);
   return (
     <div className="relative">
-      <AuthInput
-        {...props}
-        {...(invalid === undefined ? {} : { invalid })}
-        type={visible ? "text" : "password"}
-        className="pr-10"
-      />
+      <AuthInput {...props} invalid={invalid} type={visible ? "text" : "password"} className={cn("pr-12", className)} />
       <button
         type="button"
         onClick={() => setVisible((v) => !v)}
         aria-label={visible ? "Hide password" : "Show password"}
-        className="absolute right-1 top-1/2 grid size-8 -translate-y-1/2 place-items-center rounded-md text-muted-foreground transition-colors hover:text-foreground"
+        aria-controls={props.id}
+        className="absolute right-1 top-1/2 grid size-9 -translate-y-1/2 place-items-center rounded-md text-muted-foreground transition-colors outline-hidden hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
       >
-        {visible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+        {visible ? <EyeOff aria-hidden className="size-[18px]" /> : <Eye aria-hidden className="size-[18px]" />}
       </button>
     </div>
   );
@@ -248,9 +422,10 @@ export type AuthOption<T extends string> = {
   value: T;
   label: string;
   description: string;
+  icon?: LucideIcon;
 };
 
-/** Compact segmented selection control (used for account type). */
+/** Selection cards (used for the account type): a radio group styled as cards. */
 export function AuthOptionGroup<T extends string>({
   legend,
   options,
@@ -266,20 +441,22 @@ export function AuthOptionGroup<T extends string>({
 }) {
   const id = useId();
   return (
-    <fieldset className="space-y-1.5">
-      <legend className="mb-1.5 text-[13px] font-medium text-foreground">{legend}</legend>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+    <fieldset className="space-y-2">
+      <legend className="mb-2 text-sm font-medium text-foreground">{legend}</legend>
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
         {options.map((option) => {
           const selected = option.value === value;
+          const Icon = option.icon;
           return (
             <label
               key={option.value}
               htmlFor={`${id}-${option.value}`}
               className={cn(
-                "cursor-pointer rounded-md border p-3 transition-colors",
+                "relative flex cursor-pointer flex-col gap-2 rounded-xl border p-3.5 transition-[background-color,border-color,box-shadow]",
+                "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2",
                 selected
-                  ? "border-primary bg-accent/60 ring-1 ring-primary"
-                  : "border-border bg-background hover:border-input hover:bg-secondary/60",
+                  ? "border-primary bg-brand-tint ring-1 ring-primary"
+                  : "border-border-strong bg-card hover:border-primary/50 hover:bg-accent/60",
               )}
             >
               <input
@@ -291,17 +468,30 @@ export function AuthOptionGroup<T extends string>({
                 onChange={() => onChange(option.value)}
                 className="sr-only"
               />
+              <span className="flex items-center gap-2.5 pr-6">
+                {Icon ? (
+                  <span
+                    aria-hidden
+                    className={cn(
+                      "grid size-7 shrink-0 place-items-center rounded-lg",
+                      selected ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground",
+                    )}
+                  >
+                    <Icon className="size-4" />
+                  </span>
+                ) : null}
+                <span className={cn("text-sm font-semibold", selected ? "text-primary" : "text-foreground")}>
+                  {option.label}
+                </span>
+              </span>
+              <span className="block text-xs leading-snug text-muted-foreground">{option.description}</span>
               <span
+                aria-hidden
                 className={cn(
-                  "block text-sm font-semibold",
-                  selected ? "text-primary" : "text-foreground",
+                  "absolute right-3.5 top-[1.3rem] size-4 rounded-full border bg-card",
+                  selected ? "border-[5px] border-primary" : "border-input",
                 )}
-              >
-                {option.label}
-              </span>
-              <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
-                {option.description}
-              </span>
+              />
             </label>
           );
         })}
@@ -315,7 +505,7 @@ export function AuthFormError({ message }: { message: string }) {
   return (
     <div
       role="alert"
-      className="flex items-start gap-2 rounded-md border border-critical/25 bg-critical-surface px-3 py-2.5 text-sm text-foreground"
+      className="flex items-start gap-2.5 rounded-lg border border-critical/30 bg-critical-surface px-3.5 py-3 text-sm text-foreground"
     >
       <AlertCircle className="mt-0.5 size-4 shrink-0 text-critical" aria-hidden />
       <span>{message}</span>
@@ -324,14 +514,14 @@ export function AuthFormError({ message }: { message: string }) {
 }
 
 export function AuthFooterNote({ children }: { children: ReactNode }) {
-  return <p className="mt-5 text-center text-sm text-muted-foreground">{children}</p>;
+  return <p className="mt-6 text-center text-sm text-muted-foreground">{children}</p>;
 }
 
 export type AuthStateTone = "info" | "success" | "critical";
 
 /**
  * Outcome panel for authentication support screens (link sent, password reset,
- * email verified, link invalid or expired).
+ * email verified, link invalid or expired). Its title is the page heading.
  */
 export function AuthStatePanel({
   tone = "info",
@@ -350,20 +540,18 @@ export function AuthStatePanel({
     <div role="status" className="text-center">
       <span
         className={cn(
-          "mx-auto grid size-10 place-items-center rounded-md border",
-          tone === "success" && "border-success/30 bg-success-surface text-success",
-          tone === "critical" && "border-critical/25 bg-critical-surface text-critical",
-          tone === "info" && "border-border bg-secondary text-primary",
+          "mx-auto grid size-12 place-items-center rounded-xl ring-1 ring-inset [&_svg]:size-6",
+          tone === "success" && "bg-success-surface text-success ring-success/20",
+          tone === "critical" && "bg-critical-surface text-critical ring-critical/20",
+          tone === "info" && "bg-brand-tint text-primary ring-primary/20",
         )}
         aria-hidden
       >
         {icon}
       </span>
-      <h2 className="mt-3.5 text-base font-semibold text-foreground sm:text-lg">{title}</h2>
-      <div className="mx-auto mt-1.5 max-w-sm text-sm leading-6 text-muted-foreground">
-        {description}
-      </div>
-      {children ? <div className="mt-5 space-y-2.5 text-left">{children}</div> : null}
+      <h1 className="mt-4 text-xl font-semibold tracking-tight text-foreground">{title}</h1>
+      <div className="mx-auto mt-2 max-w-sm text-sm leading-6 text-muted-foreground">{description}</div>
+      {children ? <div className="mt-6 space-y-3 text-left">{children}</div> : null}
     </div>
   );
 }

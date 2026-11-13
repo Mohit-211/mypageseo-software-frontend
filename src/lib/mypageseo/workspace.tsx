@@ -1,14 +1,16 @@
-import { useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  getClients,
   getLocationsList,
   getProfile,
   getSelectedOrganizationId,
+  getSessionSubject,
   hasUsableSession,
   isApiError,
+  loadAllClients,
   setSelectedOrganizationId,
   subscribeToAccessToken,
+  subscribeToSelectedOrganization,
   type LocationRow,
 } from "@/api";
 import type { AccountType } from "./navigation";
@@ -33,8 +35,12 @@ export type LocationSummary = {
   businessName: string;
   /** City / region label, e.g. "Austin, TX". */
   area: string;
+  /** The city alone ("" when unknown), for compact labels such as the sidebar location switcher. */
+  city?: string;
   rating?: number;
   reviewCount?: number;
+  /** The latest Profile score (0–100), when the location has a GBP report. */
+  gbpScore?: number;
 };
 
 export type WorkspaceStatus = "loading" | "ready" | "unavailable";
@@ -83,8 +89,10 @@ function toLocationSummary(row: LocationRow): LocationSummary {
     ...(row.client ? { clientId: row.client.client_id } : {}),
     businessName: row.name,
     area: [row.city, row.country].filter(Boolean).join(", "),
+    city: row.city ?? "",
     ...(row.reviews?.rating != null ? { rating: row.reviews.rating } : {}),
     ...(row.reviews?.count != null ? { reviewCount: row.reviews.count } : {}),
+    ...(row.gbp?.score != null ? { gbpScore: row.gbp.score } : {}),
   };
 }
 
@@ -103,13 +111,37 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [stored] = useState(readStoredContext);
   const [activeClientId, setActiveClientId] = useState<string | null>(stored.activeClientId);
   const [activeLocationId, setActiveLocationId] = useState<string | null>(stored.activeLocationId);
-  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(getSelectedOrganizationId);
+  // The tab's organization lives in one store (api/organization-storage.ts) that requests read too,
+  // so what's shown here is always what requests act on, whoever changes it.
+  const selectedOrgId = useSyncExternalStore(subscribeToSelectedOrganization, getSelectedOrganizationId, () => null);
+  const sessionUser = useSyncExternalStore(subscribeToAccessToken, getSessionSubject, () => null);
+
+  // Another organization or another user (a sign-out, a new session, a switch here or by a sign-in
+  // or invitation): the picked client and location belonged to the previous one.
+  const scope = `${sessionUser ?? ""}/${selectedOrgId ?? ""}`;
+  const [shownScope, setShownScope] = useState(scope);
+  if (shownScope !== scope) {
+    setShownScope(scope);
+    setActiveClientId(null);
+    setActiveLocationId(null);
+  }
 
   const signedIn = useSyncExternalStore(subscribeToAccessToken, hasUsableSession, () => false);
   const queryClient = useQueryClient();
+  // Only signing out resets anything. A tab that opens signed out (a sign-in or invitation page, or a
+  // second tab while the session lives only in the first) has nothing to drop, and must not erase the
+  // organization, client and location the other tabs remember. A fresh sign-in starts in the default
+  // organization anyway (startSession).
+  const wasSignedIn = useRef(signedIn);
   useEffect(() => {
-    // Drop the previous user's data on sign-out so the next login starts clean.
-    if (!signedIn) queryClient.clear();
+    const signedOut = wasSignedIn.current && !signedIn;
+    wasSignedIn.current = signedIn;
+    if (!signedOut) return;
+    // Signed out (here, in another tab, or the session ended): drop the previous user's data, any
+    // refusal seen on their account and their organization, so the next sign-in starts clean.
+    queryClient.clear();
+    resetAccountRestriction();
+    setSelectedOrganizationId(null);
   }, [signedIn, queryClient]);
 
   const profile = useQuery({
@@ -138,12 +170,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     null;
 
   useEffect(() => {
-    if (selectedOrgId && profile.data && !selectedIsMember) {
-      setSelectedOrganizationId(null);
-      resetAccountRestriction();
-      void queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] !== "profile" });
-    }
-  }, [selectedOrgId, selectedIsMember, profile.data, queryClient]);
+    // Back to the default organization; app/query-client.ts drops the data loaded for the other one.
+    if (selectedOrgId && profile.data && !selectedIsMember) setSelectedOrganizationId(null);
+  }, [selectedOrgId, selectedIsMember, profile.data]);
 
   const agency = organization?.accountType === "agency";
   const orgKey = organization?.id ?? "none";
@@ -154,7 +183,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     queryKey: ["clients", "workspace", orgKey],
     queryFn: async ({ signal }) => {
       try {
-        return (await getClients(signal)).clients.map((client) => ({ id: client.client_id, name: client.name }));
+        // Every page: a client missing here would file its locations under "No client" in the switcher.
+        return (await loadAllClients(signal)).clients.map((client) => ({ id: client.client_id, name: client.name }));
       } catch (err) {
         if (isApiError(err) && err.reason === "agency_only") return [];
         throw err;
@@ -195,13 +225,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       activeLocation: locations.find((location) => location.id === activeLocationId) ?? null,
       setOrganizationId: (id) => {
         if (id === organization?.id) return;
+        // The store does the rest: requests use it at once, app/query-client.ts drops the previous
+        // organization's data and refusal, and the picked client and location are cleared above.
         setSelectedOrganizationId(id);
-        setSelectedOrgId(id);
-        resetAccountRestriction();
-        setActiveClientId(null);
-        setActiveLocationId(null);
-        // Everything cached belongs to the previous organization.
-        void queryClient.resetQueries({ predicate: (query) => query.queryKey[0] !== "profile" });
       },
       setActiveClientId,
       setActiveLocationId,
@@ -221,7 +247,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     organizations,
     activeClientId,
     activeLocationId,
-    queryClient,
   ]);
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;

@@ -20,7 +20,7 @@ const PinsImpl = lazy(() =>
 );
 
 function MapLoading({ className }: { className: string }) {
-  return <div role="status" aria-label="Loading map" className={cn("animate-pulse rounded-md bg-muted", className)} />;
+  return <div role="status" aria-label="Loading map" className={cn("animate-pulse rounded-lg bg-skeleton/60 motion-reduce:animate-none", className)} />;
 }
 
 /** The search grid on a map: one coloured rank marker per point; the business center is marked. */

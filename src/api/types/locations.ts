@@ -204,6 +204,8 @@ export type LocationCenterResult = {
 export type LocationTracking = {
   keywords: { text: string; normalized: string }[];
   keywords_version: number;
+  /** When the keyword list last changed (add, remove, reorder or re-case). */
+  keywords_updated_at?: string | null;
   competitors: string[];
   /** `radius_km` = center to edge (Phase 17). */
   grid: { size: number; spacing_km: number; radius_km: number };
@@ -226,6 +228,16 @@ export type TrackingResponse = {
   /** Same order as `tracking.competitors`. */
   competitors?: TrackedCompetitor[];
   onboarding_step?: LocationOnboardingStep;
+  /** How long a run with these settings takes, about (ms). */
+  expected_duration_ms?: number;
+  /** The run-size limit the settings are checked against. */
+  cap?: number;
+  /** True = a run with these settings would be refused (422). */
+  over_cap?: boolean;
+  /** Development server only: runs are trimmed to a few keywords and a 3×3 grid. */
+  dev_capped?: boolean;
+  /** `PUT /tracking` only: true when the set of keywords changed (not on a reorder or re-case). */
+  keywords_version_bumped?: boolean;
 };
 
 /** `GET locations/:id/tracking/estimate`: what a run would need, before saving. */
@@ -340,7 +352,8 @@ export type OnboardingStateResponse = {
 export type OnboardingCompleteResult = {
   completed: boolean;
   completed_at: string;
-  rank_run: { run_id: string; status: RankRunStatus; existing: boolean };
+  /** The first run; for a location set up before, its last run, or null when it has none. */
+  rank_run: { run_id: string; status: RankRunStatus; existing: boolean } | null;
 };
 
 export type ClientRecord = {

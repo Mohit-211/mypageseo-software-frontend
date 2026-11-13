@@ -1,121 +1,157 @@
-import { useState } from "react";
-import { useCanEdit } from "@/hooks/use-access";
-import { useNavigate } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
-import { LoaderCircle, Sparkles, ThumbsDown, ThumbsUp } from "lucide-react";
-import { generateReviewInsights, isApiError } from "@/api";
-import { PageHeader, Panel, StatusBadge } from "@/components/layout/shared/data-display";
-import { EmptyState, ErrorState, PageSkeleton } from "@/components/layout/shared/feedback/states";
+import { Link } from "react-router-dom";
+import { ArrowRight, Lightbulb, LoaderCircle, MessageSquareText, Sparkles } from "lucide-react";
+import { AiBadge } from "@/components/ai/ai-badge";
+import { AiCostChip } from "@/components/ai/ai-cost-chip";
+import { AiStatusBanner } from "@/components/ai/ai-status-banner";
+import { PageHeader } from "@/components/layout/shared/data-display";
+import { EmptyState, ErrorState, SectionSkeleton } from "@/components/layout/shared/feedback/states";
+import { ReviewInsightsView } from "@/components/reputation/review-insights";
+import { ReviewsGateState } from "@/components/reputation/review-gates";
 import { Button } from "@/components/ui/button";
-import { useGbpContext } from "@/lib/gbp/gbp-context";
+import { useCanEdit } from "@/hooks/use-access";
+import { useAiStatus } from "@/lib/ai/ai-status";
+import { formatDate } from "@/lib/datetime";
+import { useLocationRoute } from "@/lib/locations/location-route-context";
+import { locationPath } from "@/lib/mypageseo/section-links";
+import { useGenerateInsights } from "@/lib/reviews/review-actions";
 import { reviewErrorMessage } from "@/lib/reviews/review-errors";
-import { reviewsKey, useReviewInsights, useReviewsSummary } from "@/lib/reviews/use-reviews";
-import { formatRunDate } from "@/lib/rankings/format";
+import { reviewsGate } from "@/lib/reviews/review-metrics";
+import { isNoInsights, useReviewInsights, useReviewsSummary } from "@/lib/reviews/use-reviews";
 
-const SENTIMENT_TONE: Record<string, "success" | "critical" | "warning" | "neutral"> = {
-  positive: "success",
-  negative: "critical",
-  mixed: "warning",
-};
+/** Below this many reviews there is too little for a useful summary. */
+const MIN_REVIEWS = 3;
 
-/** AI insights over the location's reviews: themes, praise, complaints. Generated on request only. */
+/**
+ * Review insights (`/locations/:locationId/reputation/insights`): what customers talk about, praise
+ * and complain about, summarised by AI from recent reviews. Generated only when someone asks (it
+ * costs tokens) and kept until it's updated.
+ */
 function InsightsPage() {
-  const { location } = useGbpContext();
+  const { location } = useLocationRoute();
   const locationId = location.location_id;
-  const queryClient = useQueryClient();
-  const navigate = useNavigate();
-  const summary = useReviewsSummary(locationId);
-  const insights = useReviewInsights(locationId);
-  const [generating, setGenerating] = useState(false);
-  const ai = summary.data?.ai;
-  const cost = ai?.token_costs.insights;
-
-  const generate = async () => {
-    setGenerating(true);
-    try {
-      await generateReviewInsights(locationId);
-      toast.success("Insights updated.");
-    } catch (err) {
-      const { message, buyTokens } = reviewErrorMessage(err, "Insights couldn't be generated.");
-      toast.error(message, buyTokens ? { action: { label: "Buy tokens", onClick: () => navigate("/settings/billing") } } : undefined);
-    } finally {
-      setGenerating(false);
-      void queryClient.invalidateQueries({ queryKey: reviewsKey(locationId) });
-      void queryClient.invalidateQueries({ queryKey: ["billing", "tokens"] });
-    }
-  };
-
   const canEdit = useCanEdit();
-  const noInsights = isApiError(insights.error) && (insights.error.reason === "no_insights" || insights.error.status === 404);
+  const summary = useReviewsSummary(locationId);
+  const gate = summary.data ? reviewsGate(summary.data) : null;
+  // Insights exist only for reviews we can read; a location without Google would only answer 404.
+  const insights = useReviewInsights(locationId, summary.isSuccess && !gate);
+  const ai = useAiStatus(locationId);
+  const generate = useGenerateInsights(locationId);
+
+  const stats = summary.data?.stats ?? null;
+  const data = insights.data;
+  const none = insights.isError && isNoInsights(insights.error);
+  const tooFew = stats !== null && stats.total < MIN_REVIEWS;
+
   const generateButton =
-    ai?.configured && canEdit ? (
-      <Button size="sm" disabled={generating || ai.paused_today} onClick={() => void generate()}>
-        {generating ? <LoaderCircle aria-hidden className="animate-spin" /> : <Sparkles aria-hidden />}
-        {insights.data ? "Update insights" : "Generate insights"}{cost != null ? ` (${cost} token${cost === 1 ? "" : "s"})` : ""}
+    canEdit && !gate && !tooFew ? (
+      <Button
+        variant="ai"
+        aria-busy={generate.isPending || undefined}
+        disabled={generate.isPending || !ai.canRun}
+        title={!ai.canRun ? ai.reason : undefined}
+        onClick={() => generate.mutate()}
+      >
+        {generate.isPending ? <LoaderCircle aria-hidden className="animate-spin" /> : <Sparkles aria-hidden />}
+        {generate.isPending ? "Reading your reviews…" : data ? "Update insights" : "Generate insights"}
+        {generate.isPending ? null : <AiCostChip tokens={ai.costs.insights} variant="inverse" />}
       </Button>
     ) : null;
 
+  const header = (
+    <PageHeader
+      icon={Lightbulb}
+      tone="reputation"
+      title="Review insights"
+      description="What customers praise and complain about, summarised by AI from your recent reviews."
+      meta={
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <AiBadge label="Summarised by AI" variant="soft" />
+          {data ? <span>Updated {formatDate(data.generated_at)}</span> : null}
+        </div>
+      }
+      actions={
+        <>
+          <Button asChild variant="outline">
+            <Link to={locationPath(locationId, "reputation")}>
+              <MessageSquareText aria-hidden /> All reviews
+            </Link>
+          </Button>
+          {generateButton}
+        </>
+      }
+    />
+  );
+
+  let body;
+  if (summary.isPending || (summary.isSuccess && !gate && insights.isPending)) {
+    body = (
+      <div className="space-y-6">
+        <SectionSkeleton lines={2} />
+        <SectionSkeleton lines={5} />
+        <div className="grid gap-6 lg:grid-cols-2">
+          <SectionSkeleton lines={3} />
+          <SectionSkeleton lines={3} />
+        </div>
+      </div>
+    );
+  } else if (summary.isError) {
+    body = (
+      <ErrorState
+        title="Reviews couldn't be loaded"
+        description={reviewErrorMessage(summary.error, "Something went wrong while loading the reviews.").message}
+        onRetry={() => void summary.refetch()}
+      />
+    );
+  } else if (gate) {
+    body = <ReviewsGateState gate={gate} />;
+  } else if (data) {
+    body = <ReviewInsightsView insights={data} stats={stats} />;
+  } else if (none || (insights.isError && tooFew)) {
+    body = tooFew ? (
+      <EmptyState
+        icon={MessageSquareText}
+        tone="reputation"
+        title="A few more reviews first"
+        description={`Insights need at least ${MIN_REVIEWS} reviews to find patterns. Once more customers have left one, AI can sum up what they say.`}
+        action={
+          <Button asChild variant="outline" size="sm">
+            <Link to={locationPath(locationId, "reputation")}>
+              See your reviews <ArrowRight aria-hidden />
+            </Link>
+          </Button>
+        }
+      />
+    ) : (
+      <EmptyState
+        icon={Sparkles}
+        tone="ai"
+        title="See what customers say"
+        description={
+          <>
+            AI reads your most recent reviews (up to 60) and sums up the themes, what customers praise and what they complain about. The summary is
+            saved here until you update it{canEdit ? `, and costs ${ai.costs.insights === 1 ? "1 token" : `${ai.costs.insights} tokens`}` : ""}.
+            {canEdit && !ai.canRun && ai.reason ? <span className="mt-2 block">{ai.reason}</span> : null}
+          </>
+        }
+        action={generateButton ?? undefined}
+      />
+    );
+  } else {
+    body = (
+      <ErrorState
+        title="Insights couldn't be loaded"
+        description={reviewErrorMessage(insights.error, "Something went wrong while loading the insights.").message}
+        onRetry={() => void insights.refetch()}
+      />
+    );
+  }
+
   return (
     <>
-      <PageHeader
-        title="Review insights"
-        description="What customers talk about most, what they praise and what they complain about, summarised by AI from recent reviews."
-        meta={insights.data ? <p className="text-xs text-muted-foreground">Made {formatRunDate(insights.data.generated_at, true)} from {insights.data.basis.reviews_sent} of {insights.data.basis.reviews_total} reviews</p> : undefined}
-        actions={generateButton}
-      />
-      {insights.isPending ? (
-        <PageSkeleton />
-      ) : noInsights ? (
-        <EmptyState
-          icon={Sparkles}
-          title="No insights yet"
-          description={ai?.configured ? "Generate them to see the themes in this location's reviews." : "AI isn't set up on the server yet."}
-          action={generateButton ?? undefined}
-        />
-      ) : insights.isError ? (
-        <ErrorState description={reviewErrorMessage(insights.error, "Insights couldn't be loaded.").message} onRetry={() => void insights.refetch()} />
-      ) : (
-        <div className="space-y-6">
-          <Panel title="Themes" description="Topics customers mention, with how often and how they feel about them.">
-            {insights.data.insight.themes.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No clear themes yet.</p>
-            ) : (
-              <ul className="flex flex-wrap gap-2">
-                {[...insights.data.insight.themes].sort((a, b) => b.mentions - a.mentions).map((theme) => (
-                  <li key={theme.theme} className="flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5 text-sm">
-                    <span className="font-medium capitalize text-foreground">{theme.theme}</span>
-                    <span className="tabular text-muted-foreground">{theme.mentions}×</span>
-                    <StatusBadge tone={SENTIMENT_TONE[theme.sentiment] ?? "neutral"}>{theme.sentiment}</StatusBadge>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Panel>
-          <div className="grid gap-6 lg:grid-cols-2">
-            <ListPanel title="What customers praise" icon={<ThumbsUp aria-hidden className="size-4 text-success" />} items={insights.data.insight.praise} />
-            <ListPanel title="What customers complain about" icon={<ThumbsDown aria-hidden className="size-4 text-critical" />} items={insights.data.insight.complaints} />
-          </div>
-          <ListPanel title="Observations" icon={<Sparkles aria-hidden className="size-4 text-brand-soft" />} items={insights.data.insight.observations} />
-        </div>
-      )}
+      {header}
+      {!gate ? <AiStatusBanner status={ai} /> : null}
+      {body}
     </>
-  );
-}
-
-function ListPanel({ title, icon, items }: { title: string; icon: React.ReactNode; items: string[] }) {
-  return (
-    <Panel title={title}>
-      {items.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Nothing stands out.</p>
-      ) : (
-        <ul className="space-y-2">
-          {items.map((item) => (
-            <li key={item} className="flex gap-2 text-sm">{icon}<span>{item}</span></li>
-          ))}
-        </ul>
-      )}
-    </Panel>
   );
 }
 

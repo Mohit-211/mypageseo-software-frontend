@@ -71,7 +71,10 @@ export function Card({
 
 export type Tone = "good" | "bad" | "neutral";
 
-/** A change pill. `better` says which direction is good for this metric. */
+/**
+ * A change pill. `better` says which direction is good for this metric. A change for the worse is
+ * amber (worth a look), as in the app; red is kept for real problems.
+ */
 export function Delta({ value, text, better = "up", className }: { value: number | null | undefined; text?: string | null; better?: "up" | "down"; className?: string }) {
   if (value === null || value === undefined || !Number.isFinite(value)) return null;
   const tone: Tone = value === 0 ? "neutral" : (value > 0) === (better === "up") ? "good" : "bad";
@@ -81,7 +84,7 @@ export function Delta({ value, text, better = "up", className }: { value: number
       className={cn(
         "inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-xs font-semibold tabular",
         tone === "good" && "bg-success-surface text-success",
-        tone === "bad" && "bg-critical-surface text-critical",
+        tone === "bad" && "bg-warning-surface text-warning-foreground",
         tone === "neutral" && "bg-muted text-muted-foreground",
         className,
       )}
@@ -203,15 +206,48 @@ export function ScoreRing({ value, label, size = 148, caption }: { value: number
   );
 }
 
-/** A labelled horizontal bar (0–max). */
-export function Bar({ label, value, max, display, color, highlight }: { label: ReactNode; value: number; max: number; display?: ReactNode; color?: string; highlight?: boolean }) {
+/**
+ * A labelled horizontal bar (0–max). `stacked` puts the label and the value above a full-width bar,
+ * for a few named parts in a narrow column (the labels never get cut off).
+ */
+export function Bar({
+  label,
+  value,
+  max,
+  display,
+  color,
+  highlight,
+  stacked,
+}: {
+  label: ReactNode;
+  value: number;
+  max: number;
+  display?: ReactNode;
+  color?: string;
+  highlight?: boolean;
+  stacked?: boolean;
+}) {
   const pct = max > 0 ? Math.max(0, Math.min(1, value / max)) : 0;
+  const track = (
+    <span className={cn("bar-track h-3 overflow-hidden rounded-full", stacked && "block")}>
+      <span className="bar-3d block h-full rounded-full transition-[width] duration-700 ease-out" style={{ width: `${Math.max(pct * 100, value > 0 ? 3 : 0)}%`, ...(color ? ({ "--bar": color } as CSSProperties) : {}) }} />
+    </span>
+  );
+  if (stacked) {
+    return (
+      <div className={cn("space-y-1.5 text-sm", highlight && "font-semibold")}>
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="min-w-0 text-foreground">{label}</span>
+          <span className="shrink-0 tabular text-muted-foreground">{display ?? value.toLocaleString()}</span>
+        </div>
+        {track}
+      </div>
+    );
+  }
   return (
     <div className={cn("grid grid-cols-[minmax(0,2fr)_minmax(4rem,3fr)_auto] items-center gap-3 text-sm", highlight && "font-semibold")}>
       <span className="truncate text-foreground" title={typeof label === "string" ? label : undefined}>{label}</span>
-      <span className="bar-track h-3 overflow-hidden rounded-full">
-        <span className="bar-3d block h-full rounded-full transition-[width] duration-700 ease-out" style={{ width: `${Math.max(pct * 100, value > 0 ? 3 : 0)}%`, ...(color ? ({ "--bar": color } as CSSProperties) : {}) }} />
-      </span>
+      {track}
       <span className="min-w-10 text-right tabular text-muted-foreground">{display ?? value.toLocaleString()}</span>
     </div>
   );

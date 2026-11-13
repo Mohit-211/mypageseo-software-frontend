@@ -1,13 +1,11 @@
 import { apiErrorData, bindGbpPick, createLocation, isApiError, type LocationSlotQuote, type LocationStatus } from "@/api";
 import type { PendingLocationAction } from "@/lib/billing/pending-location-payment";
+import { LOCATION_STATUS_META } from "./location-status";
 
-export const LOCATION_STATUS_LABEL: Record<LocationStatus, string> = {
-  active: "Active",
-  setup_required: "Setup required",
-  gbp_not_connected: "No GBP",
-  gbp_disconnected: "GBP disconnected",
-  reconnect_required: "Reconnect Google",
-};
+/** The status names (see `LOCATION_STATUS_META` for tone and help text). */
+export const LOCATION_STATUS_LABEL = Object.fromEntries(
+  Object.entries(LOCATION_STATUS_META).map(([status, meta]) => [status, meta.label]),
+) as Record<LocationStatus, string>;
 
 /** Runs a Bind or a Places add; resolves with the new (or linked) location's id. */
 export async function runLocationAction(action: PendingLocationAction): Promise<string> {

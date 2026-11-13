@@ -47,7 +47,10 @@ function TrackCompetitorButtonEditor({ locationId, placeId, name }: { locationId
     <Button
       size="sm"
       variant="ghost"
+      // 28px with a mouse; the Button grows it to 36px on touch screens.
       className="h-7 shrink-0 px-2 text-xs"
+      // Rows of identical "Track" buttons: the name tells them apart (the visible word stays first).
+      aria-label={`Track ${name ?? "this business"}`}
       disabled={saving || full}
       title={full ? `You already track ${MAX_COMPETITORS} competitors` : undefined}
       onClick={() => void track()}

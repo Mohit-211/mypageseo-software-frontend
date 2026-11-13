@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { KeyRound, Loader2, LogOut, Trash2 } from "lucide-react";
+import { KeyRound, Loader2, LogOut, ShieldCheck, Trash2, type LucideIcon } from "lucide-react";
 import { changePassword, deactivateAccount, isApiError, logout } from "@/api";
-import { Panel, SectionHeader } from "@/components/layout/shared/data-display";
+import { Panel } from "@/components/layout/shared/data-display";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -38,40 +38,30 @@ export function AccountSecurity() {
 
   return (
     <>
-      <section aria-labelledby="profile-security">
-        <SectionHeader title="Security" description="Password and sign-in" />
-        <Panel>
-          <div className="space-y-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="flex items-start gap-2 text-sm text-muted-foreground">
-                <KeyRound className="mt-0.5 size-4 shrink-0 text-brand-soft" aria-hidden />
-                <span>Changing your password signs you out on every other device.</span>
-              </p>
-              <Button variant="outline" size="sm" onClick={() => setChanging(true)}>
-                Change password
-              </Button>
-            </div>
-            <div className="flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
-              <p className="flex items-start gap-2 text-sm text-muted-foreground">
-                <LogOut className="mt-0.5 size-4 shrink-0 text-brand-soft" aria-hidden />
-                <span>Sign out of Mypageseo on this device.</span>
-              </p>
-              <Button variant="outline" size="sm" disabled={signingOut} onClick={() => void signOut()}>
-                {signingOut ? <Loader2 aria-hidden className="animate-spin" /> : <LogOut aria-hidden />} Sign out
-              </Button>
-            </div>
-            <div className="flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
-              <p className="flex items-start gap-2 text-sm text-muted-foreground">
-                <Trash2 className="mt-0.5 size-4 shrink-0 text-critical" aria-hidden />
-                <span>Delete your account. Your connected Google accounts are disconnected and your memberships end.</span>
-              </p>
-              <Button variant="outline" size="sm" className="text-critical" onClick={() => setDeleting(true)}>
-                Delete account
-              </Button>
-            </div>
-          </div>
-        </Panel>
-      </section>
+      <Panel title="Security" description="Your password and where you're signed in." icon={ShieldCheck} tone="settings">
+        <ul className="-my-1 divide-y divide-border">
+          <SecurityRow icon={KeyRound} title="Password" text="Changing your password signs you out on every other device.">
+            <Button variant="outline" size="sm" onClick={() => setChanging(true)}>
+              Change password
+            </Button>
+          </SecurityRow>
+          <SecurityRow icon={LogOut} title="This device" text="Sign out of MyPageSEO on this device.">
+            <Button variant="outline" size="sm" disabled={signingOut} aria-busy={signingOut || undefined} onClick={() => void signOut()}>
+              {signingOut ? <Loader2 aria-hidden className="animate-spin" /> : <LogOut aria-hidden />} Sign out
+            </Button>
+          </SecurityRow>
+          <SecurityRow
+            icon={Trash2}
+            danger
+            title="Delete account"
+            text="Your connected Google accounts are disconnected and your memberships end. This can't be undone."
+          >
+            <Button variant="accent-outline" size="sm" onClick={() => setDeleting(true)}>
+              Delete account
+            </Button>
+          </SecurityRow>
+        </ul>
+      </Panel>
 
       {changing ? <ChangePasswordDialog onClose={() => setChanging(false)} /> : null}
       {deleting ? (
@@ -84,6 +74,42 @@ export function AccountSecurity() {
         />
       ) : null}
     </>
+  );
+}
+
+function SecurityRow({
+  icon: Icon,
+  title,
+  text,
+  danger = false,
+  children,
+}: {
+  icon: LucideIcon;
+  title: string;
+  text: string;
+  danger?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <li className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-w-0 items-start gap-3">
+        <span
+          aria-hidden
+          className={
+            danger
+              ? "grid size-8 shrink-0 place-items-center rounded-lg bg-critical-surface text-critical ring-1 ring-inset ring-critical/20"
+              : "grid size-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground ring-1 ring-inset ring-border-strong"
+          }
+        >
+          <Icon className="size-4" />
+        </span>
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-foreground">{title}</p>
+          <p className="text-sm text-muted-foreground">{text}</p>
+        </div>
+      </div>
+      <div className="shrink-0 pl-11 sm:pl-0">{children}</div>
+    </li>
   );
 }
 

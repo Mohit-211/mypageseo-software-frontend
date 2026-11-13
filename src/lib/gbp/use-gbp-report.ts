@@ -1,5 +1,6 @@
-import { keepPreviousData, queryOptions, useQuery } from "@tanstack/react-query";
+import { queryOptions, useQuery } from "@tanstack/react-query";
 import { getGbpReport, isApiError, type GbpRange } from "@/api";
+import { keepPreviousForLocation } from "@/lib/query-placeholder";
 
 export const gbpReportKey = (locationId: string) => ["locations", locationId, "gbp-report"] as const;
 
@@ -20,7 +21,7 @@ export const gbpReportQuery = (locationId: string, range: GbpRange) =>
 export function useGbpReport(locationId: string, range: GbpRange) {
   return useQuery({
     ...gbpReportQuery(locationId, range),
-    placeholderData: keepPreviousData,
+    placeholderData: keepPreviousForLocation(locationId),
     refetchInterval: (query) => (query.state.data?.generation?.pending ? 20_000 : false),
   });
 }

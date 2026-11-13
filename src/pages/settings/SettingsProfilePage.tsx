@@ -1,19 +1,12 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BadgeCheck, LoaderCircle } from "lucide-react";
+import { BadgeCheck, Contact, LoaderCircle, Mail, MailWarning } from "lucide-react";
 import { toast } from "sonner";
-import { AppShell } from "@/components/layout/shared/app-shell";
-import { PageHeader, Panel, SectionHeader, StatusBadge } from "@/components/layout/shared/data-display";
-import { SettingsNav } from "@/components/settings/settings-nav";
+import { Panel, StatusBadge } from "@/components/layout/shared/data-display";
 import { AccountSecurity } from "@/components/settings/account-security";
-import { ErrorState, TableSkeleton } from "@/components/layout/shared/feedback/states";
+import { ErrorState, SectionSkeleton } from "@/components/layout/shared/feedback/states";
 import { Button } from "@/components/ui/button";
-import {
-  FormGrid,
-  FormSaveBar,
-  FormTextField,
-  RequiredFieldsNote,
-} from "@/components/layout/shared/form-fields";
+import { FormGrid, FormSaveBar, FormTextField } from "@/components/layout/shared/form-fields";
 import { getProfile, isApiError, resendVerification, updateProfile, type Profile } from "@/api";
 import { formatDate } from "@/lib/datetime";
 import { classifyError } from "@/lib/mypageseo/errors";
@@ -32,11 +25,9 @@ import {
 } from "@/lib/mypageseo/profile";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
 
-const DESCRIPTION = "Manage your personal Mypageseo account information and preferences.";
+const ROLE_LABEL: Record<string, string> = { owner: "Owner", member: "Member", client_user: "Client (read-only)" };
 
 function ProfileSettingsPage() {
-  const workspace = useWorkspace();
-  const isAgency = workspace.organization?.accountType === "agency";
   // Shares the ["profile"] cache with WorkspaceProvider, so this is usually already loaded.
   const query = useQuery({
     queryKey: ["profile"],
@@ -50,24 +41,23 @@ function ProfileSettingsPage() {
       ? { status: "error", message: classifyError(query.error).description }
       : { status: "ready", profile: toUserProfile(query.data) };
 
-  return (
-    <AppShell>
-      <PageHeader title="Profile" description={DESCRIPTION} />
-      <SettingsNav active="profile" isAgency={isAgency} />
-
-      {result.status === "loading" ? (
-        <TableSkeleton rows={5} columns={2} />
-      ) : result.status === "error" ? (
-        <ErrorState description={result.message} onRetry={() => void query.refetch()} />
-      ) : (
-        <ProfileSections profile={result.profile} />
-      )}
-    </AppShell>
-  );
+  if (result.status === "loading") {
+    return (
+      <div className="space-y-6">
+        <SectionSkeleton lines={2} />
+        <SectionSkeleton lines={4} />
+      </div>
+    );
+  }
+  if (result.status === "error") {
+    return <ErrorState title="Your profile couldn't be loaded" description={result.message} onRetry={() => void query.refetch()} />;
+  }
+  return <ProfileSections profile={result.profile} />;
 }
 
 function ProfileSections({ profile }: { profile: UserProfile }) {
   const queryClient = useQueryClient();
+  const workspace = useWorkspace();
   const mutation = useMutation({ mutationFn: updateProfile });
   const [saved, setSaved] = useState<UserProfile>(profile);
   const [values, setValues] = useState<ProfileFormValues>(profileToForm(profile));
@@ -76,25 +66,23 @@ function ProfileSections({ profile }: { profile: UserProfile }) {
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [resending, setResending] = useState(false);
+  const organization = workspace.organization;
 
   const resend = async () => {
+    if (resending) return;
     setResending(true);
     try {
       await resendVerification(saved.email);
       toast.success("Verification email sent", { description: `Check ${saved.email} for the new link.` });
     } catch (err) {
-      toast.error(
-        isApiError(err) && err.reason === "rate_limited"
-          ? "Too many requests. Try again in a few minutes."
-          : "The verification email couldn't be sent. Try again.",
-      );
+      toast.error(isApiError(err) && err.reason === "rate_limited" ? "Too many requests. Try again in a few minutes." : "The verification email couldn't be sent. Try again.");
     } finally {
       setResending(false);
     }
   };
   const baseline = profileToForm(saved);
   const dirty = !profileFormsAreEqual(values, baseline);
-  const hasErrors = Object.keys(errors).length > 0;
+  const hasErrors = Object.values(errors).some(Boolean);
 
   const update = <K extends keyof ProfileFormValues>(key: K, value: ProfileFormValues[K]) => {
     setValues((current) => ({ ...current, [key]: value }));
@@ -107,26 +95,21 @@ function ProfileSections({ profile }: { profile: UserProfile }) {
     if (saving) return;
     const nextErrors = validateProfile(values);
     setErrors(nextErrors);
-    if (Object.keys(nextErrors).length > 0) return;
+    if (Object.values(nextErrors).some(Boolean)) return;
     setSaving(true);
     setSaveError(null);
     const body = toUpdateProfileRequest(values);
     mutation.mutate(body, {
       onSuccess: (updated) => {
         // Prefer the server's copy; fall back to what was sent if the PATCH returns no profile.
-        const next: UserProfile = updated
-          ? toUserProfile(updated)
-          : { ...saved, name: body.name, phone: body.mobile };
+        const next: UserProfile = updated ? toUserProfile(updated) : { ...saved, name: body.name, phone: body.mobile };
         setSaved(next);
         setValues(profileToForm(next));
-        queryClient.setQueryData<Profile>(["profile"], (current) =>
-          updated ? { ...current, ...updated } : current ? { ...current, ...body } : current,
-        );
+        queryClient.setQueryData<Profile>(["profile"], (current) => (updated ? { ...current, ...updated } : current ? { ...current, ...body } : current));
         setSavedAt(new Date().toLocaleTimeString());
       },
-      onError: (error) => {
-        setSaveError(error instanceof Error && error.message ? error.message : "Your profile could not be saved.");
-      },
+      // A 400 explains what to change (e.g. the name's length); anything else gets the plain fallback.
+      onError: (error) => setSaveError(isApiError(error) && error.status === 400 && error.message ? error.message : "Your profile couldn't be saved. Try again."),
       onSettled: () => setSaving(false),
     });
   };
@@ -140,121 +123,114 @@ function ProfileSections({ profile }: { profile: UserProfile }) {
 
   return (
     <div className="space-y-6">
-      <section aria-labelledby="profile-identity">
-        <SectionHeader title="Your account" description="Personal details shown to your team across Mypageseo" />
-        <Panel>
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
-            <span
-              aria-hidden
-              className="grid size-16 shrink-0 place-items-center rounded-full bg-primary text-lg font-semibold text-primary-foreground"
-            >
-              {profileInitials(saved.name, saved.email)}
-            </span>
-
-            <div className="flex-1 space-y-1 sm:pl-2">
-              <p className="text-sm font-semibold text-foreground">{saved.name}</p>
-              <p className="text-sm text-muted-foreground">{saved.email}</p>
-              <p className="text-xs text-muted-foreground">
-                {[
-                  saved.createdAt ? `Member since ${formatDate(saved.createdAt)}` : null,
-                  saved.lastLoginAt ? `Last sign-in ${formatDate(saved.lastLoginAt)}` : null,
-                ]
+      <section aria-label="Your account" className="overflow-hidden rounded-xl border border-border bg-card shadow-card">
+        <div className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center">
+          <span
+            aria-hidden
+            className="grid size-16 shrink-0 place-items-center rounded-full bg-linear-to-br from-primary to-brand text-xl font-semibold text-primary-foreground ring-4 ring-brand-tint"
+          >
+            {profileInitials(saved.name, saved.email)}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-lg font-semibold tracking-tight text-foreground">{saved.name || saved.email}</p>
+            <p className="truncate text-sm text-muted-foreground">{saved.email}</p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {organization ? (
+                <StatusBadge tone="brand">
+                  {ROLE_LABEL[organization.role] ?? "Member"} · {organization.name}
+                </StatusBadge>
+              ) : null}
+              <span className="text-xs text-muted-foreground">
+                {[saved.createdAt ? `Member since ${formatDate(saved.createdAt)}` : null, saved.lastLoginAt ? `last sign-in ${formatDate(saved.lastLoginAt)}` : null]
                   .filter(Boolean)
                   .join(" · ")}
-              </p>
+              </span>
             </div>
           </div>
-        </Panel>
+        </div>
       </section>
 
-      <section aria-labelledby="profile-details">
-        <SectionHeader title="Profile details" description="Update your name and phone number" />
-        <Panel>
-          <form
-            className="space-y-4"
-            onSubmit={(event) => {
-              event.preventDefault();
-              handleSave();
-            }}
-            noValidate
-          >
-            <RequiredFieldsNote />
-            <FormGrid>
-              <FormTextField
-                id="profile-name"
-                label="Full name"
-                required
-                value={values.name}
-                maxLength={PROFILE_NAME_MAX_LENGTH + 20}
-                disabled={saving}
-                error={errors.name}
-                hint="Shown to your team on the Team screen."
-                onChange={(value) => update("name", value)}
-              />
+      <Panel title="Your details" description="Your name is shown to your team, for example on the Team screen." icon={Contact} tone="settings">
+        <form
+          className="space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            handleSave();
+          }}
+          noValidate
+        >
+          <FormGrid>
+            <FormTextField
+              id="profile-name"
+              label="Full name"
+              required
+              value={values.name}
+              maxLength={PROFILE_NAME_MAX_LENGTH + 20}
+              disabled={saving}
+              error={errors.name}
+              autoComplete="name"
+              onChange={(value) => update("name", value)}
+            />
+            <FormTextField
+              id="profile-phone"
+              label="Phone number"
+              optional
+              type="tel"
+              autoComplete="tel"
+              value={values.phone}
+              disabled={saving}
+              error={errors.phone}
+              hint="Used only to contact you about your account."
+              onChange={(value) => update("phone", value)}
+            />
+          </FormGrid>
+          <button type="submit" className="hidden" aria-hidden tabIndex={-1} />
+        </form>
+      </Panel>
 
-              <FormTextField
-                id="profile-phone"
-                label="Phone number"
-                optional
-                type="tel"
-                value={values.phone}
-                disabled={saving}
-                error={errors.phone}
-                hint="Used for account contact only."
-                onChange={(value) => update("phone", value)}
-              />
-
-            </FormGrid>
-
-            <button type="submit" className="hidden" aria-hidden tabIndex={-1} />
-          </form>
-        </Panel>
-      </section>
-
-      <section aria-labelledby="profile-email">
-        <SectionHeader title="Email address" description="The address used to sign in and receive account email" />
-        <Panel>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0">
-              <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-foreground">
-                <span className="truncate">{saved.email}</span>
-                {saved.emailVerification === "verified" ? (
-                  <StatusBadge tone="success">
-                    <BadgeCheck className="mr-1 inline size-3.5" aria-hidden />
-                    Verified
-                  </StatusBadge>
-                ) : saved.emailVerification === "unverified" ? (
-                  <StatusBadge tone="warning">Unverified</StatusBadge>
-                ) : (
-                  <StatusBadge tone="neutral">Verification status unknown</StatusBadge>
-                )}
-              </p>
-              <p className="mt-1.5 text-xs text-muted-foreground">
-                To change your sign-in email, contact support from the Help page.
-              </p>
-            </div>
-            {saved.emailVerification === "unverified" ? (
-              <Button variant="outline" size="sm" disabled={resending} onClick={() => void resend()}>
-                {resending ? <LoaderCircle aria-hidden className="animate-spin" /> : null}
-                Resend verification email
-              </Button>
-            ) : null}
+      <Panel title="Sign-in email" description="The address you sign in with and where account email goes." icon={Mail} tone="settings">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-foreground">
+              <span className="truncate">{saved.email}</span>
+              {saved.emailVerification === "verified" ? (
+                <StatusBadge tone="success" icon={BadgeCheck}>
+                  Verified
+                </StatusBadge>
+              ) : saved.emailVerification === "unverified" ? (
+                <StatusBadge tone="warning" icon={MailWarning}>
+                  Not verified yet
+                </StatusBadge>
+              ) : (
+                <StatusBadge tone="neutral">Verification status unknown</StatusBadge>
+              )}
+            </p>
+            <p className="mt-1.5 text-xs text-muted-foreground">To change your sign-in email, open a support ticket from Help & support.</p>
           </div>
-        </Panel>
-      </section>
+          {saved.emailVerification === "unverified" ? (
+            <Button variant="outline" size="sm" disabled={resending} aria-busy={resending || undefined} onClick={() => void resend()}>
+              {resending ? <LoaderCircle aria-hidden className="animate-spin" /> : <Mail aria-hidden />}
+              Resend verification email
+            </Button>
+          ) : null}
+        </div>
+      </Panel>
 
       <AccountSecurity />
 
-      <FormSaveBar
-        dirty={dirty}
-        saving={saving}
-        hasErrors={hasErrors}
-        savedAt={savedAt}
-        error={saveError}
-        onSave={handleSave}
-        onDiscard={handleDiscard}
-        savedLabel="Profile saved"
-      />
+      {/* The save bar appears once there is something to save (or a result to report). */}
+      {dirty || saving || savedAt || saveError || hasErrors ? (
+        <FormSaveBar
+          dirty={dirty}
+          saving={saving}
+          hasErrors={hasErrors}
+          savedAt={savedAt}
+          error={saveError}
+          onSave={handleSave}
+          onDiscard={handleDiscard}
+          savedLabel="Profile saved"
+        />
+      ) : null}
     </div>
   );
 }

@@ -8,6 +8,7 @@ import {
   AuthHeading,
   AuthInput,
   AuthLayout,
+  AuthLink,
   AuthStatePanel,
 } from "@/components/auth/auth";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,7 @@ function ForgotPasswordPage() {
     if (!parsed.success) {
       setFieldError(parsed.error.issues[0]?.message ?? "Enter a valid email address.");
       setFormError(null);
+      document.getElementById("recovery-email")?.focus();
       return;
     }
 
@@ -50,7 +52,7 @@ function ForgotPasswordPage() {
       <AuthLayout>
         <AuthStatePanel
           tone="success"
-          icon={<MailCheck className="size-5" />}
+          icon={<MailCheck />}
           title="Check your email"
           description={
             <>
@@ -59,10 +61,10 @@ function ForgotPasswordPage() {
             </>
           }
         >
-          <Button variant="outline" className="w-full" onClick={() => setSentTo(null)}>
+          <Button variant="outline" className="h-10 w-full" onClick={() => setSentTo(null)}>
             Use a different email
           </Button>
-          <Button asChild variant="ghost" className="w-full">
+          <Button asChild variant="ghost" className="h-10 w-full">
             <Link to="/login">Back to sign in</Link>
           </Button>
         </AuthStatePanel>
@@ -77,15 +79,16 @@ function ForgotPasswordPage() {
         description="Enter the email address on your account and we'll email you a link to set a new password."
       />
 
-      <form onSubmit={handleSubmit} noValidate className="space-y-4">
+      <form onSubmit={handleSubmit} noValidate className="space-y-5">
         {formError ? <AuthFormError message={formError} /> : null}
 
-        <AuthField label="Email address" htmlFor="recovery-email" error={fieldError}>
+        <AuthField label="Email" htmlFor="recovery-email" error={fieldError}>
           <AuthInput
             id="recovery-email"
             name="email"
             type="email"
             autoComplete="email"
+            inputMode="email"
             placeholder="you@company.com"
             value={email}
             invalid={Boolean(fieldError)}
@@ -96,10 +99,10 @@ function ForgotPasswordPage() {
           />
         </AuthField>
 
-        <Button type="submit" className="h-10 w-full" disabled={submitting}>
+        <Button type="submit" size="lg" className="w-full" disabled={submitting} aria-busy={submitting || undefined}>
           {submitting ? (
             <>
-              <Loader2 className="size-4 animate-spin" aria-hidden />
+              <Loader2 className="animate-spin" aria-hidden />
               Sending link…
             </>
           ) : (
@@ -109,17 +112,14 @@ function ForgotPasswordPage() {
 
         <Button asChild variant="ghost" className="h-10 w-full">
           <Link to="/login">
-            <ArrowLeft className="size-4" aria-hidden />
+            <ArrowLeft aria-hidden />
             Back to sign in
           </Link>
         </Button>
       </form>
 
       <AuthFooterNote>
-        Don&apos;t have an account?{" "}
-        <Link to="/signup" className="font-medium text-primary underline-offset-4 hover:underline">
-          Create one
-        </Link>
+        New to MyPageSEO? <AuthLink to="/signup">Create an account</AuthLink>
       </AuthFooterNote>
     </AuthLayout>
   );

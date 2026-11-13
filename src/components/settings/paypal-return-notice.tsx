@@ -8,6 +8,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { takePendingLocationAction } from "@/lib/billing/pending-location-payment";
 import { invalidateGbpQueries } from "@/lib/gbp/use-gbp-connect";
+import { useSearchUpdater } from "@/lib/url-state";
 
 type ReturnKind = "order" | "checkout" | "cancelled" | null;
 
@@ -35,7 +36,8 @@ function readReturn(params: URLSearchParams): { kind: ReturnKind; token: string 
  * reports a cancelled payment. The query parameters are removed once read.
  */
 export function PaypalReturnNotice() {
-  const [params, setParams] = useSearchParams();
+  const [params] = useSearchParams();
+  const updateSearch = useSearchUpdater();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [initial] = useState(() => readReturn(params));
@@ -51,7 +53,8 @@ export function PaypalReturnNotice() {
   useEffect(() => {
     if (!initial.kind || started.current) return;
     started.current = true;
-    setParams({}, { replace: true });
+    // Read once: clear them from the address (replacing the entry, without moving the page).
+    updateSearch(() => new URLSearchParams());
     if (initial.kind === "cancelled") return;
 
     if (initial.kind === "checkout") {
@@ -97,14 +100,15 @@ export function PaypalReturnNotice() {
         });
       }
     })();
-  }, [initial, navigate, queryClient, setParams]);
+  }, [initial, navigate, queryClient, updateSearch]);
 
   if (!notice) return null;
 
   const Icon = notice.tone === "working" ? LoaderCircle : notice.tone === "success" ? CheckCircle2 : notice.tone === "error" ? AlertCircle : Info;
+  const variant = notice.tone === "error" ? "critical" : notice.tone === "success" ? "success" : "info";
   return (
-    <Alert role="status" className={notice.tone === "error" ? "mb-6 border-critical/25 bg-critical-surface/40" : "mb-6"}>
-      <Icon aria-hidden className={notice.tone === "working" ? "animate-spin" : undefined} />
+    <Alert role="status" variant={variant}>
+      <Icon aria-hidden className={notice.tone === "working" ? "animate-spin motion-reduce:animate-none" : undefined} />
       <AlertTitle>{notice.title}</AlertTitle>
       {notice.tone !== "working" && (notice.body || notice.locationsLink) ? (
         <AlertDescription>

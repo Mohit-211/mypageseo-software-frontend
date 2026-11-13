@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import type { CheckState as AppCheckState, GbpPillarId } from "@/api";
 import { PILLAR_DESCRIPTION, PILLAR_LABEL, STATE_LABEL } from "@/lib/gbp/gbp-labels";
+import { healthTone, type HealthTone } from "@/lib/health-tone";
 import { cn } from "@/lib/utils";
 import { EXPLAIN, unavailableText } from "../copy";
 import { formatDate, formatMonth, formatNumber, formatPercentChange, formatRate, formatShortDate } from "../format";
@@ -27,6 +28,8 @@ import { isAvailable, type CheckState, type GbpAuditData } from "../types";
 import { Bar, Card, Delta, Explain, Kpi, NotAvailable, Pill, ScoreRing, Stars } from "../ui";
 
 const STATE_PILL: Record<CheckState, "good" | "warn" | "bad" | "neutral"> = { pass: "good", partial: "warn", fail: "bad", not_available: "neutral" };
+/** Part bars on the app's grade bands (A/B green, C amber, D/F red), like the app's score rings. */
+const PILLAR_BAR_COLOR: Record<HealthTone, string> = { healthy: "var(--success)", attention: "var(--warning)", critical: "var(--critical)" };
 const stateLabel = (state: string) => STATE_LABEL[state as AppCheckState] ?? state;
 const pillarLabel = (id: string) => PILLAR_LABEL[id as GbpPillarId] ?? id;
 
@@ -65,17 +68,23 @@ function ScoreBlock({ data }: { data: GbpAuditData }) {
               <p className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
                 What the score is made of <Explain label="About the score areas">{EXPLAIN.pillars}</Explain>
               </p>
-              {score.pillars.map((pillar) => (
-                <div key={pillar.id} title={PILLAR_DESCRIPTION[pillar.id as GbpPillarId]}>
-                  <Bar
-                    label={pillarLabel(pillar.id)}
-                    value={pillar.score ?? 0}
-                    max={100}
-                    display={pillar.available && pillar.score !== null ? Math.round(pillar.score) : "—"}
-                    color={pillar.score === null ? undefined : pillar.score >= 80 ? "var(--success)" : pillar.score >= 50 ? "var(--warning)" : "var(--critical)"}
-                  />
-                </div>
-              ))}
+              {score.pillars.map((pillar) => {
+                // Current scores give each part points out of its weight (21 of 25); older reports
+                // gave a 0–100 score with a fractional weight.
+                const max = pillar.weight > 1 ? pillar.weight : 100;
+                return (
+                  <div key={pillar.id} title={PILLAR_DESCRIPTION[pillar.id as GbpPillarId]}>
+                    <Bar
+                      stacked
+                      label={pillarLabel(pillar.id)}
+                      value={pillar.score ?? 0}
+                      max={max}
+                      display={pillar.available && pillar.score !== null ? (max === 100 ? Math.round(pillar.score) : `${pillar.score}/${max}`) : "—"}
+                      color={pillar.score === null ? undefined : PILLAR_BAR_COLOR[healthTone((pillar.score / max) * 100)]}
+                    />
+                  </div>
+                );
+              })}
             </div>
           </div>
         ) : (
@@ -225,18 +234,29 @@ function SearchTerms({ data }: { data: GbpAuditData }) {
   if (!isAvailable(data.keywords) || data.keywords.top.length === 0) return null;
   const top = data.keywords.top.slice(0, 8);
   const max = Math.max(...top.map((entry) => entry.value ?? entry.threshold ?? 0), 1);
+  // Google gives small counts only as "fewer than N", said in words as in the app. From `sm` up,
+  // every row then gets room for that wider figure, so the bars still line up; phones put each term
+  // on its own line above its bar, so the terms aren't cut short.
+  const fewer = top.some((entry) => entry.value === null && entry.threshold !== null);
+  const countText = (entry: (typeof top)[number]) =>
+    entry.value !== null ? formatNumber(entry.value) : entry.threshold !== null ? `Fewer than ${formatNumber(entry.threshold)}` : "—";
   return (
     <Card title="What people searched for" icon={Search} explain={EXPLAIN.searchTerms} actions={<span className="text-xs text-muted-foreground">{formatMonth(data.keywords.latest_month)}</span>}>
       <div className="space-y-2.5">
-        {top.map((entry) => (
-          <Bar
-            key={entry.keyword}
-            label={entry.keyword}
-            value={entry.value ?? entry.threshold ?? 0}
-            max={max}
-            display={entry.value !== null ? formatNumber(entry.value) : entry.threshold !== null ? `< ${entry.threshold}` : "—"}
-          />
-        ))}
+        {top.map((entry) => {
+          const value = entry.value ?? entry.threshold ?? 0;
+          const count = countText(entry);
+          return (
+            <div key={entry.keyword}>
+              <div className="sm:hidden">
+                <Bar stacked label={entry.keyword} value={value} max={max} display={count} />
+              </div>
+              <div className="hidden sm:block">
+                <Bar label={entry.keyword} value={value} max={max} display={fewer ? <span className="inline-block min-w-24">{count}</span> : count} />
+              </div>
+            </div>
+          );
+        })}
       </div>
     </Card>
   );

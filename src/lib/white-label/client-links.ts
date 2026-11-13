@@ -39,6 +39,35 @@ export function isClientLinksUnavailable(error: unknown): boolean {
   return isApiError(error) && error.status === 403 && ["agency_only", "read_only", "feature_not_included"].includes(error.reason ?? "");
 }
 
+/**
+ * Links sit on a neutral domain once the server has one (`WHITE_LABEL_BASE_URL`); until then they
+ * are `<API origin>/w/<token>`, which still says MyPageSEO. Copy must not promise otherwise.
+ */
+export function isNeutralLink(url: string): boolean {
+  try {
+    return !new URL(url).hostname.toLowerCase().includes("mypageseo");
+  } catch {
+    return true;
+  }
+}
+
+/** "marketing-performance-report.com/3q2V…aR4A": short enough for a table cell, still recognisable. */
+export function shortLinkLabel(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const token = parsed.pathname.split("/").filter(Boolean).pop() ?? "";
+    const short = token.length > 10 ? `${token.slice(0, 4)}…${token.slice(-4)}` : token;
+    return `${parsed.hostname.replace(/^www\./, "")}/${short}`;
+  } catch {
+    return url;
+  }
+}
+
+/** Ready-to-paste text for the agency to send with a new link. */
+export function clientLinkMessage(locationName: string, url: string): string {
+  return `Here is your live local search report for ${locationName}: ${url}\nIt updates itself every month, so you can keep this link and check back any time.`;
+}
+
 /** Copy for a failed change, by `data.reason`. */
 export function clientLinkErrorText(error: unknown, fallback: string): string {
   if (!isApiError(error)) return fallback;
@@ -57,6 +86,8 @@ export function clientLinkErrorText(error: unknown, fallback: string): string {
       return "Use a PNG or JPEG logo.";
     case "no_link":
       return "This location has no active client link. Reload the page.";
+    case "agency_only":
+      return "Client links are for agency accounts.";
     default:
       return error.status === 400 && error.message ? error.message : fallback;
   }

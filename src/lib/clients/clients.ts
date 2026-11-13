@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { isApiError } from "@/api";
 import { useAccess } from "@/hooks/use-access";
 
@@ -28,4 +29,19 @@ export function clientErrorText(err: unknown, fallback: string): string {
 export function useClientRequired(): boolean {
   const access = useAccess();
   return access.role === "member" && access.restricted;
+}
+
+/** `value` once it has stopped changing for `ms` (a search box), so each keystroke doesn't send a request. */
+export function useDebouncedValue<T>(value: T, ms = 300): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), ms);
+    return () => window.clearTimeout(timer);
+  }, [value, ms]);
+  return debounced;
+}
+
+/** Retry only failures that may pass on a second try; a 404 (a deleted client) is an answer. */
+export function retryUnlessClientError(count: number, err: unknown): boolean {
+  return !(isApiError(err) && err.status < 500) && count < 2;
 }

@@ -1,17 +1,14 @@
-import { AppShell } from "@/components/layout/shared/app-shell";
+import { ShieldAlert } from "lucide-react";
 import { PageHeader } from "@/components/layout/shared/data-display";
 import { AccessDeniedPanel } from "@/components/mypageseo/access";
 
-const description = "This part of Mypageseo is not available to your account.";
-
-
-
+/** `/403`: a page this account can't open, with the way back. */
 function AccessDeniedRoute() {
   return (
-    <AppShell>
-      <PageHeader title="Access denied" description={description} />
-      <AccessDeniedPanel description="Your account does not have access to the page you tried to open. If you think that is wrong, someone who administers this organization can grant access." />
-    </AppShell>
+    <>
+      <PageHeader icon={ShieldAlert} tone="settings" title="Access denied" description="This part of MyPageSEO isn't available to your account." />
+      <AccessDeniedPanel description="Your account doesn't have access to the page you tried to open. If you think that's wrong, ask the account owner to give you access." />
+    </>
   );
 }
 

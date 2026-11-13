@@ -1,30 +1,32 @@
-import { RequireAccess } from "@/components/mypageseo/access";
-import { AppShell } from "@/components/layout/shared/app-shell";
-import { PageHeader, Panel } from "@/components/layout/shared/data-display";
-import { SettingsNav } from "@/components/settings/settings-nav";
+import { Link } from "react-router-dom";
+import { ArrowRight, Info } from "lucide-react";
 import { GoogleAccountsPanel } from "@/components/gbp-connect/google-accounts-panel";
-import { useWorkspace } from "@/lib/mypageseo/workspace";
+import { Panel } from "@/components/layout/shared/data-display";
+import { Button } from "@/components/ui/button";
 
-/** Integrations: Google Business Profile accounts only (Google Analytics / Search Console are out of scope). */
-const SettingsIntegrationsPage = () => (
-  <RequireAccess permission="integrations.manage">
-    <IntegrationsSettingsPage />
-  </RequireAccess>
-);
-
-function IntegrationsSettingsPage() {
-  const workspace = useWorkspace();
+/**
+ * Integrations: the Google accounts behind your Business Profiles (Google Analytics and Search
+ * Console are out of scope). Gated by the settings layout (`integrations.manage`).
+ */
+function SettingsIntegrationsPage() {
   return (
-    <AppShell>
-      <PageHeader title="Integrations" description="The Google accounts that manage your Business Profiles (up to 3 per user)." />
-      <SettingsNav active="integrations" isAgency={workspace.organization?.accountType === "agency"} />
+    <div className="space-y-6">
       <GoogleAccountsPanel />
-      <Panel title="Other services">
-        <p className="text-sm text-muted-foreground">
-          MyPageSEO covers Google Maps and Google Business Profile visibility. Google Analytics and Search Console aren't part of it.
-        </p>
+      <Panel title="How the Google connection is used" icon={Info} tone="settings">
+        <div className="space-y-3 text-sm text-muted-foreground">
+          <p>
+            MyPageSEO reads each connected profile's details, performance, reviews and posts, and publishes the replies and posts you approve. Rankings and citations
+            work without it.
+          </p>
+          <p>Google Analytics and Search Console aren't part of MyPageSEO.</p>
+          <Button asChild variant="outline" size="sm">
+            <Link to="/locations">
+              Go to Locations <ArrowRight aria-hidden />
+            </Link>
+          </Button>
+        </div>
       </Panel>
-    </AppShell>
+    </div>
   );
 }
 

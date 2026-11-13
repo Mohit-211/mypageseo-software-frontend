@@ -1,138 +1,71 @@
 /**
- * Dashboard view model: what the dashboard design renders. Built from the live
- * `GET /dashboard` response, enriched with the focus location's GBP report and
- * Rank Tracker (business). A value the backend doesn't provide is `null` and
- * shows as "—".
+ * Dashboard view models: what the "Today" dashboard renders, built from the live `GET /dashboard`
+ * answer (one shape per organization type). A value the backend doesn't have yet is `null` and
+ * shows as "—", never as 0. Every block follows the same scope (all locations, or `?location=`).
  */
 import type {
   AgencyDashboard as LiveAgency,
+  AgencyTableRow,
   BusinessDashboard as LiveBusiness,
-  DashboardAction,
+  CitationsBlock,
   DashboardRange,
-  GbpReport,
+  LocationStatus,
   PerformanceBlock,
   PerformanceFigures,
-  RankTrackerResponse,
+  ReviewsBlock,
+  StatusCounts,
 } from "@/api";
-import { formatDate, formatShortDate } from "@/lib/datetime";
-import { locationSetupPath } from "@/lib/locations/location-actions";
 import { citationsUnavailableText, coverageText } from "@/lib/citations/citations";
-
-export type MetricPoint = {
-  label: string;
-  value: number | null;
-  /** Change vs. the comparison period. Omitted when no comparison exists. */
-  change?: number | null;
-};
-
-export type RankSeriesPoint = {
-  period: string;
-  averageRank: number | null;
-  previousAverageRank?: number | null;
-};
-
-export type GbpFactor = {
-  label: string;
-  score: number;
-  status: "healthy" | "attention" | "critical";
-  detail: string;
-};
-
-export type RecommendedAction = {
-  id: string;
-  title: string;
-  reason: string;
-  severity: "critical" | "attention" | "info";
-  to: string;
-  actionLabel: string;
-};
-
-export type CompetitorRow = {
-  name: string;
-  isYou?: boolean;
-  averageRank: number | null;
-  /** "60+" / "No data" when there's no number (2026-10-08 statuses). */
-  averageRankDisplay?: string | null;
-  rating: number | null;
-  reviews: number | null;
-  photos: string | null;
-};
-
-/** GBP performance over the selected period; `change` in percent. */
-export type PerformanceView =
-  | { available: true; days: number; latestDate: string | null; partial: boolean; metrics: (MetricPoint & { key: keyof PerformanceFigures; caption: string })[] }
-  | { available: false; reason: string };
-
-export type BusinessDashboard = {
-  kind: "business";
-  comparisonLabel: string;
-  rangeDays: number;
-  performance: PerformanceView;
-  /** The location the detail panels describe (the header's, else the first). */
-  focusLocationId: string | null;
-  visibilityScore: MetricPoint;
-  averageRank: MetricPoint;
-  /** "60+" / "No data" for one location when the average has no number. */
-  averageRankDisplay: string | null;
-  gbpHealth: MetricPoint;
-  reviewRating: MetricPoint;
-  reviewCount: number | null;
-  citationHealth: MetricPoint;
-  /** "5 of 6 checked", or why there's no score yet. */
-  citationCaption: string;
-  rankMovement: { improved: number; declined: number; unchanged: number; tracked: number | null };
-  rankSeries: RankSeriesPoint[];
-  gbpFactors: GbpFactor[];
-  reviews: { unanswered: number | null; newInRange: number | null; averageResponseHours: number | null };
-  competitors: CompetitorRow[];
-  actions: RecommendedAction[];
-};
-
-export type PortfolioRow = {
-  clientId: string | null;
-  clientName: string;
-  locationId: string;
-  locationName: string;
-  area: string;
-  /** "12.4", "60+" or "No data" (Rank Tracker average, 5 points). */
-  averageRank: string | null;
-  visibility: number | null;
-  visibilityChange: number | null;
-  gbpHealth: number | null;
-  citationScore: number | null;
-  citationNapWrong: number;
-  unansweredReviews: number | null;
-  openIssues: number;
-};
-
-export type AgencyDashboard = {
-  kind: "agency";
-  comparisonLabel: string;
-  rangeDays: number;
-  performance: PerformanceView;
-  clientCount: number;
-  locationCount: number;
-  averageVisibility: MetricPoint;
-  averageGbpHealth: MetricPoint;
-  averageCitationScore: number | null;
-  attention: {
-    decliningLocations: number;
-    unansweredReviews: number | null;
-    gbpIssues: number;
-    reports: { ready: number | null; scheduled: number | null; failed: number | null };
-  };
-  portfolio: PortfolioRow[];
-  actions: RecommendedAction[];
-};
-
-export type DashboardData = BusinessDashboard | AgencyDashboard;
+import { avgRankText } from "@/lib/rankings/format";
+import { byNumber, byText, sortRows } from "@/lib/sort";
+import { toNextSteps, type NextStep } from "./next-steps";
 
 export const RANGE_DAYS: Record<DashboardRange, number> = { "15d": 15, "30d": 30, "60d": 60 };
 
-const comparisonLabel = (range: DashboardRange) =>
-  `Rankings vs the previous run · profile performance and reviews over the last ${RANGE_DAYS[range]} days vs the ${RANGE_DAYS[range]} before`;
+/** The period picker. Plain words, never the API's "30d". */
+export const RANGE_OPTIONS: { value: DashboardRange; label: string }[] = [
+  { value: "15d", label: "15 days" },
+  { value: "30d", label: "30 days" },
+  { value: "60d", label: "60 days" },
+];
 
-const PERFORMANCE_METRICS: { key: keyof PerformanceFigures; label: string; caption: string }[] = [
+export const DEFAULT_RANGE: DashboardRange = "30d";
+
+export function isDashboardRange(value: unknown): value is DashboardRange {
+  return value === "15d" || value === "30d" || value === "60d";
+}
+
+/** 0–1 → whole percent (0.4 → 40). */
+const pct = (rate: number | null | undefined) => (rate == null ? null : Math.round(rate * 100));
+
+/* ------------------------------------------------------------------ performance -- */
+
+export type PerformanceMetricKey = "impressions" | "actions" | "calls" | "website_clicks" | "direction_requests";
+
+export type PerformanceMetric = {
+  key: PerformanceMetricKey;
+  label: string;
+  value: number | null;
+  /** Percent vs the previous period (12.5 = +12.5 %); null when not comparable. */
+  change: number | null;
+  caption: string;
+};
+
+/** Google Business Profile performance over the period, against the period before it. */
+export type PerformanceView =
+  | {
+      available: true;
+      days: number;
+      /** The last day with data ("2026-09-23"): Google reports a few days late. */
+      latestDate: string | null;
+      partial: boolean;
+      metrics: PerformanceMetric[];
+      current: PerformanceFigures;
+      previous: PerformanceFigures;
+    }
+  | { available: false; reason: string };
+
+const PERFORMANCE_METRICS: { key: PerformanceMetricKey; label: string; caption: string }[] = [
   { key: "impressions", label: "Profile views", caption: "Times the profile was shown" },
   { key: "actions", label: "Customer actions", caption: "Calls, website clicks and directions" },
   { key: "calls", label: "Calls", caption: "Taps on the call button" },
@@ -143,12 +76,13 @@ const PERFORMANCE_METRICS: { key: keyof PerformanceFigures; label: string; capti
 function toPerformance(block: PerformanceBlock | undefined): PerformanceView {
   if (!block) return { available: false, reason: "no_data" };
   if (!block.available) return { available: false, reason: block.reason };
-  const { coverage } = block;
   return {
     available: true,
     days: block.days,
-    latestDate: block.latest_date ? formatDate(block.latest_date) : null,
-    partial: coverage.current.days_with_data < coverage.current.days,
+    latestDate: block.latest_date,
+    partial: block.coverage.current.days_with_data < block.coverage.current.days,
+    current: block.current,
+    previous: block.previous,
     metrics: PERFORMANCE_METRICS.map((metric) => {
       const change = block.change[metric.key];
       const caption =
@@ -157,209 +91,310 @@ function toPerformance(block: PerformanceBlock | undefined): PerformanceView {
           : metric.key === "actions" && block.current.actions_per_1000_impressions !== null
             ? `${block.current.actions_per_1000_impressions} per 1,000 views`
             : metric.caption;
-      return { ...metric, caption, value: block.current[metric.key], change: change === null ? null : Math.round(change * 1000) / 10 };
+      return {
+        ...metric,
+        caption,
+        value: block.current[metric.key],
+        change: change == null ? null : Math.round(change * 1000) / 10,
+      };
     }),
   };
 }
 
-const ACTION_LABEL: Record<string, string> = {
-  ranking: "Inspect rankings",
-  gbp: "Open audit",
-  reviews: "Open reviews",
-  citations: "Open citations",
-  posts: "Open posts",
-  setup: "Finish setup",
-  connection: "Reconnect Google",
+/* ----------------------------------------------------------------------- shared -- */
+
+/** Average Google Maps rank: lower is better; `change` is previous − current (positive = improved). */
+export type RankView = {
+  value: number | null;
+  /** "12.4", "60+" or "No data". */
+  text: string;
+  change: number | null;
 };
 
-/** Where each specific action id leads; sources without an entry use `SOURCE_PATH`. */
-const ACTION_PATH: Record<string, (locationId: string) => string> = {
-  "posts:failed": (id) => `/locations/${id}/gbp/posts?tab=problems`,
-  "posts:approval": (id) => `/locations/${id}/gbp/posts?tab=waiting`,
-  "posts:stale": (id) => `/locations/${id}/gbp/posts?compose=1`,
-  "posts:series_problem": (id) => `/locations/${id}/gbp/posts?tab=auto`,
-  "ranking:competitor_ahead": (id) => `/locations/${id}/rankings/competitors`,
-  "reviews:attention": (id) => `/locations/${id}/reputation`,
-  "reviews:suspicious": (id) => `/locations/${id}/reputation`,
-  "citations:nap_wrong": (id) => `/locations/${id}/citations`,
-  "citations:not_found": (id) => `/locations/${id}/citations`,
-};
+export type ScoreView =
+  | { available: true; score: number | null; grade: string | null; change: number | null; partial: boolean }
+  | { available: false; reason: string };
 
-const ACTION_TEXT: Record<string, string> = {
-  "posts:stale": "Write a post",
-  "posts:approval": "Review posts",
-  "posts:series_problem": "Open auto-posts",
-};
+export type CitationView =
+  | {
+      available: true;
+      score: number | null;
+      grade: string | null;
+      change: number | null;
+      napWrong: number;
+      notFound: number;
+      /** "15 of 16 checked", or why there's no score yet. */
+      caption: string;
+    }
+  | { available: false; reason: string; caption: string };
 
-const SOURCE_PATH: Record<string, (locationId: string) => string> = {
-  setup: locationSetupPath,
-  ranking: (id) => `/locations/${id}/rankings`,
-  gbp: (id) => `/locations/${id}/gbp/audit`,
-  reviews: (id) => `/locations/${id}/reputation`,
-  citations: (id) => `/locations/${id}/citations`,
-  posts: (id) => `/locations/${id}/gbp/posts`,
-  // The Google accounts panel (Reconnect) is on the Locations page.
-  connection: () => "/locations",
-};
-
-function toAction(action: DashboardAction, showLocation: boolean): RecommendedAction {
-  const id = action.location_id;
-  const target = ACTION_PATH[action.id] ?? SOURCE_PATH[action.source];
-  const to = !id ? "/locations" : target ? target(id) : `/locations/${id}`;
+function toCitations(block: CitationsBlock | undefined): CitationView | null {
+  if (!block) return null;
+  if (!block.available) return { available: false, reason: block.reason, caption: citationsUnavailableText(block.reason) };
   return {
-    id: `${action.id}-${id ?? ""}`,
-    title: action.title,
-    reason: [action.detail, showLocation && action.location_name ? action.location_name : null].filter(Boolean).join(" · "),
-    severity: action.impact >= 0.7 ? "critical" : action.impact >= 0.4 ? "attention" : "info",
-    to,
-    actionLabel: ACTION_TEXT[action.id] ?? ACTION_LABEL[action.source] ?? "Open",
+    available: true,
+    score: block.score,
+    grade: block.grade,
+    change: block.score_change ?? null,
+    napWrong: block.nap_wrong,
+    notFound: block.not_found,
+    caption: coverageText(block.coverage, block.listings),
   };
 }
 
-const pct = (rate: number | null | undefined) => (rate == null ? null : Math.round(rate * 100));
+export type ReviewsView =
+  | {
+      available: true;
+      rating: number | null;
+      ratingChange: number | null;
+      count: number | null;
+      newInRange: number | null;
+      /** Reviews without a published reply: "need a reply" (the Reviews page's "Needs reply" view). */
+      unreplied: number | null;
+      /**
+       * "Urgent": the part of `unreplied` rated 1–3★, plus flagged reviews without a reply (the
+       * backend's `awaiting_attention`). Worth answering first.
+       */
+      urgent: number | null;
+      draftsPending: number | null;
+      /** Urgent reviews per location (multi-location scopes), most first. */
+      byLocation: { locationId: string; name: string; urgent: number; suspicious: number }[];
+    }
+  | { available: false; reason: string; publicRating: number | null; publicCount: number | null };
 
-const PILLAR_LABEL: Record<string, string> = {
-  completeness: "Profile completeness",
-  activity: "Activity",
-  reviews: "Reviews",
-  performance: "Performance",
+function toReviews(block: ReviewsBlock | undefined): ReviewsView | null {
+  if (!block) return null;
+  if (!block.available) {
+    return { available: false, reason: block.reason, publicRating: block.public_rating ?? null, publicCount: block.public_review_count ?? null };
+  }
+  return {
+    available: true,
+    rating: block.rating,
+    ratingChange: block.rating_change ?? null,
+    count: block.count,
+    newInRange: block.new_in_range ?? null,
+    unreplied: block.unreplied ?? null,
+    urgent: block.awaiting_attention ?? null,
+    draftsPending: block.drafts_pending ?? null,
+    byLocation: sortRows(
+      (block.needs_attention ?? []).map((row) => ({ locationId: row.location_id, name: row.name, urgent: row.awaiting_attention, suspicious: row.suspicious })),
+      byNumber((row) => row.urgent, "desc"),
+      byText((row) => row.name),
+    ),
+  };
+}
+
+/* --------------------------------------------------------------------- business -- */
+
+export type BusinessLocationRow = {
+  locationId: string;
+  name: string;
+  city: string | null;
+  status: LocationStatus;
+  rank: RankView | null;
+  profileScore: number | null;
+  citationScore: number | null;
 };
 
-/** GBP health factors from the focus location's GBP Score pillars. */
-function gbpFactors(report: GbpReport | undefined): GbpFactor[] {
-  if (!report?.gbp_score.available) return [];
-  return report.gbp_score.pillars
-    .filter((pillar) => pillar.available && pillar.score !== null)
-    .map((pillar) => {
-      const score = Math.round(((pillar.score ?? 0) / pillar.weight) * 100);
-      const failing = report.gbp_score.available ? report.gbp_score.checks.filter((check) => check.pillar === pillar.id && check.state !== "pass" && check.state !== "not_available") : [];
-      return {
-        label: PILLAR_LABEL[pillar.id] ?? pillar.id,
-        score,
-        status: pillar.state === "pass" ? "healthy" : pillar.state === "fail" || score < 40 ? "critical" : "attention",
-        detail: failing.length === 0 ? "All checks pass." : `To improve: ${failing.slice(0, 2).map((check) => check.label.toLowerCase()).join(", ")}${failing.length > 2 ? "…" : ""}.`,
-      } satisfies GbpFactor;
-    });
-}
+export type KeyCompetitor = {
+  name: string;
+  rankText: string;
+  selfRankText: string;
+  ahead: boolean;
+  locationId: string;
+  locationName: string;
+};
 
-/** You and your tracked competitors: rank from the Rank Tracker, public facts from the GBP report. */
-function competitorRows(tracker: RankTrackerResponse | undefined, report: GbpReport | undefined, selfName: string | null): CompetitorRow[] {
-  const facts = report?.competitors.available ? report.competitors.rows : [];
-  const targets = tracker?.targets ?? [];
-  if (targets.length === 0) {
-    return facts.map((row) => ({
-      name: row.name ?? "Unnamed business",
-      isYou: row.is_self,
-      averageRank: null,
-      rating: row.rating,
-      reviews: row.user_rating_count,
-      photos: row.photo_count == null ? null : row.photos_capped ? "10+" : String(row.photo_count),
-    }));
-  }
-  return targets.map((target) => {
-    const fact = facts.find((row) => row.place_id === target.place_id || (target.key === "self" && row.is_self));
-    return {
-      name: target.key === "self" ? (selfName ?? fact?.name ?? "Your business") : (target.name ?? fact?.name ?? "Competitor"),
-      isYou: target.key === "self",
-      averageRank: tracker?.overall[target.key]?.overallAvgRank ?? null,
-      averageRankDisplay: tracker?.overall[target.key]?.display ?? null,
-      rating: fact?.rating ?? null,
-      reviews: fact?.user_rating_count ?? null,
-      photos: fact?.photo_count == null ? null : fact.photos_capped ? "10+" : String(fact.photo_count),
-    };
-  });
-}
+export type BusinessDashboardModel = {
+  kind: "business";
+  rangeDays: number;
+  performance: PerformanceView;
+  rank: (RankView & { top3: number | null; top3Change: number | null; trend: { at: string; value: number | null }[] }) | null;
+  profile: ScoreView;
+  reviews: ReviewsView | null;
+  citations: CitationView | null;
+  /** Keyword movement in the latest ranking check vs the one before (summed over the locations). */
+  movement: { improved: number; declined: number; unchanged: number } | null;
+  keyCompetitor: KeyCompetitor | null;
+  refresh: { last: string | null; next: string | null } | null;
+  /** All the organization's locations (for the "Your locations" list in the all-locations view). */
+  locations: BusinessLocationRow[];
+  nextSteps: NextStep[];
+};
 
-const RANK_STATUS_DISPLAY: Record<string, string | null> = { no_data: "No data", not_found: "60+", ok: null };
-
-export function toBusinessDashboard(
-  live: LiveBusiness,
-  focus: { locationId: string | null; name: string | null; report?: GbpReport | undefined; tracker?: RankTrackerResponse | undefined },
-): BusinessDashboard {
+export function toBusinessDashboard(live: LiveBusiness): BusinessDashboardModel {
   const visibility = live.visibility;
-  const reviews = live.reviews;
-  const citations = live.citations;
   const movement = live.movement;
-  const reportReviews = focus.report?.reviews.available ? focus.report.reviews : null;
+  const competitor = live.key_competitor;
   return {
     kind: "business",
-    comparisonLabel: comparisonLabel(live.range),
     rangeDays: RANGE_DAYS[live.range] ?? 30,
     performance: toPerformance(live.performance),
-    focusLocationId: focus.locationId,
-    visibilityScore: { label: "Top-3 rate", value: pct(visibility?.top3_rate), change: pct(visibility?.top3_rate_change) },
-    averageRank: { label: "Average Rank", value: visibility?.avg_rank ?? null, change: visibility?.change == null ? null : -visibility.change },
-    averageRankDisplay:
-      visibility?.avg_rank != null
-        ? null
-        : (visibility?.avg_rank_display ?? (visibility?.avg_rank_status ? RANK_STATUS_DISPLAY[visibility.avg_rank_status] : null)),
-    gbpHealth: { label: "GBP Health", value: live.gbp.available ? live.gbp.score : null, change: live.gbp.available ? live.gbp.change : null },
-    reviewRating: {
-      label: "Review Rating",
-      value: reviews.available ? reviews.rating : ("public_rating" in reviews ? (reviews.public_rating ?? null) : null),
-      change: reviews.available ? (reviews.rating_change ?? null) : null,
-    },
-    reviewCount: reviews.available ? reviews.count : ("public_review_count" in reviews ? (reviews.public_review_count ?? null) : null),
-    citationHealth: { label: "Citation Health", value: citations?.available ? citations.score : null, change: citations?.available ? (citations.score_change ?? null) : null },
-    citationCaption: !citations
-      ? "Directory accuracy"
-      : citations.available
-        ? coverageText(citations.coverage, citations.listings)
-        : citationsUnavailableText(citations.reason),
-    rankMovement: {
-      improved: (movement?.improved ?? 0) + (movement?.entered_top_60 ?? 0),
-      declined: (movement?.declined ?? 0) + (movement?.dropped_out_of_top_60 ?? 0),
-      unchanged: movement?.unchanged ?? 0,
-      tracked: focus.tracker ? focus.tracker.keywords.length : null,
-    },
-    rankSeries: (visibility?.trend ?? []).map((point) => ({ period: formatShortDate(point.run_at), averageRank: point.avg_rank })),
-    gbpFactors: gbpFactors(focus.report),
-    reviews: {
-      unanswered: reviews.available ? (reviews.awaiting_attention ?? reviews.unreplied ?? null) : null,
-      newInRange: reviews.available ? (reviews.new_in_range ?? null) : null,
-      averageResponseHours: reportReviews?.median_reply_hours == null ? null : Math.round(reportReviews.median_reply_hours),
-    },
-    competitors: competitorRows(focus.tracker, focus.report, focus.name),
-    actions: live.recommended_actions.map((action) => toAction(action, live.locations_count > 1)),
+    rank: visibility
+      ? {
+          value: visibility.avg_rank,
+          text: avgRankText(visibility.avg_rank, visibility.avg_rank_status, visibility.avg_rank_display),
+          change: visibility.change,
+          top3: pct(visibility.top3_rate),
+          top3Change: pct(visibility.top3_rate_change),
+          trend: visibility.trend.map((point) => ({ at: point.run_at, value: point.avg_rank })),
+        }
+      : null,
+    profile: live.gbp.available
+      ? { available: true, score: live.gbp.score, grade: live.gbp.grade, change: live.gbp.change, partial: live.gbp.partial }
+      : { available: false, reason: live.gbp.reason },
+    reviews: toReviews(live.reviews),
+    citations: toCitations(live.citations),
+    movement: movement
+      ? {
+          improved: movement.improved + movement.entered_top_60,
+          declined: movement.declined + movement.dropped_out_of_top_60,
+          unchanged: movement.unchanged,
+        }
+      : null,
+    keyCompetitor:
+      competitor && competitor.name
+        ? {
+            name: competitor.name,
+            rankText: avgRankText(competitor.avg_rank, competitor.status),
+            selfRankText: avgRankText(competitor.self_avg_rank, competitor.self_status),
+            ahead: competitor.ahead,
+            locationId: competitor.location_id,
+            locationName: competitor.location_name,
+          }
+        : null,
+    refresh: live.refresh ? { last: live.refresh.last_refreshed_at, next: live.refresh.next_refresh_at } : null,
+    locations: sortRows(
+      live.locations.map((row) => ({
+        locationId: row.location_id,
+        name: row.name,
+        city: row.city ?? null,
+        status: row.status,
+        rank:
+          row.avg_rank != null || row.avg_rank_status
+            ? { value: row.avg_rank, text: avgRankText(row.avg_rank, row.avg_rank_status, row.avg_rank_display), change: row.change }
+            : null,
+        profileScore: row.gbp_score,
+        citationScore: row.citation_score ?? null,
+      })),
+      byText((row) => row.name),
+    ),
+    nextSteps: toNextSteps(live.recommended_actions),
   };
 }
 
-export function toAgencyDashboard(live: LiveAgency): AgencyDashboard {
-  const issuesByLocation = new Map(live.gbp_issues.map((row) => [row.location_id, row.issues.length]));
-  const unanswered = live.table.rows.reduce<number | null>((sum, row) => (row.reviews ? (sum ?? 0) + row.reviews.awaiting_attention : sum), null);
+/* ----------------------------------------------------------------------- agency -- */
+
+export type PortfolioRow = {
+  locationId: string;
+  name: string;
+  city: string | null;
+  clientId: string | null;
+  clientName: string | null;
+  status: LocationStatus;
+  rank: RankView | null;
+  /** Percent of searches in the Maps top 3, and its change in points. */
+  top3: number | null;
+  top3Change: number | null;
+  profileScore: number | null;
+  profileGrade: string | null;
+  citationScore: number | null;
+  citationNapWrong: number;
+  /**
+   * Urgent reviews: unanswered 1–3★ or flagged (`awaiting_attention`, the only review count agency
+   * rows carry); null without review data.
+   */
+  urgentReviews: number | null;
+  rating: number | null;
+};
+
+export type LocationRef = { locationId: string; name: string; clientName: string | null };
+
+export type AgencyDashboardModel = {
+  kind: "agency";
+  rangeDays: number;
+  performance: PerformanceView;
+  clients: number;
+  locations: number;
+  statusCounts: StatusCounts;
+  rank: RankView | null;
+  top3: { value: number | null; change: number | null };
+  profile: { value: number | null; change: number | null };
+  citationScore: number | null;
+  reviews: ReviewsView | null;
+  /** Locations whose rankings slipped in the latest check, worst first (the backend lists up to 10). */
+  declines: (LocationRef & { change: number | null; declinedKeywords: number; droppedOut: number })[];
+  /** Google profile problems per location (up to 10). */
+  profileIssues: (LocationRef & { issues: { id: string; label: string }[] })[];
+  reports: { ready: number; scheduled: number; failed: number } | null;
+  portfolio: { rows: PortfolioRow[]; page: number; limit: number; total: number };
+  nextSteps: NextStep[];
+};
+
+function toPortfolioRow(row: AgencyTableRow): PortfolioRow {
+  const visibility = row.visibility;
   return {
-    kind: "agency",
-    comparisonLabel: comparisonLabel(live.range),
-    rangeDays: RANGE_DAYS[live.range] ?? 30,
-    performance: toPerformance(live.performance),
-    clientCount: live.clients_count,
-    locationCount: live.locations_count,
-    averageVisibility: { label: "Avg. top-3 rate", value: pct(live.portfolio.avg_top3_rate), change: pct(live.portfolio.avg_top3_rate_change) },
-    averageGbpHealth: { label: "Avg. GBP Health", value: live.portfolio.avg_gbp_score, change: live.portfolio.avg_gbp_score_change },
-    averageCitationScore: live.portfolio.avg_citation_score ?? null,
-    attention: {
-      decliningLocations: live.declines.length,
-      unansweredReviews: live.reviews?.available ? (live.reviews.awaiting_attention ?? unanswered) : unanswered,
-      gbpIssues: live.gbp_issues.length,
-      reports: live.reports ?? { ready: null, scheduled: null, failed: null },
-    },
-    portfolio: live.table.rows.map((row) => ({
-      clientId: row.client?.client_id ?? null,
-      clientName: row.client?.name ?? "No client",
-      locationId: row.location_id,
-      locationName: row.name,
-      area: row.city ?? "",
-      averageRank:
-        row.visibility?.avg_rank_display ??
-        (row.visibility?.avg_rank != null ? row.visibility.avg_rank.toFixed(1) : null),
-      visibility: pct(row.visibility?.top3_rate),
-      visibilityChange: pct(row.visibility?.top3_rate_change),
-      gbpHealth: row.gbp?.score ?? null,
-      citationScore: row.citations?.score ?? null,
-      citationNapWrong: row.citations?.nap_wrong ?? 0,
-      unansweredReviews: row.reviews ? row.reviews.awaiting_attention : null,
-      openIssues: issuesByLocation.get(row.location_id) ?? 0,
-    })),
-    actions: live.recommended_actions.map((action) => toAction(action, true)),
+    locationId: row.location_id,
+    name: row.name,
+    city: row.city ?? null,
+    clientId: row.client?.client_id ?? null,
+    clientName: row.client?.name ?? null,
+    status: row.status,
+    rank:
+      visibility && (visibility.avg_rank != null || visibility.avg_rank_status)
+        ? { value: visibility.avg_rank, text: avgRankText(visibility.avg_rank, visibility.avg_rank_status, visibility.avg_rank_display), change: visibility.change }
+        : null,
+    top3: pct(visibility?.top3_rate),
+    top3Change: pct(visibility?.top3_rate_change),
+    profileScore: row.gbp?.score ?? null,
+    profileGrade: row.gbp?.grade ?? null,
+    citationScore: row.citations?.score ?? null,
+    citationNapWrong: row.citations?.nap_wrong ?? 0,
+    urgentReviews: row.reviews ? row.reviews.awaiting_attention : null,
+    rating: row.reviews?.rating ?? null,
   };
 }
+
+export function toAgencyDashboard(live: LiveAgency): AgencyDashboardModel {
+  const portfolio = live.portfolio;
+  return {
+    kind: "agency",
+    rangeDays: RANGE_DAYS[live.range] ?? 30,
+    performance: toPerformance(live.performance),
+    clients: live.clients_count,
+    locations: live.locations_count,
+    statusCounts: live.status_counts,
+    rank:
+      portfolio.avg_rank != null || portfolio.avg_rank_status
+        ? { value: portfolio.avg_rank, text: avgRankText(portfolio.avg_rank, portfolio.avg_rank_status, portfolio.avg_rank_display), change: portfolio.avg_rank_change }
+        : null,
+    top3: { value: pct(portfolio.avg_top3_rate), change: pct(portfolio.avg_top3_rate_change) },
+    profile: { value: portfolio.avg_gbp_score, change: portfolio.avg_gbp_score_change },
+    citationScore: portfolio.avg_citation_score ?? null,
+    reviews: toReviews(live.reviews),
+    // `change` is previous − current, so the most negative slipped the most.
+    declines: sortRows(
+      live.declines.map((row) => ({
+        locationId: row.location_id,
+        name: row.name,
+        clientName: row.client?.name ?? null,
+        change: row.change,
+        declinedKeywords: row.declined_keywords,
+        droppedOut: row.dropped_out,
+      })),
+      byNumber((row) => row.change),
+      byNumber((row) => row.declinedKeywords, "desc"),
+      byText((row) => row.name),
+    ),
+    profileIssues: sortRows(
+      live.gbp_issues.map((row) => ({ locationId: row.location_id, name: row.name, clientName: row.client?.name ?? null, issues: row.issues })),
+      byNumber((row) => row.issues.length, "desc"),
+      byText((row) => row.name),
+    ),
+    reports: live.reports ?? null,
+    portfolio: { rows: live.table.rows.map(toPortfolioRow), page: live.table.page, limit: live.table.limit, total: live.table.total },
+    nextSteps: toNextSteps(live.recommended_actions),
+  };
+}
+
+export type DashboardModel = BusinessDashboardModel | AgencyDashboardModel;

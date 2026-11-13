@@ -4,6 +4,13 @@ import type { Review, ReviewsInsights, ReviewsList, ReviewsQuery, ReviewsSummary
 const base = (locationId: string) => `locations/${encodeURIComponent(locationId)}/reviews`;
 const one = (locationId: string, reviewId: string) => `${base(locationId)}/${encodeURIComponent(reviewId)}`;
 
+/**
+ * AI calls wait for the model: up to 60 s per call plus a retry on the backend, and several batches
+ * for a selection. Giving up sooner would show "that took too long" while the work (and its charge)
+ * still completes.
+ */
+const AI_TIMEOUT = { timeoutMs: 90_000 } as const;
+
 /** Stat cards, refresh timing and AI availability/costs. No AI. */
 export async function getReviewsSummary(locationId: string, signal?: AbortSignal): Promise<ReviewsSummary> {
   return unwrapData(await api.get(`${base(locationId)}/summary`, signal ? { signal } : {}));
@@ -24,18 +31,21 @@ export async function generateReplyDrafts(
   reviewIds: string[],
   regenerate = false,
 ): Promise<{ drafts: Review[]; generated: number; reused: number; skipped: { review_id: string; reason: string }[]; tokens_spent: number }> {
-  return unwrapData(await api.post(`${base(locationId)}/drafts`, { review_ids: reviewIds, regenerate }));
+  return unwrapData(await api.post(`${base(locationId)}/drafts`, { review_ids: reviewIds, regenerate }, AI_TIMEOUT));
 }
 
 /**
- * "Draft all unreplied": up to 50 per call, oldest first (10–15 s). Call again while `remaining > 0`.
+ * "Draft all unreplied": up to `ai.draft_all_max` per call (50; 20 after Phase 25a), oldest first.
+ * Call again while `remaining > 0`.
  * 402 `insufficient_tokens` { cost, balance, reviews } comes before anything is spent.
  */
 export async function draftAllReviews(
   locationId: string,
   regenerate = false,
 ): Promise<{ drafted: number; remaining: number; tokens_spent: number; drafts: Review[] }> {
-  return unwrapData(await api.post(`${base(locationId)}/drafts/all`, { regenerate }, { timeoutMs: 90_000 }));
+  // Without `regenerate`, each call drafts reviews that have no draft yet, so calling again continues
+  // where the last call stopped (Phase 25a's `cursor` is only needed with `regenerate`).
+  return unwrapData(await api.post(`${base(locationId)}/drafts/all`, { regenerate }, AI_TIMEOUT));
 }
 
 /** Saves a reply the user wrote or edited (any rating). */
@@ -76,7 +86,7 @@ export async function analyzeReviews(
   reviewIds: string[],
   regenerate = false,
 ): Promise<{ reviews: Review[]; analyzed: number; reused: number; skipped: { review_id: string; reason: string }[]; tokens_spent: number }> {
-  return unwrapData(await api.post(`${base(locationId)}/analyze`, { review_ids: reviewIds, regenerate }));
+  return unwrapData(await api.post(`${base(locationId)}/analyze`, { review_ids: reviewIds, regenerate }, AI_TIMEOUT));
 }
 
 /** AI draft of a removal request to paste into Google's tool (`report_url`). 400 `not_eligible`. */
@@ -84,7 +94,7 @@ export async function draftAppeal(
   locationId: string,
   reviewId: string,
 ): Promise<{ review: Review; appeal: NonNullable<Review["appeal"]>; report_url: string; tokens_spent: number }> {
-  return unwrapData(await api.post(`${one(locationId, reviewId)}/appeal-draft`));
+  return unwrapData(await api.post(`${one(locationId, reviewId)}/appeal-draft`, undefined, AI_TIMEOUT));
 }
 
 /** Records what the user did on Google. */
@@ -97,7 +107,10 @@ export async function getReviewInsights(locationId: string, signal?: AbortSignal
   return unwrapData(await api.get(`${base(locationId)}/insights`, signal ? { signal } : {}));
 }
 
-/** AI insights over the reviews (stored until regenerated). */
+/**
+ * AI insights over the reviews (stored until regenerated). Every run is charged, even one this
+ * page stopped waiting for, so a timeout should re-read the stored insights rather than run again.
+ */
 export async function generateReviewInsights(locationId: string): Promise<ReviewsInsights> {
-  return unwrapData(await api.post(`${base(locationId)}/insights`));
+  return unwrapData(await api.post(`${base(locationId)}/insights`, undefined, AI_TIMEOUT));
 }

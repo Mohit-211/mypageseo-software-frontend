@@ -5,8 +5,8 @@ import { startSession } from "./session";
 
 /**
  * Confirms the email from the link's token. The first time it signs the user in
- * (the tokens are stored); a used link answers `already_verified` without tokens.
- * 400 `link_expired` / `link_invalid`.
+ * (the tokens are kept across browser restarts); a used link answers
+ * `already_verified` without tokens. 400 `link_expired` / `link_invalid`.
  */
 export async function verifyEmail(token: string): Promise<VerifyEmailResult> {
   const result = unwrapData<VerifyEmailResult>(await api.post(ENDPOINTS.auth.verifyEmail, { token }, { auth: false }));

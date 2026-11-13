@@ -111,7 +111,7 @@ function RunProgress({ state }: { state: FirstDataState }) {
           aria-valuemax={100}
           aria-valuenow={Math.round(state.progress * 100)}
         >
-          <div className="h-full rounded-full bg-primary transition-[width] duration-700" style={{ width: `${Math.max(3, state.progress * 100)}%` }} />
+          <div className="h-full rounded-full bg-primary transition-[width] duration-700 motion-reduce:transition-none" style={{ width: `${Math.max(3, state.progress * 100)}%` }} />
         </div>
       ) : null}
       {state.overdue ? (
@@ -165,5 +165,5 @@ function FailedRun({ locationId, className }: { locationId: string; className?: 
 }
 
 function Frame({ className, children }: { className?: string | undefined; children: React.ReactNode }) {
-  return <div className={cn("rounded-lg border border-border bg-surface p-5 shadow-card", className)}>{children}</div>;
+  return <div className={cn("rounded-xl border border-info/25 bg-card p-5 shadow-card", className)}>{children}</div>;
 }

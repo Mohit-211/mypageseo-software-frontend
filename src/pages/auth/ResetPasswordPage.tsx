@@ -7,8 +7,9 @@ import {
   AuthFooterNote,
   AuthFormError,
   AuthHeading,
-  AuthPasswordInput,
   AuthLayout,
+  AuthLink,
+  AuthPasswordInput,
   AuthStatePanel,
 } from "@/components/auth/auth";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,8 @@ const formSchema = z
 type FieldErrors = { password?: string | undefined; confirmPassword?: string | undefined };
 type LinkProblem = "missing" | "expired" | "invalid";
 
+const FIELD_IDS: Record<keyof FieldErrors, string> = { password: "new-password", confirmPassword: "confirm-password" };
+
 /** `/reset-password?token=…`, opened from the forgot-password email. */
 function ResetPasswordPage() {
   const [{ token }] = useTypedSearch(searchSchema);
@@ -48,7 +51,7 @@ function ResetPasswordPage() {
       <AuthLayout>
         <AuthStatePanel
           tone="critical"
-          icon={linkProblem === "expired" ? <TimerOff className="size-5" /> : <ShieldAlert className="size-5" />}
+          icon={linkProblem === "expired" ? <TimerOff /> : <ShieldAlert />}
           title={linkProblem === "expired" ? "This link has expired" : "This link isn't valid"}
           description={
             linkProblem === "expired"
@@ -56,10 +59,10 @@ function ResetPasswordPage() {
               : "It may be incomplete, already used, or replaced by a newer link. Request a new one to continue."
           }
         >
-          <Button asChild className="w-full">
+          <Button asChild size="lg" className="w-full">
             <Link to="/forgot-password">Send a new link</Link>
           </Button>
-          <Button asChild variant="outline" className="w-full">
+          <Button asChild variant="ghost" className="h-10 w-full">
             <Link to="/login">Back to sign in</Link>
           </Button>
         </AuthStatePanel>
@@ -72,12 +75,12 @@ function ResetPasswordPage() {
       <AuthLayout>
         <AuthStatePanel
           tone="success"
-          icon={<CheckCircle2 className="size-5" />}
+          icon={<CheckCircle2 />}
           title="Password changed"
-          description="You've been signed out everywhere. Log in with your new password to continue."
+          description="You've been signed out everywhere. Sign in with your new password to continue."
         >
-          <Button asChild className="w-full">
-            <Link to="/login">Log in</Link>
+          <Button asChild size="lg" className="w-full">
+            <Link to="/login">Sign in</Link>
           </Button>
         </AuthStatePanel>
       </AuthLayout>
@@ -87,6 +90,12 @@ function ResetPasswordPage() {
   function update(key: keyof FieldErrors, value: string) {
     setValues((prev) => ({ ...prev, [key]: value }));
     setErrors((prev) => ({ ...prev, [key]: undefined }));
+  }
+
+  function showErrors(next: FieldErrors) {
+    setErrors(next);
+    const first = (Object.keys(FIELD_IDS) as (keyof FieldErrors)[]).find((key) => next[key]);
+    if (first) document.getElementById(FIELD_IDS[first])?.focus();
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -99,8 +108,8 @@ function ResetPasswordPage() {
         const key = issue.path[0] as keyof FieldErrors;
         if (key && !next[key]) next[key] = issue.message;
       }
-      setErrors(next);
       setFormError(null);
+      showErrors(next);
       return;
     }
     setSubmitting(true);
@@ -112,8 +121,8 @@ function ResetPasswordPage() {
       const reason = isApiError(error) ? error.reason : undefined;
       if (reason === "link_expired") setLinkProblem("expired");
       else if (reason === "link_invalid") setLinkProblem("invalid");
-      else if (reason === "passwords_do_not_match") setErrors({ confirmPassword: "Both passwords must match." });
-      else if (isApiError(error) && error.status === 400 && error.message) setErrors({ password: error.message });
+      else if (reason === "passwords_do_not_match") showErrors({ confirmPassword: "Both passwords must match." });
+      else if (isApiError(error) && error.status === 400 && error.message) showErrors({ password: error.message });
       else setFormError(rateLimitMessage(error) ?? GENERIC_AUTH_ERROR);
     } finally {
       setSubmitting(false);
@@ -122,17 +131,17 @@ function ResetPasswordPage() {
 
   return (
     <AuthLayout>
-      <AuthHeading title="Set a new password" description="Choose a new password for your Mypageseo account." />
-      <form onSubmit={handleSubmit} noValidate className="space-y-4">
+      <AuthHeading title="Set a new password" description="Choose a new password for your MyPageSEO account." />
+      <form onSubmit={handleSubmit} noValidate className="space-y-5">
         {formError ? <AuthFormError message={formError} /> : null}
         <AuthField
           label="New password"
-          htmlFor="new-password"
+          htmlFor={FIELD_IDS.password}
           error={errors.password}
           hint="At least 8 characters, including a letter and a number."
         >
           <AuthPasswordInput
-            id="new-password"
+            id={FIELD_IDS.password}
             name="password"
             autoComplete="new-password"
             placeholder="Create a new password"
@@ -141,9 +150,9 @@ function ResetPasswordPage() {
             onChange={(e) => update("password", e.target.value)}
           />
         </AuthField>
-        <AuthField label="Confirm new password" htmlFor="confirm-password" error={errors.confirmPassword}>
+        <AuthField label="Confirm new password" htmlFor={FIELD_IDS.confirmPassword} error={errors.confirmPassword}>
           <AuthPasswordInput
-            id="confirm-password"
+            id={FIELD_IDS.confirmPassword}
             name="confirmPassword"
             autoComplete="new-password"
             placeholder="Re-enter the new password"
@@ -152,10 +161,10 @@ function ResetPasswordPage() {
             onChange={(e) => update("confirmPassword", e.target.value)}
           />
         </AuthField>
-        <Button type="submit" className="h-10 w-full" disabled={submitting}>
+        <Button type="submit" size="lg" className="w-full" disabled={submitting} aria-busy={submitting || undefined}>
           {submitting ? (
             <>
-              <Loader2 className="size-4 animate-spin" aria-hidden />
+              <Loader2 className="animate-spin" aria-hidden />
               Changing password…
             </>
           ) : (
@@ -164,10 +173,7 @@ function ResetPasswordPage() {
         </Button>
       </form>
       <AuthFooterNote>
-        Remembered it?{" "}
-        <Link to="/login" className="font-medium text-primary underline-offset-4 hover:underline">
-          Back to sign in
-        </Link>
+        Remembered it? <AuthLink to="/login">Back to sign in</AuthLink>
       </AuthFooterNote>
     </AuthLayout>
   );
