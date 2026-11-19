@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useLocation, useNavigationType } from "react-router-dom";
+import { isOrganizationLinkHop } from "./organization-link";
 
 /** Longest time a page may keep loading above its anchor before we stop following it. */
 const FOLLOW_MS = 3_000;
@@ -14,7 +15,9 @@ const STOP_EVENTS = ["wheel", "touchstart", "keydown", "pointerdown"] as const;
  *
  * It acts when a link opens a page or a section (and on the first load), never on Back/Forward
  * (the router restores the reader's position there) or when only the `?search` changes (filters
- * on the same page), and it stops as soon as the reader scrolls, types or clicks.
+ * on the same page), and it stops as soon as the reader scrolls, types or clicks. Dropping a link's
+ * `?organization=` (./organization-link.ts) is still the link opening its page: the page only
+ * renders after it, so its `#section` is followed then.
  */
 export function HashScroll() {
   const location = useLocation();
@@ -29,7 +32,7 @@ export function HashScroll() {
     if (last.current?.key === location.key) {
       follow = last.current.follow;
     } else {
-      const searchOnly = last.current?.target === target;
+      const searchOnly = last.current?.target === target && !isOrganizationLinkHop(location.state);
       const opened = navigationType !== "POP" || location.key === "default";
       follow = Boolean(location.hash) && !searchOnly && opened;
       last.current = { key: location.key, target, follow };
@@ -56,7 +59,7 @@ export function HashScroll() {
       window.clearTimeout(timer);
       stop();
     };
-  }, [location.key, location.pathname, location.hash, navigationType]);
+  }, [location.key, location.pathname, location.hash, location.state, navigationType]);
 
   return null;
 }

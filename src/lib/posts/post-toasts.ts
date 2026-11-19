@@ -7,6 +7,7 @@
  * Every other reason keeps the posts copy from `postErrorText`.
  */
 import { toast } from "sonner";
+import { useAccess } from "@/hooks/use-access";
 import { noteAccountError } from "@/lib/billing/account-restriction";
 import { useToastAiError } from "@/lib/ai/toast-ai-error";
 import { isAiRoutedError, postErrorText } from "./use-posts";
@@ -20,6 +21,8 @@ export type PostErrorToastOptions = {
 
 export function useToastPostError(): (error: unknown, fallback: string, options?: PostErrorToastOptions) => void {
   const toastAiError = useToastAiError();
+  // Who approves a post the viewer can't approve depends on the viewer's role (403 `not_an_approver`).
+  const { role } = useAccess();
   return (error, fallback, options = {}) => {
     if (isAiRoutedError(error)) {
       // Also records the outcome for useAiStatus and the account banner.
@@ -27,7 +30,7 @@ export function useToastPostError(): (error: unknown, fallback: string, options?
       return;
     }
     noteAccountError(error);
-    const { message, reload } = postErrorText(error, fallback);
+    const { message, reload } = postErrorText(error, fallback, { role });
     toast.error(message);
     if (reload) options.onReload?.();
   };

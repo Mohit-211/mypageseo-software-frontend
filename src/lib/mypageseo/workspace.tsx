@@ -50,6 +50,11 @@ export type WorkspaceValue = {
   organization: Organization | null;
   /** Every organization the user belongs to (for the header switcher). */
   organizations: Organization[];
+  /**
+   * `GET auth/me` has answered, so `organizations` is the user's real list (false while it loads, after it
+   * failed, and signed out). Decisions about membership, such as following a link's `?organization=`, wait for it.
+   */
+  organizationsLoaded: boolean;
   clients: Client[];
   activeClient: Client | null;
   locations: LocationSummary[];
@@ -219,6 +224,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       status: loading ? "loading" : failed ? "unavailable" : "ready",
       organization,
       organizations,
+      organizationsLoaded: signedIn && profile.isSuccess,
       clients,
       activeClient: clients.find((client) => client.id === activeClientId) ?? null,
       locations,
@@ -243,6 +249,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     ready,
     profile.isPending,
     profile.isError,
+    profile.isSuccess,
     organization,
     organizations,
     activeClientId,

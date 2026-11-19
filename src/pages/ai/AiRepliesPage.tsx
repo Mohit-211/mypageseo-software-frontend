@@ -1,6 +1,7 @@
-import { useRef, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import {
+  ArrowLeftRight,
   ArrowRight,
   Check,
   Inbox,
@@ -8,6 +9,7 @@ import {
   MessageSquareReply,
   MessageSquareText,
   PenLine,
+  Repeat2,
   ScanSearch,
   ShieldCheck,
   SlidersHorizontal,
@@ -20,6 +22,7 @@ import { AiStatusPill } from "@/components/ai/ai-status-pill";
 import { PageHeader, SectionHeader } from "@/components/layout/shared/data-display";
 import { EmptyState, ErrorState, PageSkeleton } from "@/components/layout/shared/feedback/states";
 import { FilterChips } from "@/components/layout/shared/filter-chips";
+import { AutoReplySummaryLine } from "@/components/reputation/auto-reply-status";
 import { BulkReplies } from "@/components/reputation/bulk-replies";
 import { ReplyAuthorizationBanner, ReplyAuthorizationStatus } from "@/components/reputation/reply-authorization";
 import { ReviewInsightsCard } from "@/components/reputation/review-insights";
@@ -29,13 +32,20 @@ import { RefreshReviewsButton, ReviewsSyncMeta } from "@/components/reputation/r
 import { REVIEWS_PAGE_SIZE, ReviewsFeed } from "@/components/reputation/reviews-feed";
 import { Button } from "@/components/ui/button";
 import { useCanEdit } from "@/hooks/use-access";
-import { useAiStatus } from "@/lib/ai/ai-status";
+import { useAiStatus, type AiStatus } from "@/lib/ai/ai-status";
 import { keywordsPath } from "@/lib/keywords/paths";
 import { useLocationRoute } from "@/lib/locations/location-route-context";
 import { locationPath } from "@/lib/mypageseo/section-links";
 import { reviewErrorMessage } from "@/lib/reviews/review-errors";
-import { REPLY_QUEUE_PRESETS, replyQueuePreset, useReplyQueueParams, useReviewSpotlight, type ReplyQueuePreset } from "@/lib/reviews/review-filters";
-import { draftableCount, noReplyCount, reviewsGate } from "@/lib/reviews/review-metrics";
+import {
+  REPLY_QUEUE_PRESETS,
+  REPLY_UPDATES_QUERY,
+  replyQueuePreset,
+  useReplyQueueParams,
+  useReviewSpotlight,
+  type ReplyQueuePreset,
+} from "@/lib/reviews/review-filters";
+import { draftableCount, draftsToCheckCount, noReplyCount, reviewsGate } from "@/lib/reviews/review-metrics";
 import { focusReviewCard } from "@/lib/reviews/review-spotlight";
 import { useReviewCount, useReviewsList, useReviewsSummary } from "@/lib/reviews/use-reviews";
 
@@ -50,6 +60,10 @@ const CRITICAL_VIEWS: ReadonlySet<ReplyQueuePreset> = new Set(["rejected", "fail
  * for every review that needs one, you check and edit it, you send it. The numbers, "Draft all",
  * the queue (newest first, preset views kept in `?filter=`) and what customers say, on one page.
  * Manual replies keep working when AI is off.
+ *
+ * 2026-11-17: "Drafts to check" also lists the drafts that replace a reply on Google (`reply_update=true`,
+ * above the other drafts: the API lists them apart), and the header says how automatic replies are doing
+ * when the server's switch for them is on. The AI digest email links here with `?filter=drafts`.
  */
 function AiRepliesPage() {
   const { location } = useLocationRoute();
@@ -108,6 +122,8 @@ function AiRepliesPage() {
           <AiStatusPill status={ai} />
           {data && !gate ? <ReviewsSyncMeta summary={data} /> : null}
           {data && !gate ? <ReplyAuthorizationStatus {...authorizationNames} /> : null}
+          {/* Phase 25b: "Automatic replies: on · 3 sent this week · 1 held for a person", only while the switch is on. */}
+          {data && !gate ? <AutoReplySummaryLine locationId={locationId} summary={data} /> : null}
         </div>
       }
       actions={
@@ -170,17 +186,19 @@ function AiRepliesPage() {
     );
   }
 
+  // 2026-11-17 (G3): drafts that replace a reply on Google are "Drafts to check" too, listed above the others.
+  const updates = stats.reply_updates_pending ?? 0;
   const counts: Record<ReplyQueuePreset, number | undefined> = {
     // "No reply yet" is `reply_state=none`: unreplied minus drafts and (Phase 25a) replies Google rejected.
     none: noReplyCount(stats),
-    drafts: stats.drafts_pending,
+    drafts: draftsToCheckCount(stats),
     rejected: rejectedFromSummary ?? rejected.data,
     low: low.data,
     attention: attention.data,
     failed: failed.data,
     suspicious: suspicious.data,
   };
-  if (openList.data && !openList.isPlaceholderData) counts[preset] = openList.data.total;
+  if (openList.data && !openList.isPlaceholderData) counts[preset] = openList.data.total + (preset === "drafts" ? updates : 0);
   // Low-rated and the problem views only show up when they have something in them (or are open).
   const views = REPLY_QUEUE_PRESETS.filter((view) => !SHOWN_WHEN_NOT_EMPTY.has(view.id) || view.id === preset || (counts[view.id] ?? 0) > 0);
 
@@ -205,6 +223,7 @@ function AiRepliesPage() {
         ai={ai}
         variant="hero"
         onShowDrafts={() => show("drafts")}
+        onShowUpdates={() => show("drafts")}
         onOpenReview={openReview}
       />
 
@@ -232,17 +251,29 @@ function AiRepliesPage() {
               onChange={setPreset}
             />
           </div>
+          {preset === "drafts" && updates > 0 ? (
+            // Keyed: its page and kept cards belong to one location.
+            <ReplyUpdates key={locationId} locationId={locationId} ai={ai} count={updates} canEdit={canEdit} />
+          ) : null}
           <ReviewsFeed
             locationId={locationId}
             ai={ai}
             query={queueQuery}
             page={page}
             onPageChange={setPage}
-            caption="Newest first"
+            caption={preset === "drafts" && updates > 0 ? "Other drafts, newest first" : "Newest first"}
             unansweredOnly={preset !== "failed"}
             spotlight={spotlight}
             onSpotlightChange={setSpotlight}
-            empty={<QueueEmpty preset={preset} drafts={stats.drafts_pending} canEdit={canEdit} onShowDrafts={() => setPreset("drafts")} />}
+            empty={
+              <QueueEmpty
+                preset={preset}
+                drafts={stats.drafts_pending}
+                updates={updates}
+                canEdit={canEdit}
+                onShowDrafts={() => setPreset("drafts")}
+              />
+            }
           />
         </section>
 
@@ -256,7 +287,21 @@ function AiRepliesPage() {
 }
 
 /** What an empty view says. A client user gets no instructions for buttons only their agency has. */
-function QueueEmpty({ preset, drafts, canEdit, onShowDrafts }: { preset: ReplyQueuePreset; drafts: number; canEdit: boolean; onShowDrafts: () => void }) {
+function QueueEmpty({
+  preset,
+  drafts,
+  updates,
+  canEdit,
+  onShowDrafts,
+}: {
+  preset: ReplyQueuePreset;
+  drafts: number;
+  /** Drafts that replace a reply on Google (2026-11-17), listed above the other drafts. */
+  updates: number;
+  canEdit: boolean;
+  onShowDrafts: () => void;
+}) {
+  const toCheck = drafts + updates;
   switch (preset) {
     case "none":
       return (
@@ -264,23 +309,30 @@ function QueueEmpty({ preset, drafts, canEdit, onShowDrafts }: { preset: ReplyQu
           variant="all-done"
           title="No reviews waiting"
           description={
-            drafts > 0
+            toCheck > 0
               ? canEdit
                 ? "Every review has a reply or a draft. Check the drafts, then send them."
                 : "Every review has a reply, or your agency is preparing one."
               : "Every review has a reply. New reviews show up here after the next check with Google."
           }
           action={
-            drafts > 0 ? (
+            toCheck > 0 ? (
               <Button size="sm" variant="outline" onClick={onShowDrafts}>
-                {canEdit ? `Check ${drafts} ${drafts === 1 ? "draft" : "drafts"}` : `Show ${drafts} ${drafts === 1 ? "review" : "reviews"}`}
+                {canEdit ? `Check ${toCheck} ${toCheck === 1 ? "draft" : "drafts"}` : `Show ${toCheck} ${toCheck === 1 ? "review" : "reviews"}`}
               </Button>
             ) : undefined
           }
         />
       );
     case "drafts":
-      return (
+      return updates > 0 ? (
+        <EmptyState
+          icon={PenLine}
+          tone="ai"
+          title="No other drafts to check"
+          description={canEdit ? "Only the updates above are waiting. Send each one from its review." : "Only the updates above are being prepared."}
+        />
+      ) : (
         <EmptyState
           icon={PenLine}
           tone="ai"
@@ -315,10 +367,56 @@ function QueueEmpty({ preset, drafts, canEdit, onShowDrafts }: { preset: ReplyQu
   }
 }
 
-/** The reply rules, as the backend applies them (replies v2, Phase 25a). */
+/**
+ * The drafts that replace a reply already on Google (2026-11-17, G3: `reply_update=true`), at the top of "Drafts
+ * to check". The API can't list them with the other drafts, so they have their own short list (and page). They go
+ * one at a time, so there is no selection: each card sends its own.
+ */
+function ReplyUpdates({ locationId, ai, count, canEdit }: { locationId: string; ai: AiStatus; count: number; canEdit: boolean }) {
+  const [page, setPage] = useState(1);
+  return (
+    <section aria-labelledby="reply-updates-title" className="space-y-2 rounded-xl border border-info/25 bg-info-surface/40 p-2 sm:p-3">
+      <div className="flex items-start gap-2 px-1">
+        <Repeat2 aria-hidden className="mt-0.5 size-4 shrink-0 text-info" />
+        <div className="min-w-0">
+          <h3 id="reply-updates-title" className="text-sm font-semibold text-foreground">
+            {count === 1 ? "1 draft replaces a reply on Google" : `${count.toLocaleString()} drafts replace a reply on Google`}
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            {canEdit
+              ? "Sending one replaces the reply people see on Google now. They go one at a time: send each one from its review."
+              : "Your agency is preparing a new version of these replies."}
+          </p>
+        </div>
+      </div>
+      <ReviewsFeed
+        locationId={locationId}
+        ai={ai}
+        query={{ ...REPLY_UPDATES_QUERY, sort: "newest" }}
+        page={page}
+        onPageChange={setPage}
+        caption="Updates"
+        bulk={false}
+        empty={<p className="px-1 pb-1 text-sm text-muted-foreground">These updates were sent or removed meanwhile.</p>}
+      />
+    </section>
+  );
+}
+
+/** The reply rules, as the backend applies them (replies v3, Phase 25b). */
 function replyRules(keywords: ReactNode, settings: ReactNode): { key: string; icon: LucideIcon; text: ReactNode }[] {
   return [
-    { key: "length", icon: Check, text: "Short: 20–60 words for a 5-star review, up to 100 for 1–2 stars, a sentence or two when there's no text." },
+    {
+      key: "specific",
+      icon: Check,
+      text: "Answers what the reviewer said: the service they used, the staff they named, their question. It never just repeats the review.",
+    },
+    {
+      key: "versions",
+      icon: ArrowLeftRight,
+      text: "Writes two versions, scores them and shows you the better one. \"Try the other version\" switches, for free.",
+    },
+    { key: "length", icon: MessageSquareText, text: "Follows the review's length, never under 120 characters. Stars-only reviews get two real sentences, never just \"Thanks!\"." },
     { key: "language", icon: Languages, text: "Written in the reviewer's own language." },
     { key: "keywords", icon: Tags, text: <>At most one of your {keywords}, only when the review is about it (never for 1–2 stars).</> },
     {
@@ -327,7 +425,7 @@ function replyRules(keywords: ReactNode, settings: ReactNode): { key: string; ic
       text: "For 1–2 stars: apologises without admitting fault, gives your contact line, offers nothing and never argues.",
     },
     { key: "name", icon: UserRound, text: "Uses the reviewer's first name only, and no names at all in restricted mode (health, legal and financial businesses)." },
-    { key: "rules", icon: SlidersHorizontal, text: <>Follows the house rules, signature and contact line in your {settings}.</> },
+    { key: "rules", icon: SlidersHorizontal, text: <>Follows the house rules, signature, contact line and facts in your {settings}, and learns your style from the replies you edit.</> },
     { key: "checks", icon: ScanSearch, text: "Every draft is checked for made-up facts, promises and personal details, then double-checked before you see it." },
     { key: "suspicious", icon: ShieldCheck, text: "No AI reply to reviews with suspicious indicators: ask Google to remove those instead." },
   ];

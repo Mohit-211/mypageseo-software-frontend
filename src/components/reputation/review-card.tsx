@@ -1,16 +1,22 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   AlertTriangle,
+  ArrowLeftRight,
   Ban,
   Copy,
   ExternalLink,
   EyeOff,
+  History,
+  LifeBuoy,
   LoaderCircle,
   MoreHorizontal,
   PenLine,
   Pencil,
+  RefreshCw,
+  Repeat2,
   Send,
   ShieldAlert,
   Sparkles,
@@ -24,10 +30,12 @@ import {
   deleteReplyDraft,
   draftAppeal,
   generateReplyDrafts,
+  isApiError,
   reviseReplyDraft,
   saveReplyDraft,
   sendReplies,
   setReportStatus,
+  swapReplyDraft,
   type DeclinedInstruction,
   type DraftCheck,
   type GoogleReply,
@@ -35,7 +43,6 @@ import {
   type ReviewReportStatus,
 } from "@/api";
 import { AiBadge } from "@/components/ai/ai-badge";
-import { AiCostChip } from "@/components/ai/ai-cost-chip";
 import { StatusBadge } from "@/components/layout/shared/status-badge";
 import { ConfirmDialog } from "@/components/layout/shared/form-fields";
 import { Button } from "@/components/ui/button";
@@ -50,17 +57,22 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useCanEdit } from "@/hooks/use-access";
-import { estimateAnalysisCost, formatTokenCount, formatTokens } from "@/lib/ai/ai-costs";
+import { formatTokenCount, formatTokens } from "@/lib/ai/ai-costs";
 import { noteAiSuccess } from "@/lib/ai/ai-signal";
 import type { AiStatus } from "@/lib/ai/ai-status";
-import { useToastAiError } from "@/lib/ai/toast-ai-error";
 import { noteAccountError } from "@/lib/billing/account-restriction";
 import { formatDateTime } from "@/lib/datetime";
+import { useGbpConnect } from "@/lib/gbp/use-gbp-connect";
+import { canAnalyzeReview } from "@/lib/reviews/analysis-view";
+import { draftSkipText } from "@/lib/reviews/draft-results";
 import {
   asFailedSend,
   asSentReview,
   canReviseDraft,
   hasHardFinding,
+  hasLiveReply,
+  isLeftBehind,
+  isReplyUpdate,
   mergeSendFindings,
   publicReplyText,
   rejectedReply,
@@ -71,17 +83,22 @@ import {
 } from "@/lib/reviews/draft-view";
 import { sendBlockedByAuthorization } from "@/lib/reviews/reply-authorization-copy";
 import { REPLY_MAX_BYTES, declinedSummary, sendBlockFromError, sortChecks, utf8Length, type SendBlock } from "@/lib/reviews/reply-checks";
-import { putReviewInCache, updateReviewInCache } from "@/lib/reviews/review-cache";
-import { SEND_BLOCK_COPY, reviewErrorMessage, reviseErrorNotice, type InlineNotice } from "@/lib/reviews/review-errors";
+import { creditCost } from "@/lib/reviews/reply-credits";
+import { putReviewInCache, refetchReview, setCachedCredits, updateReviewInCache } from "@/lib/reviews/review-cache";
+import { SEND_BLOCK_COPY, reviewErrorMessage, reviseErrorNotice, useToastReplyError, type InlineNotice } from "@/lib/reviews/review-errors";
 import { nameHash, reviewerInitials } from "@/lib/reviews/review-metrics";
 import { scrollToReplyAuthorization } from "@/lib/reviews/review-spotlight";
-import { SENT_REPLIES_NOTE, noteReplyAuthorizationRequired, sendFailureText } from "@/lib/reviews/send-results";
+import { SENT_REPLIES_NOTE, noteReplyAuthorizationRequired, sendFailureAction, sendFailureText } from "@/lib/reviews/send-results";
 import { useReplyAuthorization } from "@/lib/reviews/use-reply-authorization";
-import { reviewsKey } from "@/lib/reviews/use-reviews";
+import { reviewsKey, useReplyAiLimits } from "@/lib/reviews/use-reviews";
 import { cn } from "@/lib/utils";
+import { AutoReplyReviewNote } from "./auto-reply-status";
 import { ChangeItBox } from "./change-it";
 import { DraftFindings, DraftNote, DraftProvenance, DraftText, VerificationBadge } from "./draft-checks";
+import { QualityBadge, QualityNotes } from "./draft-quality";
+import { ReplyCostChip } from "./reply-cost-chip";
 import { RejectedReply, ReplyOnGoogle, ReplyStateBadge } from "./reply-state";
+import { AnalysisPanel, ReviewText } from "./review-analysis";
 import { ReviewStars } from "./review-stars";
 import { GoogleReplyDialog, SendAnywayDialog } from "./send-blocked-dialog";
 
@@ -128,13 +145,13 @@ const SEND_REASON: Record<string, string> = {
 };
 
 /** Results of a send of one that the checks or Google held back (as a send of several reports them): shown like the 422 / 409 answers. */
-const HELD_BACK = new Set(["checks_failed", "needs_review", "reply_changed_on_google"]);
+const HELD_BACK = new Set(["checks_failed", "needs_review", "reply_changed_on_google", "draft_predates_reply"]);
 
 /** A send skipped because there is nothing left to send here (the card needn't stay on screen for it). */
 const NOTHING_TO_SEND = new Set(["no_draft", "already_replied", "deleted_on_google", "not_found"]);
 
-const SENTIMENT_TONE: Record<string, "success" | "warning" | "neutral"> = { positive: "success", negative: "warning", mixed: "neutral", neutral: "neutral" };
-const SEVERITY_TONE: Record<string, "critical" | "warning" | "neutral"> = { high: "critical", medium: "warning", low: "neutral" };
+/** Where "Contact support" goes (a send that can't reach Google from this account: `not_configured`). */
+const SUPPORT_PATH = "/support?new=1";
 
 // Soft, distinct avatar tints (no violet: that means AI; no red: that means trouble).
 const AVATAR_TONES = [
@@ -162,7 +179,7 @@ function lengthProblem(text: string): string | null {
   return null;
 }
 
-type BusyKey = "send" | "save" | "discard" | "ai" | "revise" | "analyze" | "appeal" | "status" | "remove";
+type BusyKey = "send" | "save" | "discard" | "ai" | "revise" | "swap" | "analyze" | "appeal" | "status" | "remove";
 
 /** What a held-back send of this review found, for the text it sent (shown while the saved draft still has that text). */
 type SendHold = { text: string; kind: "checks_failed" | "confirm_warnings_required"; findings: DraftCheck[] };
@@ -198,12 +215,20 @@ export type ReviewCardProps = {
  * the text ("edit", with Google's byte counter); "Change it" asks the AI for a change. Send runs every
  * check again: a hard finding is shown on the draft, warnings ask "Send anyway?", a reply already on
  * Google opens a choice, and an agency without its client's authorization is pointed to the banner.
+ *
+ * Phase 25b and 2026-11-17: the AI's score of its draft and the notes under 4, "Try the other version",
+ * what the reviewer mentioned highlighted in the review, the AI replies a click uses ("4 left" / "1 token"),
+ * where an automatic reply stands, drafts that replace the reply on Google ("Replaces the reply on Google")
+ * or were written before it ("Written before the reply on Google": "Replace it with my draft" saves it
+ * again, then sends it), and a failed send's kind (Reconnect Google, contact support, try later).
  */
 export function ReviewCard({ locationId, review, ai, selectable = false, selected = false, onSelect, now, hideNeedsReply = false, onHold, className }: ReviewCardProps) {
   const queryClient = useQueryClient();
-  const toastAiError = useToastAiError();
+  const toastReplyError = useToastReplyError();
   const canEdit = useCanEdit();
   const authorization = useReplyAuthorization(locationId, canEdit);
+  const limits = useReplyAiLimits(locationId);
+  const { connect: connectGoogle } = useGbpConnect();
   const uid = useId();
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState<string | null>(null);
@@ -212,8 +237,14 @@ export function ReviewCard({ locationId, review, ai, selectable = false, selecte
   const [declined, setDeclined] = useState<{ text: string; parts: DeclinedInstruction[] } | null>(null);
   const [hold, setHold] = useState<SendHold | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [onGoogle, setOnGoogle] = useState<{ open: boolean; reply: GoogleReply | null; draftText: string }>({ open: false, reply: null, draftText: "" });
+  const [onGoogle, setOnGoogle] = useState<{ open: boolean; reply: GoogleReply | null; draftText: string; variant: "changed" | "predates" }>({
+    open: false,
+    reply: null,
+    draftText: "",
+    variant: "changed",
+  });
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [confirmSwap, setConfirmSwap] = useState(false);
   const [reportUrl, setReportUrl] = useState(GOOGLE_REPORT_URL);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // When the "Change it" box closes, focus goes back to its button (which is rendered again then).
@@ -249,11 +280,19 @@ export function ReviewCard({ locationId, review, ai, selectable = false, selecte
   const suspicious = review.flag_level === "suspicious";
   const reviewer = review.reviewer?.is_anonymous ? "Anonymous" : (review.reviewer?.display_name ?? "A Google user");
   const edited = review.update_time && review.create_time && review.update_time !== review.create_time;
-  const replyCost = ai.costs.reply_drafts_per_10;
-  const balance = ai.balance === undefined ? {} : { balance: ai.balance };
-  const analysisCost = estimateAnalysisCost([review], ai.costs.analysis_per_10, Boolean(review.analysis));
-  const canAnalyze = Boolean(review.comment?.trim()) && (!review.analysis || review.analysis.stale);
+  // 2026-11-17: each AI reply uses one of the location's replies ("4 left"); a new block of 10 costs tokens.
+  const replyCost = creditCost(1, limits.credits, ai.costs.reply_drafts_per_10);
+  const analysisCost = creditCost(1, limits.credits, ai.costs.analysis_per_10, "analyses");
+  const balance = ai.balance;
+  const canAnalyze = canAnalyzeReview(review);
   const skipReason = review.ai_reply_skip_reason ? (SKIP_REASON[review.ai_reply_skip_reason] ?? null) : null;
+  // 2026-11-17 (G3): a draft that replaces the reply on Google, or one written before that reply ("left behind").
+  const update = isReplyUpdate(review);
+  const leftBehind = isLeftBehind(review);
+  const alternative = draft?.source === "ai" ? (draft.alternative ?? null) : null;
+  // The last send's error goes with the draft: a failed send, or a failed update (which keeps `sent` / `pending`).
+  const sendError = review.send_error && (review.reply_state === "failed" || draft) ? review.send_error : null;
+  const sendErrorAction = sendError ? sendFailureAction(review.send_error_code) : null;
   const aiBlocked = !ai.canRun;
   // A read-only or suspended account: the backend also refuses sending and removing a reply (both
   // need billing). Saving a draft still works.
@@ -305,7 +344,10 @@ export function ReviewCard({ locationId, review, ai, selectable = false, selecte
   // Over Google's limit the reason is already the message under the field: point Send there, don't repeat it.
   const reasonUnderField = editMode && overLimit && !accountBlocked && !authorization.blocked;
 
-  const helperText = publicReply
+  // A left-behind draft has its own note under the badges: no second line saying the same.
+  const helperText = leftBehind && !editMode
+    ? null
+    : publicReply
     ? "Sending replaces your reply on Google."
     : editMode
       ? draft
@@ -332,7 +374,8 @@ export function ReviewCard({ locationId, review, ai, selectable = false, selecte
       if (options.success) toast.success(options.success);
       return true;
     } catch (err) {
-      if (options.ai) toastAiError(err, { fallback: options.fallback });
+      // The reply routes' 402 says how many AI replies or analyses are left (2026-11-17); other AI errors as usual.
+      if (options.ai) toastReplyError(err, { fallback: options.fallback, blockSize: limits.blockSize });
       else {
         // Not a useMutation, so tell the account banner about a 402/403 here (toastAiError does for AI).
         noteAccountError(err);
@@ -391,38 +434,55 @@ export function ReviewCard({ locationId, review, ai, selectable = false, selecte
       keep(latest);
       return;
     }
-    if (block.kind === "reply_changed_on_google") {
-      // Google's reply is stored now and comes back on the review: show it, keep the draft.
-      const withGoogle = block.review ?? withGoogleReply(latest, block.googleReply);
+    if (block.kind === "reply_changed_on_google" || block.kind === "draft_predates_reply") {
+      // Google's reply is stored now and comes back on the review: show it, keep the draft (left behind:
+      // "Replace it with my draft" saves it again, then sends it).
+      const withGoogle = (block.kind === "reply_changed_on_google" ? block.review : null) ?? withGoogleReply(latest, block.googleReply);
       putReviewInCache(queryClient, locationId, withGoogle);
       keep(withGoogle);
-      setOnGoogle({ open: true, reply: block.googleReply, draftText: sentText });
+      setOnGoogle({ open: true, reply: block.googleReply, draftText: sentText, variant: block.kind === "draft_predates_reply" ? "predates" : "changed" });
       return;
     }
     // `reply_authorization_required` is answered by noteReplyAuthorizationRequired before this.
     keep(latest);
   };
 
+  /** The reply on Google a left-behind draft would replace, as a send's 409 would give it. */
+  const googleReplyOnReview = (): GoogleReply | null => {
+    const reply = review.reply;
+    if (!reply) return null;
+    return typeof reply === "string" ? { comment: reply, update_time: null } : { comment: reply.comment, update_time: reply.update_time ?? null };
+  };
+
   /**
    * Sends the draft (saved first when the text on screen changed). Every check runs again on the text
    * sent; `confirmWarnings` is "Send anyway" after a 409 `confirm_warnings_required`. Whatever doesn't
    * go out keeps the card on screen with what to do next: a hand-written reply is never dropped.
+   *
+   * `resave` is "Replace it with my draft" (2026-11-17, G3): the draft is saved again first, so it becomes an
+   * update of the reply on Google, then sent. A draft known to be left behind isn't sent as it is (that answers
+   * 409 `draft_predates_reply`): the choice opens instead.
    */
-  const send = async (options: { confirmWarnings?: boolean } = {}) => {
+  const send = async (options: { confirmWarnings?: boolean; resave?: boolean } = {}) => {
+    if (leftBehind && draft && !changed && !options.resave) {
+      setOnGoogle({ open: true, reply: googleReplyOnReview(), draftText: draft.text, variant: "predates" });
+      return;
+    }
     let sentText = draft?.text ?? "";
     // The review as this send leaves it (the saved text, when the text on screen was saved first).
     let latest = review;
     setBusy("send");
     try {
-      if (!draft || changed) {
-        const problem = lengthProblem(draftText);
+      if (!draft || changed || options.resave) {
+        const toSave = changed || !draft ? trimmed : draft.text;
+        const problem = lengthProblem(toSave);
         if (problem) {
           toast.error(problem);
           return;
         }
         let saved: Review;
         try {
-          saved = await saveReplyDraft(locationId, review.review_id, trimmed);
+          saved = await saveReplyDraft(locationId, review.review_id, toSave);
         } catch (err) {
           noteAccountError(err);
           toast.error(reviewErrorMessage(err, "The reply couldn't be saved.").message);
@@ -430,7 +490,7 @@ export function ReviewCard({ locationId, review, ai, selectable = false, selecte
         }
         putReviewInCache(queryClient, locationId, saved);
         latest = saved;
-        sentText = saved.draft?.text ?? trimmed;
+        sentText = saved.draft?.text ?? toSave;
         closeEditor();
         // The save ran the checks again, and a hard finding is never sent: show it rather than sending.
         if (hasHardFinding(saved.draft?.checks)) {
@@ -439,27 +499,37 @@ export function ReviewCard({ locationId, review, ai, selectable = false, selecte
           return;
         }
       }
-      const result = await sendReplies(locationId, [review.review_id], options);
+      const result = await sendReplies(locationId, [review.review_id], options.confirmWarnings ? { confirmWarnings: true } : {});
       const outcome = result.results.find((item) => item.review_id === review.review_id) ?? result.results[0];
       if (outcome?.status === "skipped" && outcome.reason && HELD_BACK.has(outcome.reason)) {
         showHold(
           outcome.reason === "reply_changed_on_google"
             ? { kind: "reply_changed_on_google", googleReply: outcome.google_reply ?? null, review: null }
-            : { kind: outcome.reason === "checks_failed" ? "checks_failed" : "confirm_warnings_required", findings: outcome.findings ?? [] },
+            : outcome.reason === "draft_predates_reply"
+              ? { kind: "draft_predates_reply", googleReply: outcome.google_reply ?? null }
+              : { kind: outcome.reason === "checks_failed" ? "checks_failed" : "confirm_warnings_required", findings: outcome.findings ?? [] },
           sentText,
           latest,
         );
         return;
       }
       if (outcome && outcome.status !== "sent") {
-        // A failed send's reason is Google's error message: never shown as it is.
-        toast.error(outcome.status === "failed" ? sendFailureText(outcome.reason) : (SEND_REASON[outcome.reason ?? ""] ?? "The reply wasn't sent."));
         if (outcome.status === "failed") {
+          // A failed send's reason is Google's error message: its code (2026-11-17) says what to offer.
+          const action = sendFailureAction(outcome.code);
+          toast.error("The reply wasn't sent", {
+            description: sendFailureText(outcome.reason, outcome.code),
+            ...(action === "reconnect" ? { action: { label: "Reconnect Google", onClick: () => connectGoogle() } } : {}),
+          });
           // The draft is kept with the error ("Not sent."), here to send again.
-          const failed = asFailedSend(latest, outcome.reason ?? null);
+          const failed = asFailedSend(latest, outcome.reason ?? null, outcome.code ?? null);
           putReviewInCache(queryClient, locationId, failed);
           keep(failed);
-        } else if (outcome.reason && NOTHING_TO_SEND.has(outcome.reason)) release();
+          return;
+        }
+        // `deadline` never cuts a send of one review; the rest have nothing left to send.
+        toast.error(SEND_REASON[outcome.reason ?? ""] ?? "The reply wasn't sent. Try again.");
+        if (outcome.reason && NOTHING_TO_SEND.has(outcome.reason)) release();
         else keep(latest);
         return;
       }
@@ -497,6 +567,7 @@ export function ReviewCard({ locationId, review, ai, selectable = false, selecte
     let discarded = false;
     try {
       await deleteReplyDraft(locationId, review.review_id);
+      // The answer is `{ deleted, review_id }` (2026-11-17, G1): show it at once, then read the review itself again.
       updateReviewInCache(queryClient, locationId, review.review_id, withoutDraft);
       closeEditor();
       setHold(null);
@@ -510,10 +581,12 @@ export function ReviewCard({ locationId, review, ai, selectable = false, selecte
       setBusy(null);
       settleFocus.current = true;
       if (discarded) {
-        // Let the card go only once the list has been read again: if the review still belongs in this
-        // view it simply stays in its slot (focus with it); if not, it leaves then. Letting go first
-        // made a kept card vanish and come back, and focus jump to the next review.
+        // Let the card go only once the review and the list (and the summary's counts) have been read
+        // again: if the review still belongs in this view it simply stays in its slot (focus with it); if
+        // not, it leaves then. Letting go first made a kept card vanish and come back, and focus jump to
+        // the next review.
         void Promise.all([
+          refetchReview(queryClient, locationId, review.review_id),
           queryClient.invalidateQueries({ queryKey: reviewsKey(locationId) }),
           queryClient.invalidateQueries({ queryKey: ["billing"] }),
         ]).finally(release);
@@ -523,17 +596,23 @@ export function ReviewCard({ locationId, review, ai, selectable = false, selecte
     }
   };
 
-  /** A new AI draft (`regenerate` when one exists). */
+  /** A new AI draft (`regenerate` when one exists). It uses one of the location's AI replies (2026-11-17). */
   const draftWithAi = async () => {
     setBusy("ai");
     try {
       const result = await generateReplyDrafts(locationId, [review.review_id], Boolean(draft));
       for (const item of result.drafts ?? []) putReviewInCache(queryClient, locationId, item);
+      setCachedCredits(queryClient, locationId, result);
       noteAiSuccess();
       const drafted = (result.drafts ?? []).find((item) => item.review_id === review.review_id);
       const skipped = result.skipped?.find((item) => item.review_id === review.review_id);
       if (skipped && !drafted) {
-        toast.info(SKIP_REASON[skipped.reason] ?? "AI didn't draft a reply to this review.");
+        // Phase 25b: `deadline` (not written in time), the AI's reasons, `draft_changed`; nothing was used.
+        const why = draftSkipText(skipped.reason);
+        toast.info("No new draft", {
+          description: why.text,
+          ...(why.retry ? { action: { label: "Draft it again", onClick: () => void draftWithAi() } } : {}),
+        });
         return;
       }
       // The new draft stays here to check, even in a list of reviews without one.
@@ -543,7 +622,38 @@ export function ReviewCard({ locationId, review, ai, selectable = false, selecte
       setDeclined(null);
       toast.success(draft ? "New AI draft ready to check." : "AI draft ready to check.");
     } catch (err) {
-      toastAiError(err, { fallback: "The AI draft couldn't be made." });
+      toastReplyError(err, { fallback: "The AI draft couldn't be made", blockSize: limits.blockSize, onRetry: () => void draftWithAi() });
+    } finally {
+      setBusy(null);
+      settleFocus.current = true;
+      refresh();
+    }
+  };
+
+  /**
+   * "Try the other version" (Phase 25b, free): the AI's other candidate becomes the draft and this one the other
+   * version, so the same button switches back. 409 `draft_edited`: the user edited it, so ask first ("Your edits
+   * will be lost") and send `discard_edits`; 409 `draft_changed` / 400 `no_alternative`: read the review again.
+   */
+  const swap = async (discardEdits = false) => {
+    setBusy("swap");
+    try {
+      const answer = await swapReplyDraft(locationId, review.review_id, discardEdits ? { discardEdits: true } : {});
+      const swapped = answer.review?.review_id ? answer.review : { ...review, draft: answer.draft };
+      putReviewInCache(queryClient, locationId, swapped);
+      keep(swapped);
+      setHold(null);
+      setDeclined(null);
+      closeEditor();
+      toast.success("Switched to the other version", { description: "Press the button again to switch back." });
+    } catch (err) {
+      if (isApiError(err) && err.reason === "draft_edited") {
+        setConfirmSwap(true);
+        return;
+      }
+      noteAccountError(err);
+      toast.error(reviewErrorMessage(err, "The other version couldn't be shown.").message);
+      if (isApiError(err) && (err.reason === "draft_changed" || err.reason === "no_alternative")) void refetchReview(queryClient, locationId, review.review_id);
     } finally {
       setBusy(null);
       settleFocus.current = true;
@@ -557,8 +667,8 @@ export function ReviewCard({ locationId, review, ai, selectable = false, selecte
   };
 
   /**
-   * "Change it": the AI rewrites the draft as asked (one reply draft's tokens). Resolves with a notice
-   * for the box (it stays open), or null: done (the box closes), or an AI error shown as a toast.
+   * "Change it": the AI rewrites the draft as asked (one of the location's AI replies, 2026-11-17). Resolves
+   * with a notice for the box (it stays open), or null: done (the box closes), or an AI error shown as a toast.
    */
   const revise = async (instructions: string): Promise<InlineNotice | null> => {
     setBusy("revise");
@@ -570,6 +680,7 @@ export function ReviewCard({ locationId, review, ai, selectable = false, selecte
         // A failed send rewritten is a draft again: it stays here.
         keep(rewritten);
       }
+      setCachedCredits(queryClient, locationId, answer);
       noteAiSuccess();
       const parts = answer.declined_instructions ?? [];
       const nextText = answer.review?.draft?.text ?? answer.draft?.text ?? "";
@@ -582,7 +693,8 @@ export function ReviewCard({ locationId, review, ai, selectable = false, selecte
       // All of it left out, a change already running, the draft changed meanwhile (reloaded below)…
       const notice = reviseErrorNotice(err);
       if (notice) return notice;
-      toastAiError(err, { fallback: "The draft couldn't be rewritten" });
+      // The 402 comes before anything is locked or spent: "0 replies left, 1 needed: 1 token buys 10 more".
+      toastReplyError(err, { fallback: "The draft couldn't be rewritten", blockSize: limits.blockSize });
       return null;
     } finally {
       setBusy(null);
@@ -591,15 +703,35 @@ export function ReviewCard({ locationId, review, ai, selectable = false, selecte
   };
 
   // Each answer goes into the cache as well: a review opened above the list (`?review=`) isn't looked up again.
-  const analyze = () =>
-    void run(
-      "analyze",
-      async () => {
-        const result = await analyzeReviews(locationId, [review.review_id], Boolean(review.analysis));
-        for (const item of result.reviews ?? []) putReviewInCache(queryClient, locationId, item);
-      },
-      { fallback: "The review couldn't be analyzed.", success: "Analysis added to the review.", ai: true },
-    );
+  // A current analysis v2 is reused free; a stale or v1 one is made again (one of the location's AI analyses).
+  const analyzeNow = async () => {
+    setBusy("analyze");
+    try {
+      const result = await analyzeReviews(locationId, [review.review_id]);
+      for (const item of result.reviews ?? []) putReviewInCache(queryClient, locationId, item);
+      setCachedCredits(queryClient, locationId, result);
+      noteAiSuccess();
+      const analyzed = (result.reviews ?? []).some((item) => item.review_id === review.review_id && item.analysis);
+      const skipped = result.skipped?.find((item) => item.review_id === review.review_id);
+      if (skipped && !analyzed) {
+        const why = draftSkipText(skipped.reason, "analyze");
+        toast.info("No new analysis", {
+          description: why.text,
+          ...(why.retry ? { action: { label: "Try again", onClick: () => void analyzeNow() } } : {}),
+        });
+        return;
+      }
+      toast.success("Analysis added to the review.");
+    } catch (err) {
+      // Analyze's 402 says how many analyses are left (2026-11-17): "0 analyses left, 1 needed: …".
+      toastReplyError(err, { fallback: "The review couldn't be analyzed", blockSize: limits.blockSize });
+    } finally {
+      setBusy(null);
+      settleFocus.current = true;
+      refresh();
+    }
+  };
+  const analyze = () => void analyzeNow();
 
   const draftRemovalRequest = () =>
     void run(
@@ -623,7 +755,9 @@ export function ReviewCard({ locationId, review, ai, selectable = false, selecte
       "remove",
       async () => {
         await deleteReply(locationId, review.review_id);
+        // `{ deleted, review_id }` (2026-11-17, G1): shown at once, then the review is read again (the summary with the list).
         updateReviewInCache(queryClient, locationId, review.review_id, withoutReply);
+        await refetchReview(queryClient, locationId, review.review_id);
       },
       { fallback: "The reply couldn't be removed.", success: "Reply removed from Google." },
     );
@@ -743,7 +877,10 @@ export function ReviewCard({ locationId, review, ai, selectable = false, selecte
                       <DropdownMenuItem disabled={aiBlocked} onSelect={analyze}>
                         <Sparkles aria-hidden className="text-ai" />
                         <span className="flex-1">{review.analysis ? "Analyze again with AI" : "Analyze with AI"}</span>
-                        <span className="text-xs text-muted-foreground">{formatTokens(analysisCost)}</span>
+                        <span className="text-xs text-muted-foreground" title={analysisCost.detail}>
+                          {analysisCost.chip}
+                          <span className="sr-only">. {analysisCost.detail}</span>
+                        </span>
                       </DropdownMenuItem>
                     ) : null}
                     {menuItems.includes("appeal") ? (
@@ -795,11 +932,13 @@ export function ReviewCard({ locationId, review, ai, selectable = false, selecte
             </ul>
           ) : null}
 
-          <p className={cn("mt-3 whitespace-pre-line text-[15px] leading-relaxed", review.comment ? "text-foreground" : "italic text-muted-foreground")}>
-            {review.comment ?? "No written review, rating only."}
-          </p>
+          {/* Phase 25b: the reviewer's words for what they mentioned are underlined (listed in the analysis too). */}
+          <ReviewText review={review} />
 
           {review.analysis ? <AnalysisPanel analysis={review.analysis} /> : null}
+
+          {/* Phase 25b: where an automatic reply stands (being written, goes out at …, held for a person, cancelled). */}
+          {!deleted ? <AutoReplyReviewNote review={review} now={now} canEdit={canEdit} className="mt-3" /> : null}
 
           {/* The reply on Google: published, or waiting for Google's review (Phase 25a). */}
           {publicReply && !(editMode && !hasDraft) ? (
@@ -833,7 +972,7 @@ export function ReviewCard({ locationId, review, ai, selectable = false, selecte
                       >
                         {busy === "ai" ? <LoaderCircle aria-hidden className="animate-spin" /> : <Sparkles aria-hidden />}
                         New reply with AI
-                        <AiCostChip tokens={replyCost} {...balance} className="-mr-1" />
+                        <ReplyCostChip cost={replyCost} balance={balance} className="-mr-1" />
                       </Button>
                     ) : null}
                     <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => setEditing(true)}>
@@ -852,14 +991,28 @@ export function ReviewCard({ locationId, review, ai, selectable = false, selecte
             </DraftNote>
           ) : null}
 
-          {review.reply_state === "failed" && review.send_error && canEdit && !deleted ? (
-            <p role="alert" className="mt-4 flex items-start gap-2 rounded-lg border border-critical/25 bg-critical-surface px-3 py-2 text-sm text-critical">
+          {sendError && canEdit && !deleted ? (
+            <div role="alert" className="mt-4 flex items-start gap-2 rounded-lg border border-critical/25 bg-critical-surface px-3 py-2 text-sm text-critical">
               <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0" />
-              <span>
-                {/* The backend stores Google's error message: said in plain words. */}
-                <span className="font-semibold">Not sent.</span> {sendFailureText(review.send_error)}
-              </span>
-            </p>
+              <div className="min-w-0 flex-1">
+                <p>
+                  {/* The backend stores Google's error message; its code (2026-11-17) decides the words and the action. */}
+                  <span className="font-semibold">{update || hasLiveReply(review) ? "Update not sent." : "Not sent."}</span>{" "}
+                  {sendFailureText(sendError, review.send_error_code)}
+                </p>
+                {sendErrorAction === "reconnect" ? (
+                  <Button size="sm" variant="outline" className="mt-2 bg-card" onClick={() => connectGoogle()}>
+                    <RefreshCw aria-hidden /> Reconnect Google
+                  </Button>
+                ) : sendErrorAction === "support" ? (
+                  <Button asChild size="sm" variant="outline" className="mt-2 bg-card">
+                    <Link to={SUPPORT_PATH}>
+                      <LifeBuoy aria-hidden /> Contact support
+                    </Link>
+                  </Button>
+                ) : null}
+              </div>
+            </div>
           ) : null}
 
           {writing ? (
@@ -883,14 +1036,31 @@ export function ReviewCard({ locationId, review, ai, selectable = false, selecte
                 ) : null}
                 {/* The double-check was made on the AI's text; an edited text is checked when it's sent. */}
                 {aiDraft && draft?.verification ? <VerificationBadge verification={draft.verification} /> : null}
+                {/* Phase 25b: the judge's score of the AI's text (none when no judge ran). */}
+                {draft ? <QualityBadge draft={draft} /> : null}
+                {/* 2026-11-17 (G3): an update of the reply on Google, or a draft written before it. */}
+                {update ? (
+                  <StatusBadge tone="info" icon={Repeat2} size="sm">
+                    Replaces the reply on Google
+                  </StatusBadge>
+                ) : leftBehind ? (
+                  <StatusBadge tone="warning" icon={History} size="sm">
+                    Written before the reply on Google
+                  </StatusBadge>
+                ) : null}
                 {draft?.stale ? (
                   <StatusBadge tone="warning" size="sm">
                     The review changed since this draft
                   </StatusBadge>
                 ) : null}
-                <span className="text-muted-foreground">{helperText}</span>
+                {helperText ? <span className="text-muted-foreground">{helperText}</span> : null}
               </div>
 
+              {leftBehind && !editMode ? (
+                <DraftNote tone="warning" icon={History} className="mb-2.5">
+                  This draft was written before the reply now on Google. Send it to replace that reply, or discard it to keep the reply on Google.
+                </DraftNote>
+              ) : null}
               {rejected && review.reply_state !== "rejected" ? (
                 <DraftNote tone="critical" icon={Ban} className="mb-2.5">
                   Your last reply was rejected by Google: {rejected.reason ?? "Google didn't say why."}
@@ -942,6 +1112,7 @@ export function ReviewCard({ locationId, review, ai, selectable = false, selecte
                     <DraftText text={draft.text} checks={checks} findingId={findingId} />
                   </div>
                   <DraftProvenance draft={draft} className="mt-2" />
+                  <QualityNotes draft={draft} className="mt-2" />
                 </>
               ) : null}
 
@@ -974,7 +1145,7 @@ export function ReviewCard({ locationId, review, ai, selectable = false, selecte
                 <ChangeItBox
                   reviewer={reviewer}
                   cost={replyCost}
-                  {...balance}
+                  {...(balance === undefined ? {} : { balance })}
                   canRun={ai.canRun}
                   reason={ai.reason}
                   pending={busy === "revise"}
@@ -1027,7 +1198,21 @@ export function ReviewCard({ locationId, review, ai, selectable = false, selecte
                           onClick={() => setChanging(true)}
                         >
                           <WandSparkles aria-hidden /> Change it
-                          <AiCostChip tokens={replyCost} {...balance} className="-mr-1" />
+                          <ReplyCostChip cost={replyCost} balance={balance} className="-mr-1" />
+                        </Button>
+                      ) : null}
+                      {/* Phase 25b: the writer's other candidate (free, no AI); the same button switches back. */}
+                      {alternative ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busy !== null}
+                          aria-busy={busy === "swap" || undefined}
+                          title={`The AI wrote two versions. Switch to the other one${typeof alternative.score === "number" ? ` (AI score ${alternative.score.toFixed(1)}/5)` : ""}. Free.`}
+                          onClick={() => void swap()}
+                        >
+                          {busy === "swap" ? <LoaderCircle aria-hidden className="animate-spin" /> : <ArrowLeftRight aria-hidden />}
+                          Try the other version
                         </Button>
                       ) : null}
                       <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => void discard()}>
@@ -1049,7 +1234,7 @@ export function ReviewCard({ locationId, review, ai, selectable = false, selecte
                     >
                       {busy === "ai" ? <LoaderCircle aria-hidden className="animate-spin" /> : <Sparkles aria-hidden />}
                       {draft ? "New AI draft" : "Draft with AI"}
-                      <span className="font-medium">· {formatTokens(replyCost)}</span>
+                      <ReplyCostChip cost={replyCost} balance={balance} className="-mr-1" />
                     </Button>
                   ) : null}
                 </div>
@@ -1090,7 +1275,7 @@ export function ReviewCard({ locationId, review, ai, selectable = false, selecte
                   >
                     {busy === "ai" ? <LoaderCircle aria-hidden className="animate-spin" /> : <Sparkles aria-hidden />}
                     Reply with AI
-                    <AiCostChip tokens={replyCost} {...balance} className="-mr-1" />
+                    <ReplyCostChip cost={replyCost} balance={balance} className="-mr-1" />
                   </Button>
                 ) : null}
                 <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
@@ -1230,9 +1415,23 @@ export function ReviewCard({ locationId, review, ai, selectable = false, selecte
         onOpenChange={(open) => setOnGoogle((current) => ({ ...current, open }))}
         googleReply={onGoogle.reply}
         draftText={onGoogle.draftText}
-        onReplace={() => void send()}
+        variant={onGoogle.variant}
+        // 2026-11-17 (G3): the draft is left behind now, so it is saved again first (an update), then sent.
+        onReplace={() => void send({ resave: true })}
         onDelete={() => void discard("Draft deleted. The reply on Google stays as it is.")}
         returnFocus={returnFocus}
+      />
+      <ConfirmDialog
+        open={confirmSwap}
+        onOpenChange={setConfirmSwap}
+        title="Switch to the other version?"
+        description="Your edits will be lost: the AI's other version replaces this draft."
+        confirmLabel="Switch anyway"
+        cancelLabel="Keep my edits"
+        onConfirm={() => {
+          setConfirmSwap(false);
+          void swap(true);
+        }}
       />
     </article>
   );
@@ -1259,43 +1458,5 @@ function ReviewerAvatar({ name, anonymous }: { name: string | null; anonymous: b
     >
       {anonymous ? <UserRound className="size-5" /> : reviewerInitials(name)}
     </span>
-  );
-}
-
-function AnalysisPanel({ analysis }: { analysis: NonNullable<Review["analysis"]> }) {
-  const sentiment = analysis.sentiment?.toLowerCase() ?? null;
-  const severity = analysis.severity?.toLowerCase() ?? null;
-  return (
-    <div className="mt-3 rounded-lg border border-ai/20 bg-ai-surface/50 p-3">
-      <div className="flex flex-wrap items-center gap-1.5">
-        <AiBadge label="AI analysis" variant="soft" />
-        {sentiment ? (
-          <StatusBadge tone={SENTIMENT_TONE[sentiment] ?? "neutral"} size="sm">
-            <span className="capitalize">{sentiment}</span>
-          </StatusBadge>
-        ) : null}
-        {severity ? (
-          <StatusBadge tone={SEVERITY_TONE[severity] ?? "neutral"} size="sm">
-            <span className="capitalize">{severity}</span> severity
-          </StatusBadge>
-        ) : null}
-        {analysis.stale ? (
-          <StatusBadge tone="warning" size="sm">
-            The review changed since
-          </StatusBadge>
-        ) : null}
-      </div>
-      {analysis.summary ? <p className="mt-2 text-sm font-medium text-foreground">{analysis.summary}</p> : null}
-      {analysis.suspicious_indicators.length > 0 ? (
-        <p className="mt-1 text-sm text-muted-foreground">
-          <span className="font-medium text-foreground">Suspicious indicators:</span> {analysis.suspicious_indicators.join("; ")}
-        </p>
-      ) : null}
-      {analysis.recommended_action ? (
-        <p className="mt-1 text-sm text-muted-foreground">
-          <span className="font-medium text-foreground">Suggested:</span> {analysis.recommended_action}
-        </p>
-      ) : null}
-    </div>
   );
 }

@@ -3,7 +3,7 @@ import type { ReviewsSummary } from "@/api";
 import { KpiTile } from "@/components/layout/shared/kpi-tile";
 import { useNow } from "@/hooks/use-now";
 import { formatRelative } from "@/lib/datetime";
-import { formatPercent, momentumTrend, noReplyCount, replyRate } from "@/lib/reviews/review-metrics";
+import { draftsToCheckCount, formatPercent, momentumTrend, noReplyCount, replyRate } from "@/lib/reviews/review-metrics";
 import { useReviewMomentum } from "@/lib/reviews/use-reviews";
 import { cn } from "@/lib/utils";
 import { ReviewStars } from "./review-stars";
@@ -135,6 +135,9 @@ export function ReplyQueueKpis({
 }) {
   // Rejected replies count as unreplied but have their own view ("Rejected by Google"): noReplyCount leaves them out.
   const waiting = waitingCount ?? noReplyCount(stats);
+  // 2026-11-17: "Drafts to check" includes the drafts that replace a reply on Google (sent one at a time).
+  const toCheck = draftsToCheckCount(stats);
+  const updates = stats.reply_updates_pending ?? 0;
   return (
     <section aria-label="Reply summary" className={GRID}>
       <ReplyRateTile stats={stats} />
@@ -156,15 +159,17 @@ export function ReplyQueueKpis({
         label={canEdit ? "Drafts to check" : "Being prepared"}
         icon={Sparkles}
         tone="ai"
-        value={stats.drafts_pending.toLocaleString()}
+        value={toCheck.toLocaleString()}
         hint={
-          stats.drafts_pending === 0
+          toCheck === 0
             ? "No drafts waiting"
             : canEdit
-              ? "Read, edit if needed, then send"
+              ? updates > 0
+                ? `Including ${updates.toLocaleString()} ${updates === 1 ? "update" : "updates"} of a reply on Google`
+                : "Read, edit if needed, then send"
               : "Replies your agency is preparing"
         }
-        {...(onShowDrafts && stats.drafts_pending > 0 ? { onClick: onShowDrafts } : {})}
+        {...(onShowDrafts && toCheck > 0 ? { onClick: onShowDrafts } : {})}
       />
       <KpiTile
         label="Sent this month"

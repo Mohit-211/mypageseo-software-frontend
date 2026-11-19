@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import {
@@ -7,6 +7,7 @@ import {
   CalendarDays,
   CheckCircle2,
   FileText,
+  Info,
   List,
   LoaderCircle,
   Newspaper,
@@ -22,9 +23,11 @@ import { EmptyState, ErrorState, ListSkeleton, PageSkeleton } from "@/components
 import { FilterChips } from "@/components/layout/shared/filter-chips";
 import { KpiTile } from "@/components/layout/shared/kpi-tile";
 import { AutoPostsPromo } from "@/components/posts/auto-posts-promo";
+import { PostCard } from "@/components/posts/post-card";
 import { PostEditor } from "@/components/posts/post-editor";
 import { PostList } from "@/components/posts/post-list";
 import { PostsCalendar } from "@/components/posts/posts-calendar";
+import { RunProgress } from "@/components/posts/run-status";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -38,12 +41,15 @@ import { useAiStatus } from "@/lib/ai/ai-status";
 import { useGbpConnect } from "@/lib/gbp/use-gbp-connect";
 import { locationPath } from "@/lib/mypageseo/section-links";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
+import { useActivePostRuns } from "@/lib/posts/ai-runs";
 import { useMonth } from "@/lib/posts/calendar";
+import { usePostOpenHost } from "@/lib/posts/open-post";
 import { formatPostMoment } from "@/lib/posts/post-format";
-import { POST_FILTERS, POST_GROUP_OF, countPosts, isPostFilterId, postGroup, sortPosts, type PostFilterId } from "@/lib/posts/post-order";
+import { POSTS_PAGE_SIZE, POST_FILTERS, POST_GROUP_OF, filterStatuses, isPostFilterId, postGroup, type PostFilterId } from "@/lib/posts/post-order";
 import type { PostEditorTarget } from "@/lib/posts/post-seed";
 import { useToastPostError } from "@/lib/posts/post-toasts";
-import { ALL_POSTS_MAX_PAGES, ALL_POSTS_PAGE_SIZE, postErrorText, useAllPosts, useInvalidatePosts, usePostsCalendar, usePostsSummary } from "@/lib/posts/use-posts";
+import { useRunOutcomeNotices } from "@/lib/posts/use-post-runs";
+import { postErrorText, useInvalidatePosts, usePost, usePostsCalendar, usePostsList, usePostsSummary } from "@/lib/posts/use-posts";
 import { useSearchUpdater } from "@/lib/url-state";
 
 type View = "list" | "calendar";
@@ -53,8 +59,12 @@ const VIEW_OPTIONS = [
   { value: "calendar", label: "Calendar", icon: CalendarDays },
 ] as const;
 
+/**
+ * What the location's approval setting governs. With approvals off, AI posts can still wait for the owner or a
+ * member (Phase 25c: a series in review mode, or what the checks flagged), so "off" speaks of the team's posts.
+ */
 const APPROVAL_LABEL: Record<ApprovalMode, string> = {
-  off: "No approval needed",
+  off: "Team posts go out without approval",
   team: "Owner approves team posts",
   client: "Client approves every post",
 };
@@ -66,11 +76,14 @@ const APPROVAL_LABEL: Record<ApprovalMode, string> = {
  * Addresses (deep links from the dashboard, the calendar and AI Posts):
  * - `?tab=published|scheduled|waiting|drafts|problems` filters the list (no `tab` = All);
  * - `?view=calendar` (or the older `?tab=calendar`) shows the calendar;
- * - `?post=<id>` opens the page holding that post and outlines it;
+ * - `?post=<id>` (the rejection email's link, the calendar's) outlines that post; when it isn't on the list's
+ *   page, it is read by id and shown above the list;
  * - `?compose=1` opens the editor; the older `?tab=auto` goes to AI Posts › Auto-posts.
  *
- * The API can't sort posts, so the page loads every post once (`useAllPosts`) and filters, orders
- * and pages them here (`sortPosts`): switching filters needs no new call.
+ * The server orders and pages the list (2026-11-17, G14): `sort=group` is the order of the "All" view (problems,
+ * waiting, scheduled, drafts, published, each in its own order), each filter is one server page at a time, and
+ * `counts` gives the filter chips' numbers. The page polls the location's active AI runs, so every card shows
+ * "Creating…" while the AI works on it.
  */
 function LocationGbpPostsPage() {
   const { location } = useGbpContext();
@@ -85,20 +98,38 @@ function PostsView() {
   const [params] = useSearchParams();
   const updateSearch = useSearchUpdater();
   const summary = usePostsSummary(locationId);
-  const all = useAllPosts(locationId);
   const canEdit = useCanEdit();
   const ai = useAiStatus(locationId);
   const now = useNow();
   const [editing, setEditing] = useState<PostEditorTarget | null>(() => (params.get("compose") ? { kind: "new" } : null));
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // The location's AI runs, polled while any works: each card reads its own, and new drafts being written (no
+  // post yet, so no card) show above the list until their post lands in Drafts.
+  const pageRuns = useActivePostRuns(locationId);
+  const newDrafts = pageRuns.runs.filter((run) => run.kind === "draft" && !run.post_id);
+  // How the viewer's own runs ended when nothing on screen showed it: the editor that started one was closed, or a
+  // "Change it" sent a scheduled post back to drafts and its card left the list.
+  useRunOutcomeNotices(locationId);
+  // "Open it" on those toasts (and the cards' own) opens the post here, read again, never over a window; from another
+  // page it comes here (`?post=`) and opens that post once read (open-post.ts).
+  usePostOpenHost(locationId, (post, run) => setEditing({ kind: "edit", post, run }), params.get("post"));
 
   const tab = params.get("tab");
   const view: View = params.get("view") === "calendar" || tab === "calendar" ? "calendar" : "list";
   const filter: PostFilterId = isPostFilterId(tab) ? tab : "all";
   const focusPostId = params.get("post");
-  const posts = all.data?.posts;
-  const sorted = useMemo(() => (posts ? sortPosts(posts, filter) : []), [posts, filter]);
-  const counts = useMemo(() => (posts ? countPosts(posts) : null), [posts]);
+  // The page number belongs to its filter: another filter (a chip, a link, Back) starts at page 1.
+  const [paging, setPaging] = useState<{ filter: PostFilterId; page: number }>({ filter, page: 1 });
+  const page = paging.filter === filter ? paging.page : 1;
+  const list = usePostsList(locationId, { ...(filter === "all" ? {} : { status: filterStatuses(filter) }), sort: "group", page, limit: POSTS_PAGE_SIZE }, { enabled: view === "list" });
+  // The previous page stays on screen while the next one of the same filter loads (no jump); the chips keep their
+  // numbers (the same filters without `status`). Another filter's page waits behind a skeleton instead.
+  const posts = list.data?.posts;
+  const fromOtherFilter = list.isPlaceholderData && filter !== "all" && (posts ?? []).some((post) => POST_GROUP_OF[post.status] !== filter);
+  const counts = list.data?.counts ?? null;
+  // A post from a link that isn't on this page: read it by id and show it above the list.
+  const focusOnPage = Boolean(focusPostId && posts?.some((post) => post.post_id === focusPostId));
+  const linked = usePost(locationId, focusPostId, view === "list" && list.isSuccess && !list.isPlaceholderData && !focusOnPage);
 
   // Auto-posts moved to AI Posts; old links (the dashboard's "series problem" action) still work.
   // The skeleton fills the frame before the redirect lands, so the link never flashes blank.
@@ -113,13 +144,15 @@ function PostsView() {
 
   // Replaces the history entry and keeps the page where it is (a `#section` included).
   const update = (change: (next: URLSearchParams) => void) => updateSearch(change);
-  const setFilter = (next: PostFilterId) =>
+  const setFilter = (next: PostFilterId) => {
+    setPaging({ filter: next, page: 1 });
     update((search) => {
       if (next === "all") search.delete("tab");
       else search.set("tab", next);
       search.delete("post");
       search.delete("view");
     });
+  };
   const setView = (next: View) =>
     update((search) => {
       if (search.get("tab") === "calendar") search.delete("tab");
@@ -300,43 +333,67 @@ function PostsView() {
               }
             />
           </div>
-        ) : all.isPending ? (
-          <ListSkeleton rows={4} />
-        ) : all.isError ? (
-          <ErrorState description={postErrorText(all.error, "Posts couldn't be loaded.").message} onRetry={() => void all.refetch()} />
-        ) : sorted.length === 0 ? (
-          <ListEmpty
-            filter={filter}
-            total={all.data.posts.length}
-            canEdit={canEdit}
-            aiBlocked={ai.canRun ? undefined : (ai.reason ?? "")}
-            locationId={locationId}
-            onNew={newPost}
-            onShowAll={() => setFilter("all")}
-          />
         ) : (
           <>
-            {all.data.capped ? (
-              <p className="text-xs text-muted-foreground">
-                Showing the {(ALL_POSTS_MAX_PAGES * ALL_POSTS_PAGE_SIZE).toLocaleString()} most recently changed posts. Older ones may be missing.
-              </p>
+            {newDrafts.map((run) => (
+              <RunProgress key={run.run_id} run={run} />
+            ))}
+            {focusPostId && !focusOnPage && (linked.data || linked.isError) ? (
+              <LinkedPost
+                locationId={locationId}
+                post={linked.data ?? null}
+                error={linked.error}
+                summary={data}
+                onEdit={(post) => setEditing({ kind: "edit", post })}
+              />
             ) : null}
-            <PostList
-              key={filter}
-              locationId={locationId}
-              posts={sorted}
-              summary={data}
-              onEdit={(post) => setEditing({ kind: "edit", post })}
-              grouped={filter === "all"}
-              focusPostId={focusPostId}
-              caption={
-                filter === "all" ? undefined : (
-                  <>
-                    {sorted.length} {sorted.length === 1 ? "post" : "posts"} · {postGroup(filter).orderLabel}
-                  </>
-                )
-              }
-            />
+            {list.isError && !list.data ? (
+              <ErrorState description={postErrorText(list.error, "Posts couldn't be loaded.").message} onRetry={() => void list.refetch()} />
+            ) : list.isPending || fromOtherFilter || !list.data ? (
+              <ListSkeleton rows={4} />
+            ) : list.data.posts.length === 0 && page > 1 ? (
+              // The list got shorter (posts deleted or moved) while this page was open.
+              <EmptyState
+                variant="no-results"
+                title="No posts on this page any more"
+                description="Some posts moved or were deleted."
+                action={
+                  <Button variant="outline" onClick={() => setPaging({ filter, page: 1 })}>
+                    Go to the first page
+                  </Button>
+                }
+                compact
+              />
+            ) : list.data.posts.length === 0 ? (
+              <ListEmpty
+                filter={filter}
+                total={counts?.all ?? chipCounts.all}
+                canEdit={canEdit}
+                aiBlocked={ai.canRun ? undefined : (ai.reason ?? "")}
+                locationId={locationId}
+                onNew={newPost}
+                onShowAll={() => setFilter("all")}
+              />
+            ) : (
+              <PostList
+                key={filter}
+                locationId={locationId}
+                posts={list.data.posts}
+                summary={data}
+                onEdit={(post) => setEditing({ kind: "edit", post })}
+                grouped={filter === "all"}
+                groupCounts={counts}
+                focusPostId={focusPostId}
+                paging={{ page, pageSize: POSTS_PAGE_SIZE, total: list.data.total, onPageChange: (next) => setPaging({ filter, page: next }) }}
+                caption={
+                  filter === "all" ? undefined : (
+                    <>
+                      {list.data.total} {list.data.total === 1 ? "post" : "posts"} · {postGroup(filter).orderLabel}
+                    </>
+                  )
+                }
+              />
+            )}
           </>
         )}
       </section>
@@ -344,10 +401,12 @@ function PostsView() {
       {/* Never for read-only users, whatever `?compose` says and whenever the role resolves. */}
       {editing && canEdit ? (
         <PostEditor
+          // Another post opened (from a toast's "Open it", the calendar) starts a fresh editor: its form is the post's.
+          key={editing.kind === "edit" ? editing.post.post_id : "new"}
           locationId={locationId}
           post={editing.kind === "edit" ? editing.post : null}
-          seed={editing.kind === "new" ? editing.seed : undefined}
           aiOpen={editing.kind === "new" ? editing.aiOpen : false}
+          run={editing.kind === "edit" ? (editing.run ?? null) : null}
           summary={data}
           onClose={closeEditor}
         />
@@ -356,6 +415,37 @@ function PostsView() {
         <PostingSettingsDialog locationId={locationId} summary={data} hasClient={Boolean(location.client)} onClose={() => setSettingsOpen(false)} />
       ) : null}
     </>
+  );
+}
+
+/** The post a link names (`?post=`) when it isn't on the list's page: read by id and outlined above the list. */
+function LinkedPost({
+  locationId,
+  post,
+  error,
+  summary,
+  onEdit,
+}: {
+  locationId: string;
+  post: Post | null;
+  error: unknown;
+  summary: PostsSummary;
+  onEdit: (post: Post) => void;
+}) {
+  if (!post) {
+    const gone = isApiError(error) && error.status === 404;
+    return (
+      <p role="status" className="flex items-start gap-2 rounded-xl border border-border bg-card px-4 py-3 text-sm text-muted-foreground shadow-card">
+        <Info aria-hidden className="mt-0.5 size-4 shrink-0" />
+        {gone ? "The post from your link was deleted." : postErrorText(error, "The post from your link couldn't be loaded.").message}
+      </p>
+    );
+  }
+  return (
+    <section aria-label="The post from your link" className="space-y-3">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-foreground">From your link</h3>
+      <PostCard locationId={locationId} post={post} summary={summary} onEdit={onEdit} highlighted />
+    </section>
   );
 }
 
@@ -610,7 +700,7 @@ function PostingSettingsDialog({ locationId, summary, hasClient, onClose }: { lo
         <RadioGroup value={approval} onValueChange={(value) => setApproval(value as ApprovalMode)} disabled={!isOwner} className="space-y-2">
           {(
             [
-              ["off", "No approval", "Posts go out when they're scheduled or published."],
+              ["off", "No approval", "Your team's posts go out when they're scheduled or published. AI posts that need a person's review still wait for one."],
               ["team", "Owner approves", "Posts written by team members wait for the owner."],
               ["client", "Client approves", hasClient ? "Every post waits for the client's user." : "Needs the location to belong to a client."],
             ] as const

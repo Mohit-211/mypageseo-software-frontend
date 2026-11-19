@@ -3,9 +3,10 @@
  * dashboard, AI Studio or an email open exactly the same view.
  *
  * Reviews page (`/locations/:id/reputation`):
- * - `?reply=needs|none|draft|sent|failed|pending|rejected`: the reply. "needs" = no reply on Google
+ * - `?reply=needs|none|draft|update|sent|failed|pending|rejected`: the reply. "needs" = no reply on Google
  *   yet (no reply, a draft, a failed send, or a reply Google rejected); "draft" = a draft waits to be
- *   sent (failed sends included, they keep their draft); "none" = nothing written yet; "sent" = a
+ *   sent (failed sends included, they keep their draft); "update" (2026-11-17) = a draft that replaces
+ *   the reply already on Google (`reply_update=true`); "none" = nothing written yet; "sent" = a
  *   reply is on Google (Phase 25a: published or still waiting for Google's review); "pending" =
  *   waiting for Google's review; "rejected" = Google rejected the reply (it isn't public).
  * - `?flag=attention|suspicious|any|none`: the review checks.
@@ -37,7 +38,7 @@ import { useSearchParams } from "react-router-dom";
 import type { ReviewsQuery } from "@/api";
 import { useSearchUpdater } from "@/lib/url-state";
 
-export type ReplyFilter = "needs" | "none" | "draft" | "sent" | "failed" | "pending" | "rejected";
+export type ReplyFilter = "needs" | "none" | "draft" | "update" | "sent" | "failed" | "pending" | "rejected";
 export type FlagFilter = "attention" | "suspicious" | "any" | "none";
 export type ReviewSort = NonNullable<ReviewsQuery["sort"]>;
 
@@ -54,7 +55,7 @@ export type ReviewFilters = {
   page: number;
 };
 
-const REPLY_FILTERS: readonly ReplyFilter[] = ["needs", "none", "draft", "sent", "failed", "pending", "rejected"];
+const REPLY_FILTERS: readonly ReplyFilter[] = ["needs", "none", "draft", "update", "sent", "failed", "pending", "rejected"];
 
 /** `?review=<id>`: the review opened from a send's results or a link. */
 export const REVIEW_SPOTLIGHT_PARAM = "review";
@@ -121,10 +122,14 @@ export function noReviewFilters(): Pick<ReviewFilters, "reply" | "flag" | "delet
   return { reply: null, flag: null, deleted: false, ratings: [], q: "" };
 }
 
-const REPLY_QUERY: Record<ReplyFilter, Pick<ReviewsQuery, "replied" | "reply_state" | "has_draft">> = {
+/** `GET reviews` for the drafts that replace a reply on Google (2026-11-17, G3): "Updates", sent one at a time. */
+export const REPLY_UPDATES_QUERY = { reply_update: true } as const satisfies Pick<ReviewsQuery, "reply_update">;
+
+const REPLY_QUERY: Record<ReplyFilter, Pick<ReviewsQuery, "replied" | "reply_state" | "has_draft" | "reply_update">> = {
   needs: { replied: false },
   none: { reply_state: "none" },
   draft: { has_draft: true, replied: false },
+  update: REPLY_UPDATES_QUERY,
   // Phase 25a: a reply waiting for Google's review is on Google too (`replied=true` = sent or pending),
   // so the list matches its count (total minus unreplied).
   sent: { replied: true },
@@ -150,6 +155,7 @@ export const REPLY_FILTER_LABEL: Record<ReplyFilter, string> = {
   needs: "Needs reply",
   none: "No reply yet",
   draft: "Draft waiting",
+  update: "Updates to send",
   sent: "Replied",
   failed: "Send failed",
   pending: "Waiting for Google",
@@ -256,7 +262,8 @@ export const REPLY_QUEUE_PRESETS: readonly ReplyQueuePresetInfo[] = [
     label: "Drafts to check",
     // A client user never sees draft text, so there's nothing for them to check.
     clientLabel: "Being prepared",
-    hint: "Read each draft, edit it if you like, then send it to Google.",
+    // 2026-11-17: the updates of a reply on Google (`reply_update=true`) show above these (the API can't list both at once).
+    hint: "Read each draft, edit it if you like, then send it to Google. Drafts that replace a reply on Google go one at a time.",
     // A client user never sees draft text: only the replies sent to Google.
     clientHint: "Reviews your agency is preparing a reply to. You'll see each reply once it's sent to Google.",
     query: { has_draft: true, replied: false },

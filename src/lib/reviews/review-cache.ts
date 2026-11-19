@@ -4,8 +4,9 @@
  * Callers still invalidate `reviewsKey(locationId)` afterwards: counts and other filters catch up then.
  */
 import type { QueryClient } from "@tanstack/react-query";
-import type { ReplyAuthorization, Review, ReviewsList, ReviewsSummary, SendResult } from "@/api";
+import { getReview, type ReplyAuthorization, type Review, type ReviewsList, type ReviewsSummary, type SendResult } from "@/api";
 import { asFailedSend, asSentReview, replyTextOf, withGoogleReply } from "./draft-view";
+import { withCreditsLeft } from "./reply-credits";
 import { reviewLookupRoot } from "./review-spotlight";
 import { reviewsKey, reviewsSummaryQuery } from "./use-reviews";
 
@@ -49,11 +50,48 @@ export function putSendResultsInCache(queryClient: QueryClient, locationId: stri
     if (result.status === "sent") {
       updateReviewInCache(queryClient, locationId, result.review_id, (review) => asSentReview(review, review.draft?.text ?? replyTextOf(review.reply) ?? ""));
     } else if (result.status === "failed") {
-      updateReviewInCache(queryClient, locationId, result.review_id, (review) => asFailedSend(review, result.reason ?? null));
-    } else if (result.reason === "reply_changed_on_google" && result.google_reply) {
+      updateReviewInCache(queryClient, locationId, result.review_id, (review) => asFailedSend(review, result.reason ?? null, result.code ?? null));
+    } else if ((result.reason === "reply_changed_on_google" || result.reason === "draft_predates_reply") && result.google_reply) {
       const googleReply = result.google_reply;
       updateReviewInCache(queryClient, locationId, result.review_id, (review) => withGoogleReply(review, googleReply));
     }
+    // `replaces_published_reply` and `deadline` (2026-11-17): nothing was sent or stored for the review.
+  }
+}
+
+/**
+ * Writes the location's AI replies or analyses left, as a drafts, "Draft all", "Change it" or Analyze answer
+ * reported them (`replies_left`, `analyses_left`, 2026-11-17), into the cached summary, so every counter and cost
+ * chip on the page updates at once. The summary keeps its age (`useAiStatus` weighs it against what AI calls said);
+ * the summary is read again after the call anyway.
+ */
+export function setCachedCredits(
+  queryClient: QueryClient,
+  locationId: string,
+  answer: { replies_left?: number | null | undefined; analyses_left?: number | null | undefined },
+): void {
+  const key = reviewsSummaryQuery(locationId).queryKey;
+  const summary = queryClient.getQueryData<ReviewsSummary>(key);
+  if (!summary) return;
+  const next = withCreditsLeft(summary, answer);
+  if (next === summary) return;
+  const updatedAt = queryClient.getQueryState(key)?.dataUpdatedAt;
+  queryClient.setQueryData<ReviewsSummary>(key, next, updatedAt ? { updatedAt } : undefined);
+}
+
+/**
+ * Reads one review again by its id (`GET …/reviews/:reviewId`, 2026-11-17) and puts it wherever the cache shows it,
+ * e.g. after a deleted draft or reply, whose answers are `{ deleted, review_id }`, not the review. Resolves with the
+ * review, or null when it is gone (404) or the read failed (the lists, read again after, catch up then).
+ */
+export async function refetchReview(queryClient: QueryClient, locationId: string, reviewId: string): Promise<Review | null> {
+  try {
+    const { review } = await getReview(locationId, reviewId);
+    putReviewInCache(queryClient, locationId, review);
+    return review;
+  } catch {
+    // Gone (404 `review_not_found`), or the read failed: the lists, read again after, say what is there.
+    return null;
   }
 }
 

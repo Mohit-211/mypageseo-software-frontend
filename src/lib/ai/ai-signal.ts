@@ -7,14 +7,17 @@
  * `useAiStatus` uses whichever of the two is newer:
  * - 503 `ai_not_configured` → "off" for 15 minutes (after that the next summary or click decides again;
  *   the old posts flag stayed on until a reload, see ai.md L3);
- * - 503 `ai_budget_reached` → "paused" until the next 00:00 UTC (the budget is per UTC day);
+ * - 503 `ai_budget_reached` → "paused" until the next 00:00 UTC (the budget is per UTC day); Phase 25b's
+ *   `ai_org_budget_reached` (this organization used its share of the day's budget) the same way;
  * - a successful AI call (`noteAiSuccess`) → "ready" for 15 minutes.
  *
- * The AI switch and the budget are the same for every organization and location, so one signal covers
- * all of them. `toastAiError` records errors automatically; inline error UIs call `noteAiError` themselves.
+ * The AI switch and the budget are the same for every location, so one signal covers all of them. An
+ * organization's own share is that organization's only: switching this tab to another organization forgets the
+ * signal, and the new organization's summaries (or its next AI call) decide. `toastAiError` records errors
+ * automatically; inline error UIs call `noteAiError` themselves.
  */
 import { useSyncExternalStore } from "react";
-import { isApiError } from "@/api";
+import { isApiError, subscribeToSelectedOrganization } from "@/api";
 import { nextUtcMidnight } from "./ai-time";
 
 export type AiSessionSignal = {
@@ -39,12 +42,15 @@ function publish(next: AiSessionSignal | null) {
   for (const listener of listeners) listener();
 }
 
-/** Records an AI availability error (`ai_not_configured`, `ai_budget_reached`); any other error is ignored. */
+/**
+ * Records an AI availability error (`ai_not_configured`, `ai_budget_reached`, `ai_org_budget_reached`); any other
+ * error is ignored.
+ */
 export function noteAiError(error: unknown): void {
   if (!isApiError(error)) return;
   const at = Date.now();
   if (error.reason === "ai_not_configured") publish({ kind: "off", at, until: at + SIGNAL_TTL_MS });
-  else if (error.reason === "ai_budget_reached") publish({ kind: "paused", at, until: nextUtcMidnight(at) });
+  else if (error.reason === "ai_budget_reached" || error.reason === "ai_org_budget_reached") publish({ kind: "paused", at, until: nextUtcMidnight(at) });
 }
 
 /** Records that an AI call just worked, so AI shows as ready even if an older summary said otherwise. */
@@ -57,6 +63,12 @@ export function noteAiSuccess(): void {
 export function clearAiSignal(): void {
   if (current) publish(null);
 }
+
+// Another organization in this tab (the menu, a link's `?organization=`): what this one's AI calls said, such as
+// `ai_org_budget_reached`, isn't about it.
+const stopOrganizationWatch = subscribeToSelectedOrganization(clearAiSignal);
+// Editing this file in development re-runs it: drop the old watcher rather than stacking them.
+import.meta.hot?.dispose(() => stopOrganizationWatch());
 
 function subscribe(listener: () => void) {
   listeners.add(listener);

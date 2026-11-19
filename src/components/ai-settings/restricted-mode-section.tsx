@@ -16,18 +16,23 @@ import {
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
-import { formatDate } from "@/lib/datetime";
+import { useAccess } from "@/hooks/use-access";
 import { settingsErrorText } from "@/lib/ai-settings/errors";
-import { restrictedSuggestionText } from "@/lib/ai-settings/settings-form";
+import { restrictedOffText, restrictedSuggestionText } from "@/lib/ai-settings/settings-form";
 import { useUpdateAiSettings } from "@/lib/ai-settings/use-ai-settings";
+import { useViewerUserId } from "@/lib/posts/ai-runs";
 import { DefaultTag } from "./settings-parts";
 
 /**
- * ② "Restricted mode" (`#restricted`): replies that name no one, repeat nothing from the review, name
- * no service and use no keywords. It switches at once (no save bar):
- * - on: anyone who can edit (a member is asked first, since only the owner can switch it off again);
- * - off: only the owner (`restricted.can_switch_off`), after confirming that replies may name people and
+ * "Restricted mode" (`#restricted`): replies that name no one, repeat nothing from the review, name
+ * no service and use no keywords. It switches at once (no save bar). The switches follow the role,
+ * whatever the state (2026-11-17, G7):
+ * - on: `restricted.can_switch_on` (an owner or a member; a member is asked first, since only the owner
+ *   can switch it off again);
+ * - off: `restricted.can_switch_off` (the owner), after confirming that replies may name people and
  *   services (`{ restricted: false, attest: true }`). A member sees the switch locked while it is on.
+ * Who switched it off shows by the names rule of `names.ts` (`restrictedOffText`: "you", `attested_by_name`, else
+ * "the account owner", or "your agency" for a client user).
  */
 export function RestrictedModeSection({
   locationId,
@@ -40,19 +45,23 @@ export function RestrictedModeSection({
   locationName: string;
   view: AiSettings;
   canEdit: boolean;
-  /** The signed-in user is the account owner (asked before switching on only when not). */
+  /** The signed-in user is the account owner (for an answer from before 2026-11-17, which had no `can_switch_on`). */
   isOwner: boolean;
 }) {
   const update = useUpdateAiSettings(locationId);
+  const isClientUser = useAccess().role === "client_user";
+  const viewerId = useViewerUserId();
   const [asking, setAsking] = useState<"on" | "off" | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const on = view.settings.restricted;
   const { restricted } = view;
-  // A member (or a client user) can't switch it off; the backend says who can.
-  const lockedOn = on && !restricted.can_switch_off;
-  const disabled = !canEdit || lockedOn || update.isPending;
+  // The backend says who can (since 2026-11-17 whatever the state); an older answer only knew the owner while on.
+  const canSwitchOn = restricted.can_switch_on ?? canEdit;
+  const canSwitchOff = restricted.can_switch_on === undefined ? restricted.can_switch_off || (canEdit && isOwner) : restricted.can_switch_off;
+  const lockedOn = on && !canSwitchOff;
+  const disabled = !canEdit || (on ? !canSwitchOff : !canSwitchOn) || update.isPending;
 
   const close = () => {
     if (update.isPending) return;
@@ -79,12 +88,14 @@ export function RestrictedModeSection({
 
   const onCheckedChange = (next: boolean) => {
     if (next) {
-      if (isOwner) switchTo(true);
+      // Someone who can switch it off again just switches it on; anyone else is told it's for the owner to undo.
+      if (canSwitchOff) switchTo(true);
       else setAsking("on");
     } else {
       setAsking("off");
     }
   };
+  const switchedOff = restrictedOffText(view, { userId: viewerId, clientUser: isClientUser });
 
   return (
     <div className="space-y-4">
@@ -106,7 +117,7 @@ export function RestrictedModeSection({
           </div>
           <p id="ai-restricted-help" className="mt-1 text-xs text-muted-foreground">
             {restrictedSuggestionText(restricted)}.
-            {!on && restricted.attested_at ? ` Switched off by the owner on ${formatDate(restricted.attested_at)}.` : ""}
+            {switchedOff ? ` ${switchedOff}` : ""}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2 pt-0.5">

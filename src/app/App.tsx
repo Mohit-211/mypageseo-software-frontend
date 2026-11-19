@@ -7,6 +7,7 @@ import { useDocumentTitle } from '@/hooks/use-document-title';
 import { scrollRestorationKey } from '@/lib/url-state';
 import { HashScroll } from './hash-scroll';
 import { NavigationProgress } from './navigation-progress';
+import { useOrganizationFromLink } from './organization-link';
 import { canReloadForStaleChunk, isNotFoundResponse, reloadForStaleChunk, toRouteError } from './route-errors';
 
 /**
@@ -17,12 +18,16 @@ import { canReloadForStaleChunk, isNotFoundResponse, reloadForStaleChunk, toRout
  * keeps in view while the page loads), and only Back and Forward put the reader back where they
  * were. A filter, sort or page change (`useSearchUpdater`) stays on its entry, so it never moves
  * the page: not to an old position, and not to the `#section` still in the address.
+ *
+ * A link's `?organization=` (emails, PayPal's return) switches the tab to that organization before
+ * the page opens: until that is decided the loading screen shows instead (./organization-link.ts).
  */
 export function AppRoot() {
+	const waitingForOrganization = useOrganizationFromLink();
 	return (
 		<>
 			<NavigationProgress />
-			<Outlet />
+			{waitingForOrganization ? <RootLoading /> : <Outlet />}
 			<GbpConnectDialogHost />
 			<ScrollRestoration getKey={scrollRestorationKey} />
 			<HashScroll />

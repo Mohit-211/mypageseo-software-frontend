@@ -43,6 +43,7 @@ export function FactDialog({
   kind,
   fact,
   today,
+  nowTime = null,
   onClose,
 }: {
   locationId: string;
@@ -51,6 +52,8 @@ export function FactDialog({
   fact: AiFact | null;
   /** The location's local date (YYYY-MM-DD): new dated facts start today. */
   today: string | null;
+  /** The location's local time (HH:mm) when the list was read: an end before it has passed. */
+  nowTime?: string | null;
   onClose: () => void;
 }) {
   const { create, update } = useAiFactMutations(locationId);
@@ -62,7 +65,7 @@ export function FactDialog({
   const saving = create.isPending || update.isPending;
   const copy = FACT_KIND_COPY[kind];
   const fields = FACT_KIND_FIELDS[kind];
-  const errors = factFormErrors(kind, form, { today, checkEnd: !fact || datesChanged(fact, form) });
+  const errors = factFormErrors(kind, form, { today, nowTime, checkEnd: !fact || datesChanged(fact, form) });
   // The backend's words for a field win until that field changes.
   const shown: Partial<Record<FactField, string>> = { ...(showErrors ? errors : {}), ...serverErrors };
 

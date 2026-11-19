@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useAiStatus } from "@/lib/ai/ai-status";
 import { locationPath } from "@/lib/mypageseo/section-links";
 import { formatPostMoment } from "@/lib/posts/post-format";
-import { PLANNER_PAUSED_TITLE, autoPostsState, plannerPausedReason, seriesProblem } from "@/lib/posts/series-planner";
+import { PLANNER_PAUSED_TITLE, autoPostsState, plannerPausedReason, seriesNeedsAttention } from "@/lib/posts/series-planner";
 import { usePostSeries } from "@/lib/posts/use-posts";
 
 /**
@@ -15,13 +15,17 @@ import { usePostSeries } from "@/lib/posts/use-posts";
  *
  * Phase 25a: while the server's planner writes nothing for the account (`planner` isn't `on`), it says
  * "Automatic AI posts are paused" and why, never a next AI post.
+ *
+ * Phase 25c: posts wait for review by default, so the card counts the series' posts waiting now; a series that
+ * paused itself needs attention as the dashboard counts it (2026-11-17, G10).
  */
 export function AutoPostsPromo({ locationId, gbpConnected = true }: { locationId: string; gbpConnected?: boolean }) {
   const ai = useAiStatus(locationId);
   const list = usePostSeries(locationId);
   const series = list.data?.series ?? [];
   const { active, pausedBy, nextSlot: next } = autoPostsState(series);
-  const problems = series.filter((entry) => seriesProblem(entry)).length;
+  const problems = series.filter(seriesNeedsAttention).length;
+  const waiting = series.reduce((sum, entry) => sum + (entry.waiting_for_review ?? 0), 0);
   const running = active.length > 0;
 
   return (
@@ -51,8 +55,9 @@ export function AutoPostsPromo({ locationId, gbpConnected = true }: { locationId
                 ? `${plannerPausedReason(pausedBy)} ${active.length === 1 ? "Your series is saved." : `Your ${active.length} series are saved.`}`
                 : `${active.length === 1 ? "1 series" : `${active.length} series`} running${next ? ` · next AI post ${formatPostMoment(next, { weekday: true })}` : ""}.`
               : gbpConnected
-                ? "Choose days and topics once. AI writes each post in your voice and publishes it on schedule."
-                : "Meanwhile, AI Posts can suggest ideas and write drafts for you to publish later."}
+                ? "Pick the days once. AI plans the topics and writes each post in your voice, and you review it before it goes out."
+                : "Meanwhile, AI Posts can plan topics and write drafts for you to publish later."}
+            {waiting > 0 ? ` ${waiting === 1 ? "1 AI post waits" : `${waiting} AI posts wait`} for review.` : ""}
           </p>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import type React from "react";
 import { createBrowserRouter, type LoaderFunction, type RouteObject } from "react-router-dom";
 import { AppLayout } from "@/components/layout/shell/app-layout";
+import { registerAppRouter } from "@/lib/app-navigation";
 import { GuestOnly, RequireAuth } from "@/lib/auth/auth-guards";
 import { PORTFOLIO_SECTIONS, locationPath } from "@/lib/mypageseo/section-links";
 import { LocationReportsRedirect } from "@/pages/redirects/LocationReportsRedirect";
@@ -70,6 +71,10 @@ const locationPages: RouteObject[] = [
       { path: "replies", lazy: () => import("@/pages/ai/AiRepliesPage").then(page) },
       // How the AI writes for this location, and the facts it may use (Phase 25a).
       { path: "settings", lazy: () => import("@/pages/ai/AiSettingsPage").then(page) },
+      // What the business's website says about it, for the AI (Phase 25b; linked from AI Settings and readiness).
+      { path: "brief", lazy: () => import("@/pages/ai/BusinessBriefPage").then(page) },
+      // The business's own photos that AI posts use first (Phase 25c).
+      { path: "photos", lazy: () => import("@/pages/ai/PhotoLibraryPage").then(page) },
     ],
   },
 ];
@@ -110,6 +115,8 @@ const appPages: RouteObject[] = [
   ...portfolioRoutes,
   // The organization-wide posts calendar (not a location page).
   { path: "gbp/posts", lazy: () => import("@/pages/gbp/GbpPostsPage").then(page) },
+  // "Posts to review": the AI posts waiting for a person (Phase 25c; the AI review digest links here).
+  { path: "gbp/posts/review", lazy: () => import("@/pages/gbp/PostsReviewPage").then(page) },
   { path: "ai-visibility", lazy: () => import("@/pages/ai-visibility/AiVisibilityPage").then(page) },
   redirectRoute("ai/visibility", toPath("/ai-visibility")),
   // White Label (agency owner and members) and Reports (everyone else) send each other's
@@ -218,11 +225,16 @@ export const router = createBrowserRouter([
       { path: "reset-password", lazy: () => import("@/pages/auth/ResetPasswordPage").then(page) },
       { path: "verify-email", lazy: () => import("@/pages/auth/VerifyEmailPage").then(page) },
       { path: "invite", lazy: () => import("@/pages/auth/InvitePage").then(page) },
+      // The weekly automatic-replies email and the AI review digest: one click stops them (never on load).
+      { path: "email/opt-out", lazy: () => import("@/pages/public/EmailOptOutPage").then(page) },
       { path: "*", Component: RootNotFound },
     ],
   },
 ]);
 
 registerRouter(router);
+// Toasts' actions navigate after the page that showed them may be gone; focus return reads the page on screen
+// (lib/app-navigation.ts).
+registerAppRouter(router);
 
 export default router;

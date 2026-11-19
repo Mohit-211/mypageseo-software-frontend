@@ -1,7 +1,8 @@
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
 import { ArrowRight, CalendarClock, FileText, ImageOff, Lightbulb, Newspaper, PenLine, PlugZap, Plus, Repeat, Send, Sparkles, Tags } from "lucide-react";
-import type { Post } from "@/api";
+import { getPost, type Post, type PostAiRun } from "@/api";
 import { AiStatusBanner } from "@/components/ai/ai-status-banner";
 import { PageHeader, SectionHeader } from "@/components/layout/shared/data-display";
 import { EmptyState, ErrorState, ListSkeleton, PageSkeleton } from "@/components/layout/shared/feedback/states";
@@ -11,16 +12,21 @@ import { AiWriter } from "@/components/posts/ai-writer";
 import { AutoPosts } from "@/components/posts/auto-posts";
 import { PostEditor } from "@/components/posts/post-editor";
 import { PostList } from "@/components/posts/post-list";
+import { TopicsBacklog } from "@/components/posts/topics-backlog";
 import { Button } from "@/components/ui/button";
 import { useCanEdit } from "@/hooks/use-access";
 import { useNow } from "@/hooks/use-now";
-import { useAiStatus } from "@/lib/ai/ai-status";
 import { useGbpConnect } from "@/lib/gbp/use-gbp-connect";
 import { useLocationRoute } from "@/lib/locations/location-route-context";
 import { locationPath } from "@/lib/mypageseo/section-links";
+import { useActivePostRuns } from "@/lib/posts/ai-runs";
+import { usePostOpenHost } from "@/lib/posts/open-post";
+import { usePostAiState } from "@/lib/posts/post-ai-state";
 import { formatPostMoment } from "@/lib/posts/post-format";
 import { AI_POST_SEGMENTS, countAiPosts, isAiPostSegment, sortAiPosts, type AiPostSegment } from "@/lib/posts/post-order";
 import type { PostEditorTarget } from "@/lib/posts/post-seed";
+import { useToastPostError } from "@/lib/posts/post-toasts";
+import { useRunOutcomeNotices } from "@/lib/posts/use-post-runs";
 import { PLANNER_PAUSED_TITLE, autoPostsState } from "@/lib/posts/series-planner";
 import { postErrorText, useAllPosts, usePostSeries, usePostsSummary } from "@/lib/posts/use-posts";
 import { useTracking } from "@/lib/rankings/use-rankings";
@@ -31,9 +37,17 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * AI Posts (`/locations/:locationId/ai/posts`): everything AI does for Google posts, on one page.
- * 1. Ideas and the AI writer: picking a version opens the editor seeded with it.
+ * 1. Write with AI and the topics (`#ideas`): "Write with AI" saves a draft in a background run (it can take
+ *    minutes; leaving the page never stops it) and the finished draft opens in the editor. The post topics the
+ *    planner keeps for the location (best first, free) are below it: write one, dismiss, restore, plan more.
+ *    Client users read the topics only.
  * 2. Auto-posts (`#auto`): AI series that write and publish on a schedule.
- * 3. Your AI posts (`#ai-posts`): every post written with AI (`source=ai`), in order.
+ * 3. Your AI posts (`#ai-posts`): every post written with AI (`source=ai`). "Coming up" is waiting and scheduled
+ *    posts as one agenda (a waiting post without a time first), which the server has no sort for: those posts are
+ *    loaded and ordered in the browser.
+ *
+ * The page polls the location's active AI runs (`useActivePostRuns`): the writer, the topics and the post cards
+ * read them, so a run started anywhere (a teammate's too) shows "Creating…" and coming back shows it again.
  *
  * Addresses: `#ideas`, `#auto` and `#ai-posts` jump to a section (older `?ideas=1` and `?section=auto`
  * are rewritten to them); `?keyword=` (from Keywords) starts the writer on that keyword; `?new=series`
@@ -71,9 +85,12 @@ function AiPostsView() {
   const locationId = location.location_id;
   const [params] = useSearchParams();
   const updateSearch = useSearchUpdater();
-  const ai = useAiStatus(locationId);
   const canEdit = useCanEdit();
   const summary = usePostsSummary(locationId);
+  const ai = usePostAiState(locationId, summary.data, summary.dataUpdatedAt);
+  const toastError = useToastPostError();
+  // The location's AI runs, polled while any works: the writer, the topics, the cards and the editor read them.
+  useActivePostRuns(locationId);
   const aiPosts = useAllPosts(locationId, null, { source: "ai" });
   const series = usePostSeries(locationId);
   const tracking = useTracking(locationId);
@@ -120,6 +137,26 @@ function AiPostsView() {
     listRef.current?.scrollIntoView({ block: "start" });
   };
   const openEditor = (target: PostEditorTarget) => setEditing(target);
+  /** A draft the writer just finished: it opens in the editor, unless another post is open there. */
+  const onDraftReady = (post: Post, run: PostAiRun) => {
+    if (editing) {
+      toast.success("Your post is ready", { description: "It's in your drafts. Open it from the writer when you're done here." });
+      return;
+    }
+    openEditor({ kind: "edit", post, run });
+  };
+  /** "Open it" on a finished run: the post as it is now (someone may have changed it since). */
+  const openRunPost = (post: Pick<Post, "post_id">, run: PostAiRun) => {
+    void getPost(locationId, post.post_id)
+      .then((fresh) => openEditor({ kind: "edit", post: fresh, run }))
+      .catch((err: unknown) => toastError(err, "That post couldn't be opened."));
+  };
+  // How the viewer's own runs ended when the card or editor that started one is gone (the editor closed, a post
+  // that left "Coming up"). The writer lists its drafts itself (ready, or failed with "Try again").
+  useRunOutcomeNotices(locationId, { skip: (run) => run.kind === "draft" });
+  // "Open it" on those toasts (and the cards' own) opens the post here, read again, never over a window
+  // (open-post.ts).
+  usePostOpenHost(locationId, (post, run) => openEditor({ kind: "edit", post, run }));
 
   return (
     <>
@@ -129,8 +166,8 @@ function AiPostsView() {
         title="AI Posts"
         description={
           canEdit
-            ? "Get post ideas, let AI write posts and pictures in your voice, and keep your Google profile active with auto-posts. Nothing goes live until you say so."
-            : "The Google posts written with AI for this location: what's coming up, what went live, and the auto-posts that keep your profile active."
+            ? "Let AI write posts and pictures from your business's facts, pick from the topics it plans for you, and keep your Google profile active with auto-posts. Nothing goes live until you say so."
+            : "The Google posts written with AI for this location: the topics planned, what's coming up, what went live, and the auto-posts that keep your profile active."
         }
         actions={
           <>
@@ -238,22 +275,23 @@ function AiPostsView() {
         />
       </div>
 
-      {canEdit ? (
-        <section id="ideas" aria-label="Ideas and AI writer" className="scroll-mt-20 space-y-4">
-          <SectionHeader
-            icon={Lightbulb}
-            tone="ai"
-            title="Ideas and AI writer"
-            description="Start from a fresh idea or your own topic. AI writes the post in your voice, and you check it before anything goes live."
-          />
-          <AiWriter
-            locationId={locationId}
-            layout="page"
-            initialKeyword={keywordParam}
-            onPick={(draft, context) => openEditor({ kind: "new", seed: { ...context, draft } })}
-          />
-        </section>
-      ) : null}
+      <section id="ideas" aria-label={canEdit ? "Write with AI and post topics" : "Post topics"} className="scroll-mt-20 space-y-4">
+        <SectionHeader
+          icon={Lightbulb}
+          tone="ai"
+          title={canEdit ? "Write with AI" : "Post topics"}
+          description={
+            canEdit
+              ? "Posts written from your business's facts, and the topics planned for them. You check every post before it goes live."
+              : "The topics planned for this location's posts, best first. Your agency writes the posts."
+          }
+        />
+        {canEdit ? (
+          <AiWriter locationId={locationId} ai={ai} initialKeyword={keywordParam} onReady={onDraftReady} onOpenPost={openRunPost} />
+        ) : (
+          <TopicsBacklog locationId={locationId} canEdit={false} heading={false} draftCost={ai.draftCost} />
+        )}
+      </section>
 
       <section id="auto" aria-label="Auto-posts" className="scroll-mt-20">
         <AutoPosts
@@ -320,10 +358,12 @@ function AiPostsView() {
 
       {editing && data && canEdit ? (
         <PostEditor
+          // Another post opened from a toast or the writer starts a fresh editor (its form is the post's).
+          key={editing.kind === "edit" ? editing.post.post_id : "new"}
           locationId={locationId}
           post={editing.kind === "edit" ? editing.post : null}
-          seed={editing.kind === "new" ? editing.seed : undefined}
           aiOpen={editing.kind === "new" ? editing.aiOpen : false}
+          run={editing.kind === "edit" ? (editing.run ?? null) : null}
           summary={data}
           onClose={() => setEditing(null)}
         />
@@ -387,7 +427,7 @@ const SEGMENT_EMPTY: Record<AiPostSegment, { title: string; description: string;
   },
   drafts: {
     title: "No AI drafts",
-    description: "Versions you save from the AI writer wait here until you schedule them.",
+    description: "Posts the AI writes wait here as drafts until you check and schedule them.",
     readOnly: "AI drafts your agency is still working on show here.",
   },
   published: { title: "No AI posts published yet", description: "Once an AI post goes live, it shows here, newest first." },
@@ -404,7 +444,7 @@ function SegmentEmpty({ segment, hasAny }: { segment: AiPostSegment; hasAny: boo
         tone="ai"
         title="Your AI posts will show here"
         description={
-          canEdit ? "Pick an idea or a topic above, choose a version and save it. Posts written by auto-posts show here too." : "AI posts your agency writes show here."
+          canEdit ? "Write one with AI above, from the best topic or one you pick. Posts written by auto-posts show here too." : "AI posts your agency writes show here."
         }
         compact
       />

@@ -1,22 +1,24 @@
 /**
  * How post lists are grouped and ordered (owner request #9: "I see old posts on the top").
  *
- * `GET locations/:id/posts` can't sort: it always answers "most recently changed first", and a
- * Google sync rewrites `updated_at` in an order that put the oldest published post on top. Lists
- * therefore load every page (`useAllPosts`) and order them here, per status group:
- * - Published: newest first (published, else scheduled, else created time);
- * - Scheduled and Waiting for approval: next to go out first (an agenda);
+ * Since 2026-11-17 (G14) `GET locations/:id/posts` sorts on the server: `sort=group` (its default) is this
+ * file's order, and `counts` gives each group's size, so the Posts page pages on the server. The groups and
+ * their order, as the server applies them:
  * - Problems: newest failure first;
- * - Drafts: most recently edited first.
+ * - Waiting for approval: no time first, then the next to go out;
+ * - Scheduled: next to go out first (an agenda);
+ * - Drafts: most recently edited first;
+ * - Published: newest first (published, else scheduled, else created time).
  * Ties fall back to the newest created, then the post id, so the order never jitters.
  *
- * The comparators live here, next to the data hooks, so every screen that lists posts (Posts, AI
- * Posts, future review queues) orders them the same way.
+ * The browser comparators stay for the one order the server has no sort for: AI Posts' "Coming up" (waiting
+ * and scheduled posts as one agenda, a waiting post without a time first), which loads its posts
+ * (`useAllPosts`) and orders them here.
  */
 import type { CalendarItem, Post, PostSeries, PostStatus } from "@/api";
 import { byBoolean, byNumber, byText, byTime, chain, sortRows, type Comparator } from "@/lib/sort";
 
-/** Posts per page in a list (paged in the browser, see `useAllPosts`). */
+/** Posts per page in a list (a server page; AI Posts' "Coming up" pages in the browser). */
 export const POSTS_PAGE_SIZE = 20;
 
 /** The status groups of a post list, in the order the "All" view shows them: what needs you, what's next, then history. */
@@ -71,6 +73,24 @@ export const POST_FILTERS: readonly { id: PostFilterId; label: string }[] = [
 
 export function isPostFilterId(value: string | null | undefined): value is PostFilterId {
   return POST_FILTERS.some((filter) => filter.id === value);
+}
+
+/** The `status` query of a list filter (undefined for All). */
+export function filterStatuses(filter: PostFilterId): string | undefined {
+  return filter === "all" ? undefined : postGroup(filter).statuses.join(",");
+}
+
+/**
+ * Where a group starts in the "All" order (the number of posts of the groups before it), from the server's
+ * `counts`: a page whose first post sits past its group's start continues that group from the page before.
+ */
+export function groupStartIndex(counts: Readonly<Record<PostGroupId, number>>, group: PostGroupId): number {
+  let start = 0;
+  for (const entry of POST_GROUPS) {
+    if (entry.id === group) return start;
+    start += counts[entry.id] ?? 0;
+  }
+  return start;
 }
 
 /** Stable last resort: newest created first, then the id (ids grow over time). */

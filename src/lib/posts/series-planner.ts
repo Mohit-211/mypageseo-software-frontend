@@ -13,9 +13,14 @@
  *
  * Backend: docs/API.md "Auto-posts (series)" (`planner`, "Budget", "Rollout switch") and
  * docs/apps/CUSTOMER_APP.md "2026-11-13: Smaller changes".
+ *
+ * 2026-11-17 (G10): a series "needs attention" as the dashboard counts it (`posts:series_problem`,
+ * `stats.series_problems`): a series that paused itself (`paused`) always; a failed slot (`last_error`) only while
+ * the planner is `on`, since nothing tries it again while it is off and its error is stale (`seriesNeedsAttention`).
  */
-import type { PostSeries } from "@/api";
+import type { PostSeries, PostSeriesHistoryEntry } from "@/api";
 import { formatResumeTime, nextUtcMidnight } from "@/lib/ai/ai-time";
+import { heldLabel, seriesOutcomeLabel, type LabelTone } from "./approval-labels";
 
 export type SeriesPlanner = "on" | "switched_off" | "not_in_pilot";
 export type PausedPlanner = Exclude<SeriesPlanner, "on">;
@@ -81,19 +86,53 @@ export function autoPostsState(series: readonly PostSeries[]): AutoPostsState {
   return { active, writing, pausedBy, nextSlot };
 }
 
-/** Why a slot was skipped, for a series' recent results ("skipped (…)"): short, past tense. */
+/** Why a slot wasn't written, for a series' recent results: short, past tense. */
 const SKIPPED_BECAUSE: Record<string, string> = {
   insufficient_tokens: "Not enough tokens",
   ai_not_configured: "Automatic AI work was off",
   ai_budget_reached: "Automatic AI work was paused for the day",
+  ai_org_budget_reached: "AI was paused for your organization that day",
   ai_failed: "Nothing usable came back; tokens refunded",
-  gbp_not_connected: "The location isn't connected to Google",
+  gbp_not_connected: "The location wasn't connected to Google",
+  v4_access_pending: "Google hadn't granted access to the profile's posts yet",
+  organization_suspended: "The account was suspended",
+  subscription_required: "The subscription needed attention",
+  feature_not_included: "The plan doesn't include posts",
+  no_topic: "AI found nothing new to write about",
+  topic_not_available: "Its topic was taken meanwhile",
+  series_changed: "The series changed while the post was written",
+  interrupted: "It was interrupted; the post was kept as a draft",
+  timed_out: "It couldn't start in time",
   ai_not_compliant: "The AI draft didn't meet Google's post rules; tokens refunded",
 };
 
 /** A history entry's `reason` in words. */
 export function seriesErrorText(code: string): string {
   return SKIPPED_BECAUSE[code] ?? "A post couldn't be made";
+}
+
+/** A series history entry in words, with its tone (Phase 25c outcomes: held, expired, paused_* too). */
+export function seriesHistoryWords(entry: Pick<PostSeriesHistoryEntry, "outcome" | "reason">): { text: string; tone: LabelTone | "success" } {
+  switch (entry.outcome) {
+    case "generated":
+      return { text: entry.reason === "image_failed" ? "Written (text only: no picture could be made)" : "Written", tone: "success" };
+    case "failed":
+      return { text: `Not written: ${seriesErrorText(entry.reason ?? "")}`, tone: "critical" };
+    case "held":
+      return { text: `Waiting for review: ${entry.reason ? heldLabel(entry.reason).text : "a person checks it first"}`, tone: "warning" };
+    default: {
+      const label = seriesOutcomeLabel(entry.outcome);
+      return label ? { text: label.text, tone: label.tone } : { text: "Something happened to this post", tone: "neutral" };
+    }
+  }
+}
+
+/**
+ * True when a series needs a look, as the dashboard counts it (G10): it paused itself, or its last slot failed while
+ * the planner is on.
+ */
+export function seriesNeedsAttention(series: Pick<PostSeries, "planner" | "last_error" | "paused">): boolean {
+  return Boolean(series.paused) || seriesProblem(series) !== null;
 }
 
 const BACKGROUND_PAUSED = /automatic ai work is paused for today/i;
@@ -109,10 +148,14 @@ export function isAiAvailabilityProblem(error: { code: string; message?: string 
   return error.code === "ai_not_configured" || error.code === "ai_budget_reached" || BACKGROUND_PAUSED.test(message) || BACKGROUND_OFF.test(message);
 }
 
-/** A series' `last_error` worth showing as "Needs attention", or null (see `isAiAvailabilityProblem`). */
+/**
+ * A series' `last_error` worth showing as "Needs attention", or null. 2026-11-17 (G10): only while the planner is
+ * `on`; while it isn't, nothing tries the slot again and the error is stale (the history still lists it), so the card
+ * agrees with the dashboard's count.
+ */
 export function seriesProblem(series: Pick<PostSeries, "planner" | "last_error">): PostSeries["last_error"] {
   const error = series.last_error;
-  return error && !(seriesPlanner(series) !== "on" && isAiAvailabilityProblem(error)) ? error : null;
+  return error && seriesPlanner(series) === "on" ? error : null;
 }
 
 export type SeriesProblemCopy = { title: string; detail?: string };
@@ -140,12 +183,30 @@ export function seriesProblemCopy(error: { code: string; message?: string | null
   switch (error.code) {
     case "insufficient_tokens":
       return { title: "Not enough tokens" };
+    case "ai_org_budget_reached":
+      return { title: "AI is paused for your organization today", detail: "It resumes tomorrow." };
     case "ai_failed":
       return { title: "Nothing usable came back", detail: "Your tokens were refunded." };
     case "ai_not_compliant":
       return { title: "The AI draft didn't meet Google's post rules", detail: "Your tokens were refunded." };
     case "gbp_not_connected":
       return { title: "The location isn't connected to Google" };
+    case "v4_access_pending":
+      return { title: "Google hasn't granted access to this profile's posts yet" };
+    case "organization_suspended":
+      return { title: "The account is suspended", detail: "Nothing was spent." };
+    case "subscription_required":
+      return { title: "The subscription needs attention", detail: "Nothing was spent." };
+    case "feature_not_included":
+      return { title: "Your plan doesn't include posts", detail: "Nothing was spent." };
+    case "no_topic":
+      return { title: "AI found nothing new to write about", detail: "Add facts about the business in AI Settings, or give the series its own topics." };
+    case "topic_not_available":
+      return { title: "Its topic was taken meanwhile" };
+    case "series_changed":
+      return { title: "The series changed while its post was written", detail: "Nothing was spent." };
+    case "interrupted":
+      return { title: "Writing the post was interrupted", detail: "The post was kept as a draft for you to check." };
     default:
       return { title: "A post couldn't be made" };
   }

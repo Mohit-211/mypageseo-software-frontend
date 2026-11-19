@@ -2,18 +2,17 @@
  * Opening one review in a list: "Open it" in a send's results, or a link with `?review=<id>`.
  *
  * Every card in a review list sits in an element with `data-review-id` (ReviewsFeed). A review on
- * the page is scrolled to, focused and highlighted for a moment; one that isn't is looked up and
- * shown pinned above the list. The API has no single-review read, so it is found in the lists: the
- * reviews with a draft first (where held-back sends are), then the newest, then the ones deleted on
- * Google.
+ * the page is scrolled to, focused and highlighted for a moment; one that isn't is read by its id
+ * (`GET …/reviews/:reviewId`, 2026-11-17, G5: the list's object, also for a review deleted on Google;
+ * every member reads it, client users too) and shown pinned above the list.
  *
  * A review looked up once lives under its own key root (`reviewLookupKey`), outside `reviewsKey`:
- * reading the location's reviews again after a draft, a send or a reply doesn't scan the lists again.
+ * reading the location's reviews again after a draft, a send or a reply doesn't read it again.
  * It stays current because every answer about it is written there too (`updateReviewInCache`); a
  * check for new reviews on Google reads it again (`invalidateReviewLookups`).
  */
 import { useQuery, type QueryClient } from "@tanstack/react-query";
-import { getReviews, isApiError, type Review, type ReviewsQuery } from "@/api";
+import { getReview, isApiError, type Review } from "@/api";
 
 /** The id of the reply-authorization banner (Reviews and AI Review Replies), for "Show me" links. */
 export const REPLY_AUTHORIZATION_ANCHOR = "reply-authorization";
@@ -70,34 +69,25 @@ export function scrollToReplyAuthorization(): void {
   if (document.activeElement !== banner) banner.focus({ preventScroll: true });
 }
 
-/** Lists searched for one review, in order, and how many pages of 100 each. */
-const SEARCHES: { query: Omit<ReviewsQuery, "page" | "limit">; pages: number }[] = [
-  { query: { has_draft: true, sort: "newest" }, pages: 5 },
-  { query: { sort: "newest" }, pages: 3 },
-  { query: { deleted_on_google: true, sort: "newest" }, pages: 1 },
-];
-
-const PAGE = 100;
-
-/** Finds one review by id in the location's lists; null when it isn't in them (any more). */
+/**
+ * One review by its id (`GET …/reviews/:reviewId`); null when the location has no such review (404
+ * `review_not_found`: an unknown id, or another location's review).
+ */
 export async function findReview(locationId: string, reviewId: string, signal?: AbortSignal): Promise<Review | null> {
-  for (const search of SEARCHES) {
-    for (let page = 1; page <= search.pages; page += 1) {
-      const list = await getReviews(locationId, { ...search.query, page, limit: PAGE }, signal);
-      const found = list.reviews.find((review) => review.review_id === reviewId);
-      if (found) return found;
-      if (page * PAGE >= list.total || list.reviews.length === 0) break;
-    }
+  try {
+    return (await getReview(locationId, reviewId, signal)).review;
+  } catch (error) {
+    if (isApiError(error) && error.status === 404) return null;
+    throw error;
   }
-  return null;
 }
 
 const retry = (count: number, err: unknown) => !(isApiError(err) && err.status < 500) && count < 2;
 
 /**
- * The review a `?review=` spotlight opens, when it isn't on the list's page (null: not found). Found
- * once (up to 9 reads of 100); after that the card's own answers keep it current, so the lists aren't
- * scanned again after every draft, send or reply. Only `invalidateReviewLookups` scans again.
+ * The review a `?review=` spotlight opens, when it isn't on the list's page (null: not found). Read
+ * once by its id; after that the card's own answers keep it current, so it isn't read again after
+ * every draft, send or reply. Only `invalidateReviewLookups` reads it again.
  */
 export function useSpotlightReview(locationId: string, reviewId: string | null, enabled = true) {
   return useQuery({

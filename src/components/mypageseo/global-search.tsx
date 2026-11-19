@@ -7,6 +7,8 @@ import { getTracking } from "@/api";
 import { preloadPath } from "@/app/route-preload";
 import { IconChip } from "@/components/layout/shared/icon-chip";
 import { useNavLocation } from "@/components/layout/shell/use-shell-nav";
+import { WindowOnScreen } from "@/components/ui/dialog";
+import { keepOpenOnToasts } from "@/components/ui/open-windows";
 import { useAccess } from "@/hooks/use-access";
 import {
   buildSearchIndex,
@@ -91,9 +93,13 @@ export function GlobalSearch({ className }: { className?: string }) {
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-foreground/40 backdrop-blur-[2px] data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 motion-reduce:animate-none" />
         <DialogPrimitive.Content
+          // A press on a toast leaves the search open, with its query (ui/open-windows.ts).
+          onPointerDownOutside={keepOpenOnToasts(undefined)}
+          onInteractOutside={keepOpenOnToasts(undefined)}
           aria-describedby={undefined}
           className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-popover text-popover-foreground shadow-elevated outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 sm:inset-x-4 sm:bottom-auto sm:top-[12vh] sm:mx-auto sm:max-h-[min(36rem,76vh)] sm:max-w-2xl sm:rounded-2xl sm:border sm:border-border sm:data-[state=open]:zoom-in-[0.98] motion-reduce:animate-none"
         >
+          <WindowOnScreen />
           <DialogPrimitive.Title className="sr-only">Search</DialogPrimitive.Title>
           <SearchPanel onClose={() => setOpen(false)} />
         </DialogPrimitive.Content>

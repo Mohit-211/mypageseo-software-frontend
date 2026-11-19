@@ -6,7 +6,9 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { WindowOnScreen } from "./dialog";
 import { useFocusReturn } from "./focus-return";
+import { keepOpenOnToasts } from "./open-windows";
 
 const Sheet = SheetPrimitive.Root;
 
@@ -58,13 +60,22 @@ interface SheetContentProps
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
->(({ side = "right", className, children, onOpenAutoFocus, onCloseAutoFocus, onFocusCapture, ...props }, ref) => {
+>(({ side = "right", className, children, onOpenAutoFocus, onCloseAutoFocus, onFocusCapture, onPointerDownOutside, onInteractOutside, ...props }, ref) => {
   // Opened from state or the URL (no Trigger): focus goes back to what opened it on close.
   const focusReturn = useFocusReturn({ onOpenAutoFocus, onCloseAutoFocus, onFocusCapture });
   return (
     <SheetPortal>
       <SheetOverlay />
-      <SheetPrimitive.Content ref={ref} className={cn(sheetVariants({ side }), className)} {...props} {...focusReturn}>
+      <SheetPrimitive.Content
+        ref={ref}
+        className={cn(sheetVariants({ side }), className)}
+        {...props}
+        // A press on a toast never closes the sheet (ui/open-windows.ts).
+        onPointerDownOutside={keepOpenOnToasts(onPointerDownOutside)}
+        onInteractOutside={keepOpenOnToasts(onInteractOutside)}
+        {...focusReturn}
+      >
+        <WindowOnScreen />
         <SheetPrimitive.Close className="absolute right-3 top-3 grid size-8 cursor-pointer place-items-center rounded-md text-muted-foreground transition-colors outline-hidden hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none pointer-coarse:size-9">
           <X className="size-4" aria-hidden />
           <span className="sr-only">Close</span>

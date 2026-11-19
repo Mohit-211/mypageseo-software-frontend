@@ -22,6 +22,8 @@ const WEBSITE_NOTE: Record<string, string> = {
   no_website: "There's no website on your profile, so these come from your Google profile.",
   unreachable: "We couldn't read your website, so these come from your Google profile.",
   not_html: "We couldn't read your website, so these come from your Google profile.",
+  // 2026-11-17: the home page is read only where robots.txt allows it.
+  blocked_by_robots: "Your website asks not to be read, so ideas come from your profile only.",
 };
 
 /**

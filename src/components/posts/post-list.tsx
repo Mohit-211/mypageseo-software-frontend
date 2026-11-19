@@ -1,15 +1,31 @@
 import { useRef, useState, type ReactNode } from "react";
 import type { Post, PostsSummary } from "@/api";
 import { TablePagination } from "@/components/layout/shared/data-table";
-import { POSTS_PAGE_SIZE, POST_GROUP_OF, countPosts, postGroup } from "@/lib/posts/post-order";
+import { POSTS_PAGE_SIZE, POST_GROUP_OF, countPosts, groupStartIndex, postGroup, type PostGroupId } from "@/lib/posts/post-order";
 import { PostCard } from "./post-card";
 
 /**
- * A list of post cards, already in order (`sortPosts`), paged in the browser 20 at a time.
+ * One server page of a list (2026-11-17: the server orders and counts): `posts` is that page; the list shows it
+ * as it is and the pager asks the page for another one.
+ */
+export type ServerPaging = {
+  page: number;
+  pageSize: number;
+  /** The posts of the whole list (every page). */
+  total: number;
+  onPageChange: (page: number) => void;
+};
+
+/**
+ * A list of post cards, already in order.
  *
- * `grouped` (the "All" view) puts a heading before each status group, with how it is ordered, so the
- * order is never a guess. `focusPostId` (`?post=` from a calendar or a link) opens the page holding
- * that post, outlines it and scrolls it into view.
+ * - Without `paging`, `posts` is the whole list (AI Posts' "Coming up", ordered in the browser) and it pages in
+ *   the browser, 20 at a time. `focusPostId` (`?post=`) opens the page holding that post.
+ * - With `paging`, `posts` is one server page (the Posts page, `sort=group`).
+ *
+ * `grouped` (the "All" view) puts a heading before each status group, with how it is ordered, so the order is
+ * never a guess; `groupCounts` (the server's `counts`) gives the headings' numbers and tells a group continued
+ * from the page before. `focusPostId` outlines that post and scrolls it into view.
  */
 export function PostList({
   locationId,
@@ -21,6 +37,8 @@ export function PostList({
   pageSize = POSTS_PAGE_SIZE,
   itemLabel = "posts",
   caption,
+  paging,
+  groupCounts,
 }: {
   locationId: string;
   posts: readonly Post[];
@@ -32,20 +50,29 @@ export function PostList({
   itemLabel?: string;
   /** A line above an ungrouped list, e.g. "8 posts · Newest first". */
   caption?: ReactNode;
+  paging?: ServerPaging | undefined;
+  groupCounts?: Readonly<Record<PostGroupId, number>> | null | undefined;
 }) {
   const top = useRef<HTMLDivElement>(null);
   const [chosenPage, setChosenPage] = useState<number | null>(null);
-  const focusIndex = focusPostId ? posts.findIndex((post) => post.post_id === focusPostId) : -1;
-  const pageCount = Math.max(1, Math.ceil(posts.length / pageSize));
-  const page = Math.min(chosenPage ?? (focusIndex >= 0 ? Math.floor(focusIndex / pageSize) + 1 : 1), pageCount);
-  const start = (page - 1) * pageSize;
-  const shown = posts.slice(start, start + pageSize);
-  const counts = grouped ? countPosts(posts) : null;
+  const size = paging?.pageSize ?? pageSize;
+  const focusIndex = !paging && focusPostId ? posts.findIndex((post) => post.post_id === focusPostId) : -1;
+  const totalItems = paging ? paging.total : posts.length;
+  const pageCount = Math.max(1, Math.ceil(totalItems / size));
+  const page = paging ? paging.page : Math.min(chosenPage ?? (focusIndex >= 0 ? Math.floor(focusIndex / size) + 1 : 1), pageCount);
+  // Where this page starts in the whole list.
+  const start = (page - 1) * size;
+  const shown = paging ? posts : posts.slice(start, start + size);
+  const counts = grouped ? (groupCounts ?? (paging ? null : countPosts(posts))) : null;
 
   const goTo = (next: number) => {
-    setChosenPage(next);
+    if (paging) paging.onPageChange(next);
+    else setChosenPage(next);
     top.current?.scrollIntoView({ block: "start", behavior: "auto" });
   };
+
+  /** A server page's first post continues its group when the group started on an earlier page. */
+  const continuesFromEarlierPage = (group: PostGroupId) => (paging && counts ? start > groupStartIndex(counts, group) : false);
 
   return (
     <div ref={top} className="scroll-mt-20 space-y-3">
@@ -53,9 +80,10 @@ export function PostList({
       <ol className="space-y-3">
         {shown.map((post, index) => {
           const group = POST_GROUP_OF[post.status];
-          const before = index > 0 ? shown[index - 1] : start > 0 ? posts[start - 1] : undefined;
-          const startsGroup = grouped && (!before || POST_GROUP_OF[before.status] !== group);
-          const continued = grouped && index === 0 && before !== undefined && POST_GROUP_OF[before.status] === group;
+          const before = index > 0 ? shown[index - 1] : !paging && start > 0 ? posts[start - 1] : undefined;
+          const continued =
+            grouped && index === 0 && (paging ? continuesFromEarlierPage(group) : before !== undefined && POST_GROUP_OF[before.status] === group);
+          const startsGroup = grouped && !continued && (!before || POST_GROUP_OF[before.status] !== group);
           const info = postGroup(group);
           return (
             <li key={post.post_id}>
@@ -82,8 +110,8 @@ export function PostList({
             className="border-t-0"
             page={page}
             pageCount={pageCount}
-            totalItems={posts.length}
-            pageSize={pageSize}
+            totalItems={totalItems}
+            pageSize={size}
             itemLabel={itemLabel}
             onPageChange={goTo}
           />

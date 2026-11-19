@@ -256,7 +256,8 @@ const CATEGORIES: HelpCategory[] = [
         title: "Google posts",
         summary: "Write, schedule and publish posts to your profile.",
         body: [
-          "Posts lists what's live on your profile and what's scheduled, newest first. Write a post yourself or with AI, add a photo, and publish now or later.",
+          "Posts lists what needs you first, then what's scheduled and what's live on your profile. Write a post yourself or with AI, add a photo, and publish now or later.",
+          "AI posts that wait for someone's approval are also gathered on Posts to review, for every location at once.",
           "Posting needs the location's Google connection.",
         ],
         link: { label: "Open Posts", to: "/gbp/posts", section: "gbp/posts" },
@@ -297,7 +298,8 @@ const CATEGORIES: HelpCategory[] = [
         title: "AI Studio",
         summary: "Every AI feature in one place, with what it costs.",
         body: [
-          "AI Studio is the home of MyPageSEO's AI features: writing posts, drafting review replies, review insights and keyword ideas, each with its price in tokens.",
+          "AI Studio is the home of MyPageSEO's AI features: writing posts, drafting review replies, review insights and keyword ideas, each with what it costs.",
+          "Get the AI ready lists what helps it write about your business: your facts, your signature, your logo and your own photos.",
           "If AI shows as almost ready, it's being switched on for your account. You can still write posts and replies yourself in the meantime.",
         ],
         link: { label: "Open AI Studio", to: "/ai" },
@@ -307,8 +309,10 @@ const CATEGORIES: HelpCategory[] = [
         title: "AI Posts",
         summary: "Let AI write and schedule posts that sound like you.",
         body: [
-          "AI Posts writes posts from your keywords and services. Review and edit each one, then publish or schedule it. Auto-posting can draft new posts on a schedule.",
-          "Each AI draft and AI image costs tokens. Settings › Billing lists the prices.",
+          "AI Posts keeps a list of post ideas for each location, planned from your services, facts, season and area, and writes each post from your own facts and keywords. Every post is saved as a draft: check it, change it, then schedule or publish it.",
+          "A post can take a few minutes to write. You can leave the page meanwhile; it shows up when it's ready.",
+          "Auto-posting writes posts on a schedule. By default, each one waits for your review before it goes out.",
+          "Post ideas are free. Writing a post and making an AI image cost tokens; photos from your library are free. Settings › Billing lists the prices.",
         ],
         link: { label: "Open AI Posts", to: "/ai/posts" },
       },
@@ -316,7 +320,10 @@ const CATEGORIES: HelpCategory[] = [
         id: "help_ai_replies",
         title: "AI Review Replies",
         summary: "Draft replies to many reviews at once.",
-        body: ["AI Review Replies drafts a reply to each review you pick. Nothing is sent until you approve it, and you can edit every draft first."],
+        body: [
+          "AI Review Replies drafts a reply to each review you pick, about what the reviewer said. Nothing is sent until you approve it, and you can edit every draft first.",
+          "AI replies are bought in blocks of 10 for each location, and the ones left stay with it. Settings › Billing shows the price and what each location has left.",
+        ],
         link: { label: "Open AI Review Replies", to: "/ai/replies" },
       },
       {
@@ -326,7 +333,8 @@ const CATEGORIES: HelpCategory[] = [
         body: [
           "AI Settings, in the AI section of each location, sets how the AI writes for that business. House rules are standing instructions, like “Never mention prices”. The signature and the contact line are used in AI review replies.",
           "Restricted mode is on by default for health, legal, financial, insurance and tax businesses: replies name no one, repeat nothing from the review, name no service and use no keywords. Only the account owner can switch it off.",
-          "Facts for the AI are your own facts, offers, events and contests. Prices, percentages, offer dates and staff names in AI text come only from there. AI posts start using them in an upcoming update.",
+          "Facts for the AI are your own facts, offers, events and contests. Prices, percentages, offer dates and staff names in AI posts and replies come only from there.",
+          "AI Settings also holds your logo and how AI pictures look, and links to your photo library.",
         ],
         link: { label: "Open AI Settings", to: "/ai/settings" },
       },
@@ -498,7 +506,7 @@ const CATEGORIES: HelpCategory[] = [
         permission: "billing.view",
         body: [
           "Tokens pay for manual refreshes and AI actions; the automatic monthly refresh is free.",
-          "Settings › Billing shows your balance, what each action costs, recent activity and the packs you can buy.",
+          "Settings › Billing shows your balance, what each action costs, the AI replies and analyses each location has left, recent activity and the packs you can buy.",
         ],
         link: { label: "See tokens", to: "/settings/billing#tokens" },
       },

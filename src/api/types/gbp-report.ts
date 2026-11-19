@@ -133,7 +133,10 @@ export type ReviewsSection = {
   median_reply_hours: number | null;
   per_month: { month: string; count: number; average_rating: number | null }[];
   distribution: Record<"1" | "2" | "3" | "4" | "5", number>;
+  /** The newest unanswered reviews (at most 10). */
   unreplied: { rating: number | null; created_at: string | null; excerpt: string | null; reviewer: string | null }[];
+  /** 2026-11-17: every review without a reply (uncapped). A report made before has none: use `unreplied.length` then. */
+  unreplied_total?: number | null;
 };
 
 export type MediaSection = {

@@ -1,8 +1,12 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
+import { toast } from "sonner";
 import { BellRing, CalendarClock, LifeBuoy, Mail, type LucideIcon } from "lucide-react";
 import { EmptyState } from "@/components/layout/shared/feedback/states";
+import { DigestSettingCard } from "@/components/settings/digest-setting";
 import { Button } from "@/components/ui/button";
 import { useAccess } from "@/hooks/use-access";
+import { showDigestSetting, useDigestSetting } from "@/lib/ai/ai-digest";
 import { useWriteBlock } from "@/lib/billing/write-block";
 
 const TODAY: { icon: LucideIcon; title: string; text: string }[] = [
@@ -11,10 +15,25 @@ const TODAY: { icon: LucideIcon; title: string; text: string }[] = [
   { icon: LifeBuoy, title: "Support replies", text: "Our team's answers to your tickets, also by email." },
 ];
 
-/** Notification preferences aren't built yet; this says so and lists what already reaches you. */
+/**
+ * Notification preferences: the "Daily review email" (the AI review digest, behind its server switch: see
+ * `src/lib/ai/ai-digest.ts` for when it shows), then what else already reaches you. The rest isn't built yet.
+ */
 function NotificationSettingsPage() {
   const access = useAccess();
   const block = useWriteBlock();
+  const digest = useDigestSetting();
+  // Changed here on this visit: the switch stays on screen when it is turned back on (see `showDigestSetting`).
+  const [touchedDigest, setTouchedDigest] = useState(false);
+  const digestSetting = digest.query.data;
+  const showDigest = showDigestSetting(digestSetting, touchedDigest);
+  const changeDigest = (enabled: boolean) => {
+    setTouchedDigest(true);
+    digest.mutation.mutate(enabled, {
+      onSuccess: () => toast.success(enabled ? "The daily review email is on." : "The daily review email is off."),
+      onError: () => toast.error("That didn't save. Try again."),
+    });
+  };
   // Agency staff set up monthly emails on White Label, everyone else on Reports; both open the
   // "Schedule an email" form from `?create=schedule` (not while the account can't create one).
   const schedulesPage = access.can("clients.view") ? "/white-label" : "/reports";
@@ -23,11 +42,12 @@ function NotificationSettingsPage() {
   const canSchedule = access.can("workspace.edit");
   return (
     <div className="space-y-6">
+      {showDigest && digestSetting ? <DigestSettingCard setting={digestSetting} saving={digest.mutation.isPending} onChange={changeDigest} /> : null}
       <EmptyState
         variant="coming-soon"
         icon={BellRing}
         tone="settings"
-        title="Notification settings are on the way"
+        title={showDigest ? "More notification settings are on the way" : "Notification settings are on the way"}
         description="Soon you'll choose which alerts reach you, such as ranking drops, new reviews and posts waiting for approval. Until then, the dashboard lists what needs attention."
         action={
           <Button asChild size="sm">

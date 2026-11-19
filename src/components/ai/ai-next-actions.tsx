@@ -21,9 +21,11 @@ import {
 } from "lucide-react";
 import { IconChip } from "@/components/layout/shared/icon-chip";
 import type { ModuleTone, StatusTone } from "@/components/layout/shared/module-tone";
+import { ReplyCostChip } from "@/components/reputation/reply-cost-chip";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { AiNextAction, AiNextActionId } from "@/lib/ai/ai-next-actions";
+import type { CreditCost } from "@/lib/reviews/reply-credits";
 import { cn } from "@/lib/utils";
 import { AiCostChip } from "./ai-cost-chip";
 
@@ -46,6 +48,12 @@ export type AiNextActionsProps = {
   onConnect?: () => void;
   /** The token balance, so price chips warn when it isn't enough. */
   balance?: number;
+  /**
+   * The "draft_replies" row's price as the Replies page's "Draft all" shows it (`creditCost` for the draftable
+   * reviews): the replies left first ("7 left"), then the tokens of the blocks it buys, never "Free" unless the plan
+   * makes replies free. Without it the row shows its tokens.
+   */
+  replyCost?: CreditCost;
   title?: string;
   description?: ReactNode;
   className?: string;
@@ -56,6 +64,7 @@ export function AiNextActions({
   loading = false,
   onConnect,
   balance,
+  replyCost,
   title = "Next best actions",
   description = "What to do next for this location, from your reviews, posts and keywords.",
   className,
@@ -121,7 +130,11 @@ export function AiNextActions({
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center gap-3 pl-[52px] sm:pl-0">
-                  {item.cost !== undefined ? <AiCostChip tokens={item.cost} {...(balance === undefined ? {} : { balance })} /> : null}
+                  {item.cost === undefined ? null : item.id === "draft_replies" && replyCost ? (
+                    <ReplyCostChip cost={replyCost} balance={balance} />
+                  ) : (
+                    <AiCostChip tokens={item.cost} {...(balance === undefined ? {} : { balance })} />
+                  )}
                   {item.to ? (
                     <Button asChild size="sm" variant={item.ai ? "ai" : "outline"}>
                       <Link to={item.to}>{label}</Link>

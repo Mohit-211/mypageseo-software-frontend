@@ -1,24 +1,12 @@
 /**
- * Handing an AI draft to the post editor.
+ * What a posts page's editor shows.
  *
- * The AI writer (`src/components/posts/ai-writer.tsx`) never saves anything: picking a draft opens
- * `PostEditor` seeded with it, where the person adds a photo (or an AI image from the draft's
- * `image_idea`), then saves, schedules or publishes. Phase 25b will make `ai-draft` save a draft post
- * itself; the editor can then open that post instead, with no change to the writer's callers.
+ * Since post writer v2 (Phase 25c) "Write with AI" saves the post itself, in a background run: when the run is
+ * done, its `result.post` opens in the editor as any saved post, with the run, so the editor can say what the AI
+ * left out ("We left out: …"), offer the statements it couldn't use as facts, and say what happened to the
+ * picture. Nothing is handed over unsaved any more.
  */
-import type { AiPostDraft, Post, PostType } from "@/api";
+import type { Post, PostAiRun } from "@/api";
 
-/** What the writer knew when it wrote the drafts. */
-export type AiDraftContext = {
-  type: PostType;
-  topic: string;
-  keywords: string[];
-};
-
-/** A new post started from an AI draft. */
-export type PostSeed = AiDraftContext & { draft: AiPostDraft };
-
-/** What a post page's editor is showing: a new post (optionally from an AI draft, or with the AI writer open) or an existing one. */
-export type PostEditorTarget =
-  | { kind: "new"; seed?: PostSeed; aiOpen?: boolean }
-  | { kind: "edit"; post: Post };
+/** A new post (optionally with the AI panel open), or an existing one (optionally with the run that just wrote or changed it). */
+export type PostEditorTarget = { kind: "new"; aiOpen?: boolean } | { kind: "edit"; post: Post; run?: PostAiRun | null };

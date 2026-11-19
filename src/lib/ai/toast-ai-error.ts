@@ -3,7 +3,8 @@
  *
  * Besides showing `aiErrorText`'s words with the right toast type (info / warning / error) and action,
  * it records what the failure says so the rest of the page catches up without a reload:
- * - `noteAiError`: `ai_not_configured` / `ai_budget_reached` flip `useAiStatus` to off / paused;
+ * - `noteAiError`: `ai_not_configured` / `ai_budget_reached` (or the organization's `ai_org_budget_reached`) flip
+ *   `useAiStatus` to off / paused;
  * - `noteAccountError`: a 402 `subscription_required` / 403 `organization_suspended` reaches the shell's
  *   account banner even when the call wasn't a `useMutation` (ai.md M6).
  *

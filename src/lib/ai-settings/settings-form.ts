@@ -1,5 +1,6 @@
 /**
- * The "AI settings" form (`GET/PUT /locations/:locationId/ai/settings`, Phase 25a), pure.
+ * The "AI settings" form (`GET/PUT /locations/:locationId/ai/settings`, Phase 25a; the image style and the
+ * `all_images` logo default since Phase 25c), pure.
  *
  * The page keeps only the user's edits (`AiSettingsEdits`) on top of the settings in force, so a
  * save of one section, a restricted-mode switch or a refetch never overwrites what the user is
@@ -8,14 +9,17 @@
  * - Text settings (house rules, signature, contact line): an empty field means "the default".
  * - The image settings: `null` means "the default" (staged by "Use default"); the control then
  *   shows the documented default until the answer says what is in force.
- * Restricted mode isn't part of this form: it switches at once (`restricted-mode-section.tsx`).
+ * Restricted mode isn't part of this form: it switches at once (`restricted-mode-section.tsx`), and
+ * neither is the style memo (each "Don't use" saves at once, `style-memo.ts`).
  */
-import type { AiLogoPlacement, AiSettings, AiSettingsUpdate } from "@/api";
+import type { AiImageStyleSetting, AiLogoPlacement, AiSettings, AiSettingsUpdate } from "@/api";
+import { formatDate } from "@/lib/datetime";
+import { byActor, isViewer } from "./names";
 
 export const TEXT_SETTING_KEYS = ["house_rules", "signature", "contact_line"] as const;
 export type TextSettingKey = (typeof TEXT_SETTING_KEYS)[number];
 
-export const IMAGE_SETTING_KEYS = ["logo_on", "ai_images", "ai_enhance", "photo_reuse_days"] as const;
+export const IMAGE_SETTING_KEYS = ["logo_on", "image_style", "ai_images", "ai_enhance", "photo_reuse_days"] as const;
 export type ImageSettingKey = (typeof IMAGE_SETTING_KEYS)[number];
 
 export type FormSettingKey = TextSettingKey | ImageSettingKey;
@@ -35,6 +39,8 @@ export type AiSettingsForm = {
   contact_line: string;
   /** `null`: back to the default when saved. */
   logo_on: AiLogoPlacement | null;
+  /** Phase 25c: a photo with the logo in a corner, or a designed graphic. */
+  image_style: AiImageStyleSetting | null;
   ai_images: boolean | null;
   ai_enhance: boolean | null;
   /** The number field's text, so a half-typed value stays as typed; `null`: back to the default. */
@@ -46,9 +52,21 @@ export type AiSettingsEdits = Partial<AiSettingsForm>;
 
 /**
  * The defaults of the settings that have a fixed one (backend docs, API.md "AI per location",
- * Settings table). Shown while a "Use default" waits to be saved; the answer then says what is in force.
+ * Settings table; `logo_on` is `all_images` since Phase 25c). Shown while a "Use default" waits to be
+ * saved; the answer then says what is in force.
  */
-export const AI_SETTING_DEFAULTS = { logo_on: "ai_images", ai_images: true, ai_enhance: true, photo_reuse_days: 60 } as const;
+export const AI_SETTING_DEFAULTS = {
+  logo_on: "all_images",
+  image_style: "photo_logo",
+  ai_images: true,
+  ai_enhance: true,
+  photo_reuse_days: 60,
+} as const satisfies { [K in Exclude<ImageSettingKey, "photo_reuse_days">]: Exclude<AiSettingsForm[K], null> } & { photo_reuse_days: number };
+
+/** True when the answer has the image style (Phase 25c); the control is left out otherwise. */
+export function hasImageStyle(view: AiSettings): boolean {
+  return view.settings.image_style !== undefined;
+}
 
 /** The backend's limits, used until the answer's own `limits` are known. */
 export const AI_SETTING_LIMITS = { house_rules: 1000, signature: 100, contact_line: 160, photo_reuse_days: { min: 14, max: 365 } } as const;
@@ -61,7 +79,8 @@ export function formValue<K extends FormSettingKey>(view: AiSettings, edits: AiS
   const value: unknown = view.settings[key];
   if (key === "photo_reuse_days") return String(value) as AiSettingsForm[K];
   if (key === "house_rules" || key === "signature" || key === "contact_line") return (value ?? "") as AiSettingsForm[K];
-  return value as AiSettingsForm[K];
+  // An answer without the image style (before Phase 25c) shows its default.
+  return (value ?? null) as AiSettingsForm[K];
 }
 
 /** The image settings' controls: a staged default shows the documented default. */
@@ -84,6 +103,7 @@ export function isChanged(view: AiSettings, edits: AiSettingsEdits, key: FormSet
   }
   if (edit === null) return !isDefault;
   if (key === "photo_reuse_days") return Number((edit as string).trim()) !== view.settings.photo_reuse_days || (edit as string).trim() === "";
+  if (key === "image_style") return edit !== (view.settings.image_style ?? AI_SETTING_DEFAULTS.image_style);
   return edit !== view.settings[key];
 }
 
@@ -143,6 +163,8 @@ export function settingsPayload(view: AiSettings, edits: AiSettingsEdits, keys: 
       body.photo_reuse_days = edits.photo_reuse_days === null ? null : Number((edits.photo_reuse_days ?? "").trim());
     } else if (key === "logo_on") {
       body.logo_on = edits.logo_on ?? null;
+    } else if (key === "image_style") {
+      body.image_style = edits.image_style ?? null;
     } else {
       body[key] = edits[key] ?? null;
     }
@@ -193,8 +215,38 @@ export function restrictedSuggestionText(restricted: AiSettings["restricted"]): 
   return words ? `Suggested for ${words} businesses` : "Suggested for this kind of business";
 }
 
+/**
+ * "Switched off by Ana Diaz on Nov 13, 2026." while restricted mode is off and someone switched it off (null
+ * otherwise). Only the account owner can, so without a name to show it reads "by the account owner" ("by your
+ * agency" for a client user): the names rule of `names.ts`.
+ */
+export function restrictedOffText(view: Pick<AiSettings, "settings" | "restricted">, viewer: { userId: string | null; clientUser: boolean }): string | null {
+  const { restricted } = view;
+  if (view.settings.restricted || !restricted.attested_at) return null;
+  const by = byActor({ name: restricted.attested_by_name, mine: isViewer(restricted.attested_by, viewer.userId), role: "owner" }, viewer);
+  return `Switched off${by} on ${formatDate(restricted.attested_at)}.`;
+}
+
+/** In the order the choice shows them: the default first. */
+export const LOGO_PLACEMENTS: readonly AiLogoPlacement[] = ["all_images", "ai_images", "off"];
+
 export const LOGO_PLACEMENT_COPY: Record<AiLogoPlacement, { label: string; hint: string }> = {
-  ai_images: { label: "AI images", hint: "Your logo goes on images the AI makes, not on your own photos." },
-  all_images: { label: "All images", hint: "Your logo goes on AI images and on your own photos." },
-  off: { label: "Off", hint: "No logo on post images." },
+  all_images: { label: "All pictures", hint: "Your logo goes on your own photos and on AI images, in the quietest corner." },
+  ai_images: { label: "AI images only", hint: "Your logo goes only on images the AI makes, not on your own photos." },
+  off: { label: "Off", hint: "No logo on post pictures." },
 };
+
+/** In the order the choice shows them: the default (and the safe choice) first. */
+export const IMAGE_STYLES: readonly AiImageStyleSetting[] = ["photo_logo", "designed"];
+
+export const IMAGE_STYLE_COPY: Record<AiImageStyleSetting, { label: string; hint: string }> = {
+  photo_logo: { label: "Photo with your logo", hint: "The picture as it is, with your logo in a quiet corner. The safe choice for Google." },
+  designed: { label: "Designed graphic", hint: "The picture with a short headline band in your logo's colours, with your logo in it." },
+};
+
+/**
+ * Next to "Designed graphic" (backend docs, API.md "Settings", `image_style`): Google's photo guidelines ask for
+ * pictures without added text.
+ */
+export const DESIGNED_IMAGE_NOTE =
+  "Google's photo guidelines ask for pictures without added text, so Google may reject some designed graphics. A photo with your logo is the safe choice.";

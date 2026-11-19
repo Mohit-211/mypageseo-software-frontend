@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { AlertCircle, CheckCircle2, Info, LoaderCircle } from "lucide-react";
 import { captureBillingOrder, isApiError, syncBilling } from "@/api";
-import { locationSetupPath, runLocationAction } from "@/lib/locations/location-actions";
+import { addOrBindLocation, bindSyncText } from "@/components/gbp-connect/bind-result";
+import { locationSetupPath } from "@/lib/locations/location-actions";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { takePendingLocationAction } from "@/lib/billing/pending-location-payment";
@@ -88,8 +90,11 @@ export function PaypalReturnNotice() {
       }
       setNotice({ tone: "working", title: `Payment received. Adding ${action.title}…` });
       try {
-        const locationId = await runLocationAction(action);
+        const { locationId, gbpSync } = await addOrBindLocation(action);
         await invalidateGbpQueries(queryClient);
+        // A location that was already set up: its first Google sync runs in the background (2026-11-17).
+        const synced = bindSyncText(action.title, gbpSync);
+        if (synced) toast.success(synced.title, { description: synced.description });
         navigate(locationSetupPath(locationId));
       } catch (err) {
         setNotice({

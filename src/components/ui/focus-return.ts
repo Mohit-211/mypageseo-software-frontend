@@ -1,4 +1,5 @@
 import { useRef, type FocusEvent } from "react";
+import { appPathname } from "@/lib/app-navigation";
 
 type AutoFocusHandler = (event: Event) => void;
 type FocusHandler = (event: FocusEvent<HTMLDivElement>) => void;
@@ -42,6 +43,10 @@ function pageHeading(): HTMLElement | null {
  * page changed while the dialog was open (a link inside it: the page's own focus handling wins), and
  * when focus has already moved somewhere on purpose (e.g. into another dialog). Pass the caller's
  * handlers in; spread the returned ones onto the Radix `Content`.
+ *
+ * The page is the router's (`appPathname`), not the browser's address: a Back that a leave question
+ * holds ("Discard your changes?", "Leave without saving?") moves the address until the router puts
+ * it back, and the question may open in between; after "Keep editing" or "Stay" the page is the same.
  */
 export function useFocusReturn({
   onOpenAutoFocus,
@@ -54,7 +59,7 @@ export function useFocusReturn({
 }) {
   const opened = useRef<{ opener: HTMLElement | null; pathname: string } | null>(null);
   const remember = (content: EventTarget | null, opener: HTMLElement | null) => {
-    opened.current = { opener, pathname: window.location.pathname };
+    opened.current = { opener, pathname: appPathname() };
     if (content instanceof Element) openers.set(content, opener);
   };
   return {
@@ -77,7 +82,7 @@ export function useFocusReturn({
       opened.current = null;
       if (event.defaultPrevented) return;
       const active = document.activeElement;
-      if ((from && from.pathname !== window.location.pathname) || (active && active !== document.body)) {
+      if ((from && from.pathname !== appPathname()) || (active && active !== document.body)) {
         // Leave focus where the new page or the next dialog put it (and keep Radix from moving it).
         event.preventDefault();
         return;

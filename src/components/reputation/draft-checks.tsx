@@ -28,7 +28,7 @@ import type { DraftCheckSeverity, DraftVerification, ReviewDraft } from "@/api";
 import { StatusBadge } from "@/components/layout/shared/status-badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { DisplayCheck } from "@/lib/reviews/draft-view";
-import { SEVERITY_COPY, VERIFICATION_COPY, checkDetailText, highlightSegments } from "@/lib/reviews/reply-checks";
+import { SEVERITY_COPY, VERIFICATION_COPY, checkDetailText, findingSourceLabel, highlightSegments } from "@/lib/reviews/reply-checks";
 import { cn } from "@/lib/utils";
 
 const SEVERITY_ICON: Record<DraftCheckSeverity, LucideIcon> = { hard: OctagonX, warn: TriangleAlert, regenerate: PencilLine };
@@ -113,12 +113,15 @@ export function DraftFindings({
         {checks.map((check, index) => {
           const Icon = SEVERITY_ICON[check.severity];
           const quote = check.span?.text?.trim();
+          // Phase 25b: the judge's failed gates (facts, Google's rules, privacy, the change asked for) say so.
+          const source = findingSourceLabel(check);
           return (
             <li key={`${check.rule}-${check.kind}-${check.span?.start ?? "all"}-${index}`} id={findingId?.(index)} className="flex min-w-0 gap-2">
               <Icon aria-hidden className={cn("mt-0.5 size-4 shrink-0", SEVERITY_ICON_TONE[check.severity])} />
               <div className="min-w-0 flex-1">
                 <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-xs">
                   <span className={cn("font-semibold", SEVERITY_TEXT_TONE[check.severity])}>{SEVERITY_COPY[check.severity].label}</span>
+                  {source ? <span className="text-muted-foreground">· {source}</span> : null}
                   {quote ? <span className="min-w-0 break-words font-medium text-foreground [overflow-wrap:anywhere]">“{quote}”</span> : null}
                   {check.atSend ? <span className="text-muted-foreground">· Found when sending</span> : null}
                 </p>

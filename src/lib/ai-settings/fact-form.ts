@@ -5,8 +5,9 @@
  * The backend checks every fact (400 `invalid_fact` with `issues`), so the checks here only spare a
  * round trip for what is certain: required fields, lengths, https links and the order of the dates.
  * Dates are `{ date: "YYYY-MM-DD", time: "HH:mm" | null }` in the location's time zone: they are
- * shown as given, never converted. Whether an end with a time has passed today is the backend's call
- * (only it knows the location's clock); `today` (the list's local date) is enough for the rest.
+ * shown as given, never converted. Since 2026-11-17 the list's `now { date, time }` is the location's
+ * clock when it was read, so an end that has passed (with no time: the end of that day) is caught here;
+ * the backend still has the last word at the boundary (`already_ended`).
  */
 import type { AiFact, AiFactDate, AiFactInput, AiFactKind, AiFactPatch, AiFactsList } from "@/api";
 
@@ -105,6 +106,16 @@ function minutes(date: string, time: string, endOfDay: boolean): number | null {
   return Date.UTC(year, month - 1, day) / 60_000 + hour * 60 + minute;
 }
 
+/**
+ * True when an end (in minutes, see `minutes`) is before the location's clock: `today` and, when known, `nowTime`.
+ * Without the time only an earlier day counts (the backend decides the last minutes of today).
+ */
+function endHasPassed(end: number, today: string, nowTime: string | null | undefined): boolean {
+  // Without the time, "now" is the start of today, so only an earlier day counts.
+  const now = minutes(today, nowTime && TIME.test(nowTime) ? nowTime : "", false);
+  return now !== null && end < now;
+}
+
 /** An https:// address with a host (the backend's own check is stricter about characters). */
 export function isHttpsUrl(value: string): boolean {
   if (!/^https:\/\//i.test(value) || /\s/.test(value)) return false;
@@ -119,10 +130,15 @@ export function isHttpsUrl(value: string): boolean {
 export type FactFormErrors = Partial<Record<FactField, string>>;
 
 /**
- * What to fix before saving. `checkEnd`: the end may not have passed (`today` is the location's
- * date), as the backend checks for new dates; off when editing a fact whose dates didn't change.
+ * What to fix before saving. `checkEnd`: the end may not have passed (`today` is the location's date,
+ * `nowTime` its time "HH:mm"), as the backend checks for new dates; off when editing a fact whose dates
+ * didn't change. An end with no time counts as the end of its day.
  */
-export function factFormErrors(kind: AiFactKind, form: FactForm, options: { today?: string | null; checkEnd?: boolean } = {}): FactFormErrors {
+export function factFormErrors(
+  kind: AiFactKind,
+  form: FactForm,
+  options: { today?: string | null; nowTime?: string | null; checkEnd?: boolean } = {},
+): FactFormErrors {
   const errors: FactFormErrors = {};
   const text = form.text.trim();
   if (kind === "fact" && !text) errors.text = "Write the fact.";
@@ -143,7 +159,7 @@ export function factFormErrors(kind: AiFactKind, form: FactForm, options: { toda
   if (!form.endDate) errors.end = "Add the end date.";
   else if (end === null) errors.end = "Pick a valid date and time.";
   else if (start !== null && end < start) errors.end = "The end must be after the start.";
-  else if (options.checkEnd && options.today && form.endDate < options.today) errors.end = "This date has passed. Pick a later end.";
+  else if (options.checkEnd && options.today && endHasPassed(end, options.today, options.nowTime)) errors.end = "This date has passed. Pick a later end.";
 
   if (kind === "offer") {
     if (form.coupon_code.trim().length > FACT_LIMITS.coupon_code) errors.coupon_code = `Keep it to ${FACT_LIMITS.coupon_code} characters.`;
@@ -253,14 +269,32 @@ export function factHeadline(fact: AiFact): string {
   return (isDatedKind(fact.kind) ? fact.title : fact.text)?.trim() || FACT_KIND_COPY[fact.kind].label;
 }
 
+/**
+ * Why the AI can't use an offer (2026-11-17, `offer_refusal`): the business's categories, or the regulated word
+ * the offer's own text names ("Offers can't name cocktails (alcohol)"). Null when it may.
+ */
+export function offerRefusalText(refusal: AiFact["offer_refusal"]): string | null {
+  if (!refusal) return null;
+  if (refusal.reason === "offer_not_allowed_for_lodging") return "Google doesn't allow offers for hotels and other lodging";
+  if (refusal.term) return `Offers can't name ${refusal.term}${refusal.sector ? ` (${refusal.sector})` : ""}`;
+  return refusal.sector ? `Google restricts offers for ${refusal.sector}` : "Google restricts offers for regulated products";
+}
+
 /** Why the AI doesn't see a fact (`in_fact_sheet: false`), in a few words; null when it does. */
 export function hiddenReason(fact: AiFact, offers: AiFactsList["offers"] | null | undefined): string | null {
   if (fact.in_fact_sheet) return null;
   if (!fact.active) return "Switched off";
   if (fact.timing === "ended") return "It has ended";
+  const refusal = offerRefusalText(fact.offer_refusal);
+  if (refusal) return refusal;
   if (fact.kind === "offer" && offers && !offers.allowed) return "Offers aren't allowed for this business";
   if (fact.kind === "offer") return "Google doesn't allow this offer";
   return null;
+}
+
+/** Phase 25b: a fact made from a confirmed business brief suggestion (`source_ref: "brief:<itemId>"`). */
+export function isFromBrief(fact: Pick<AiFact, "source_ref">): boolean {
+  return typeof fact.source_ref === "string" && fact.source_ref.startsWith("brief:");
 }
 
 /** Why "Add an offer" is left out, from `offers` (null while offers are allowed). */

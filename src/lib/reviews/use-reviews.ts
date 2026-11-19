@@ -1,6 +1,7 @@
 import { queryOptions, useQuery } from "@tanstack/react-query";
-import { getReviewInsights, getReviews, getReviewsSummary, isApiError, type ReviewsQuery } from "@/api";
+import { getAutoReply, getReviewInsights, getReviews, getReviewsSummary, isApiError, type ReplyCredits, type ReviewsQuery, type ReviewsSummary } from "@/api";
 import { keepPreviousForLocation } from "@/lib/query-placeholder";
+import { DEFAULT_BLOCK_SIZE, draftBatchSize } from "./reply-credits";
 import { reviewMomentum } from "./review-metrics";
 
 export const reviewsKey = (locationId: string) => ["locations", locationId, "reviews"] as const;
@@ -17,6 +18,47 @@ export const reviewsSummaryQuery = (locationId: string) =>
 export function useReviewsSummary(locationId: string) {
   return useQuery(reviewsSummaryQuery(locationId));
 }
+
+/** What a location's AI reply buttons need from the summary: its credits and how many reviews one request may carry. */
+export type ReplyAiLimits = {
+  /** `ai.credits` (2026-11-17), null on an older server or before the summary loads. */
+  credits: ReplyCredits | null;
+  /** `ai.draft_all_max`: the most ids per drafts or Analyze request (6 by default). */
+  batchSize: number;
+  /** `credits.block_size` (10). */
+  blockSize: number;
+};
+
+const selectLimits = (summary: ReviewsSummary): ReplyAiLimits => ({
+  credits: summary.ai?.credits ?? null,
+  batchSize: draftBatchSize(summary),
+  blockSize: summary.ai?.credits?.block_size ?? DEFAULT_BLOCK_SIZE,
+});
+
+const NO_LIMITS: ReplyAiLimits = { credits: null, batchSize: draftBatchSize(null), blockSize: DEFAULT_BLOCK_SIZE };
+
+/** The location's AI reply credits and request size, from the shared summary (cards, the selection bar, Draft all). */
+export function useReplyAiLimits(locationId: string): ReplyAiLimits {
+  const query = useQuery({ ...reviewsSummaryQuery(locationId), select: selectLimits });
+  return query.data ?? NO_LIMITS;
+}
+
+/**
+ * `GET …/reviews/auto-reply` (Phase 25b), read for its `feature` only: the server's switch for automatic replies
+ * (show anything about them only when it is `on`; it stays `switched_off` until the grading round). A switch changes
+ * with a release, not with a review, so this read has its own root outside `reviewsKey` and isn't repeated after
+ * every draft or send. The settings themselves (AI Settings' card, which changes them) are read with
+ * `autoReplyQuery` in `src/lib/ai-settings/use-auto-reply.ts`, whose key sits under the reviews.
+ */
+export const autoReplyFeatureKey = (locationId: string) => ["locations", locationId, "auto-reply-feature"] as const;
+
+export const autoReplyFeatureQuery = (locationId: string) =>
+  queryOptions({
+    queryKey: autoReplyFeatureKey(locationId),
+    queryFn: ({ signal }) => getAutoReply(locationId, signal),
+    retry,
+    staleTime: 5 * 60_000,
+  });
 
 export function useReviewsList(locationId: string, query: ReviewsQuery, enabled = true) {
   return useQuery({

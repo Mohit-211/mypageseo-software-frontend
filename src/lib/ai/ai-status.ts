@@ -16,7 +16,9 @@
  * States:
  * - `checking`: a location's summary is loading for the first time;
  * - `ready`: AI is on and under today's budget;
- * - `paused`: today's AI budget is used up; `resumesAt` is the local time of the next 00:00 UTC;
+ * - `paused`: today's AI budget is used up (everyone's, or since Phase 25b this organization's share of it:
+ *   `ai_org_budget_reached`, which the summary's `paused_today` also reports); `resumesAt` is the local time of
+ *   the next 00:00 UTC;
  * - `off`: AI isn't switched on yet (503 `ai_not_configured`). Show "AI is almost ready", keep the
  *   feature visible and disabled with `reason`;
  * - `unknown`: no location, or the summary failed (e.g. 403 `feature_not_included` on a plan without
@@ -25,7 +27,8 @@
  * `canRun` = the user may write (`useCanEdit()`: not a client_user) && the organization isn't read-only
  * or suspended (`useOrganizationUsage()` + `useAccountRestriction()`) && the state is ready or unknown.
  *
- * Phase 25b adds the same `ai` block to `GET posts/summary`; feed it to `computeAiStatus` when it ships.
+ * `GET posts/summary` carries the same `ai` block (`configured`, `paused_today`, `token_costs`). It isn't read here
+ * (it would add a request on pages that don't load it); it could stand in when the reviews summary can't answer.
  */
 import { useQuery } from "@tanstack/react-query";
 import type { ReviewsSummary } from "@/api";

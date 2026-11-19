@@ -30,7 +30,7 @@ const IDLE: SectionStatus = { savedAt: null, error: null, showErrors: false };
 
 const SAVED_TOAST: Record<SettingsSection, string> = {
   replies: "Reply settings saved. New AI replies follow them.",
-  images: "Image settings saved. AI posts use them from a coming update.",
+  images: "Image settings saved. New AI post pictures follow them.",
 };
 
 export type SettingsSectionState = {

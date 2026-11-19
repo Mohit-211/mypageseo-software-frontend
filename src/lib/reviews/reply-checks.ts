@@ -167,6 +167,26 @@ function isCheck(value: unknown): value is DraftCheck {
   return typeof check.severity === "string" && typeof check.rule === "string" && (typeof check.detail === "string" || check.detail == null);
 }
 
+/**
+ * Which check found it, when that helps reading it (Phase 25b): the judge's failed gates are `verifier`
+ * warnings of kind `accuracy`, `policy`, `privacy` or (after "Change it") `request`. Null for the other rules,
+ * whose `detail` says it all.
+ */
+export const VERIFIER_KIND_LABEL: Record<string, string> = {
+  accuracy: "Double-check: facts",
+  policy: "Double-check: Google's rules",
+  privacy: "Double-check: privacy",
+  request: "Double-check: your change",
+  unavailable: "Not double-checked",
+};
+
+export function findingSourceLabel(check: Pick<DraftCheck, "rule" | "kind">): string | null {
+  if (check.rule === "verifier") return VERIFIER_KIND_LABEL[check.kind] ?? "Double-check";
+  if (check.rule === "moderation") return "Content check";
+  if (check.rule === "restricted" && check.kind === "no_public_reply") return "Law firm";
+  return null;
+}
+
 /** The `findings` of a 422 `checks_failed` / 409 `confirm_warnings_required`. */
 export function findingsFromError(error: unknown): DraftCheck[] {
   const findings = apiErrorData(error).findings;
@@ -217,6 +237,8 @@ export type SendBlock =
   | { kind: "checks_failed"; findings: DraftCheck[] }
   | { kind: "confirm_warnings_required"; findings: DraftCheck[] }
   | { kind: "reply_changed_on_google"; googleReply: GoogleReply | null; review: Review | null }
+  /** 2026-11-17 (G3): the draft was written before the reply now on Google: save it again (an update) or delete it. */
+  | { kind: "draft_predates_reply"; googleReply: GoogleReply | null }
   | { kind: "reply_authorization_required"; authorization: ReplyAuthorization | null };
 
 /** A single-review send the checks or Google held back, as data the card can show; null for other errors. */
@@ -229,6 +251,8 @@ export function sendBlockFromError(error: unknown): SendBlock | null {
       return { kind: "confirm_warnings_required", findings: findingsFromError(error) };
     case "reply_changed_on_google":
       return { kind: "reply_changed_on_google", googleReply: googleReplyFromError(error), review: reviewFromError(error) };
+    case "draft_predates_reply":
+      return { kind: "draft_predates_reply", googleReply: googleReplyFromError(error) };
     case "reply_authorization_required":
       return { kind: "reply_authorization_required", authorization: replyAuthorizationFromError(error) };
     default:

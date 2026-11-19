@@ -96,6 +96,11 @@ export type GbpBindResult = {
   /** Service-area business: ask for a city or ZIP, then `PUT locations/:id/center`. */
   center_needed: boolean;
   binding: unknown;
+  /**
+   * 2026-11-17: binding a location already set up queues its first GBP sync ("Loading the profile and reviews in
+   * the background"): the sync, or `{ error }` when it couldn't be queued (the bind still succeeded); null during setup.
+   */
+  gbp_sync?: { sync_id: string; status: string; existing: boolean } | { error: string } | null;
 };
 
 /** `POST gbp/disconnect`. */

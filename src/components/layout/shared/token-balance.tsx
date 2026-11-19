@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAccess } from "@/hooks/use-access";
-import { AI_COST_ITEMS, formatTokens, resolveAiCosts, type AiCostItemId } from "@/lib/ai/ai-costs";
+import { AI_COST_ITEMS, formatBlockPrice, resolveAiCosts, type AiCostItemId } from "@/lib/ai/ai-costs";
 import { useOptionalLocationRoute } from "@/lib/locations/location-route-context";
 import { locationPath, pickNavLocationId } from "@/lib/mypageseo/section-links";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
@@ -28,7 +28,10 @@ const TOKEN_BALANCE_QUERY_KEY = ["billing", "tokens"] as const;
 /** Everything that shows a balance (this pill, the billing summary behind AI Studio and AI costs, the ledger). */
 const BILLING_QUERY_PREFIX = ["billing"] as const;
 
-/** The AI prices worth a line in the popover (the full list is on AI Studio). */
+/**
+ * The AI prices worth a line in the popover, in the shared list's order and words (`AI_COST_ITEMS`; the full list
+ * is on AI Studio). Review replies read "1 token = 10 replies", from the plan's price and block size.
+ */
 const POPOVER_AI_ITEMS: readonly AiCostItemId[] = ["post_draft", "post_image", "reply_drafts_per_10", "insights", "keyword_suggestions"];
 const AI_ROWS = AI_COST_ITEMS.filter((item) => POPOVER_AI_ITEMS.includes(item.id));
 
@@ -46,6 +49,7 @@ function useTokenBalance(enabled: boolean) {
         balance: billing.tokens.balance,
         cost: billing.tokens.cost_per_refresh,
         aiCosts: billing.tokens.ai_costs ?? {},
+        blockSize: billing.tokens.ai_credits?.block_size,
         lastTopUp,
         monthlyGrant: billing.tokens.monthly_grant ?? 0,
         nextGrantAt: billing.tokens.next_grant_at ?? null,
@@ -81,7 +85,7 @@ export function TokenBalance() {
   if (!enabled) return null;
   if (balance.isPending) return placeholder;
   if (!balance.data) return null;
-  const { balance: tokens, cost, aiCosts, lastTopUp, monthlyGrant, nextGrantAt } = balance.data;
+  const { balance: tokens, cost, aiCosts, blockSize, lastTopUp, monthlyGrant, nextGrantAt } = balance.data;
   // With a monthly grant the bar is "of this month's grant"; otherwise it compares with the last
   // top-up (or the balance itself when it is higher, e.g. after several top-ups).
   const scale = monthlyGrant > 0 ? Math.max(monthlyGrant, tokens) : Math.max(tokens, lastTopUp?.balance_after ?? 0, 1);
@@ -160,8 +164,7 @@ export function TokenBalance() {
             </CostGroup>
             <CostGroup icon={Sparkles} title="AI" ai>
               {AI_ROWS.map((item) => (
-                // No unit column here, so the batch size stays in the label.
-                <CostRow key={item.id} label={item.id === "reply_drafts_per_10" ? `${item.label}, per 10` : item.label} value={formatTokens(prices[item.id])} />
+                <CostRow key={item.id} label={item.short ?? item.label} value={formatBlockPrice(item, prices, blockSize)} />
               ))}
             </CostGroup>
             {pricesLocationId ? (

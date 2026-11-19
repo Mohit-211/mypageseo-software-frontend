@@ -6,8 +6,10 @@
  *
  * Every change writes the answer into the cache, so each section updates at once; settings are then
  * read again, since two saves answering out of order could otherwise leave the older answer on screen.
+ * A change that can move the readiness checklist (the signature, a fact) reads it again too.
  */
 import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { invalidateAiReadiness } from "@/lib/ai-readiness/use-readiness";
 import {
   createAiFact,
   deleteAiFact,
@@ -76,8 +78,9 @@ export function useUpdateAiSettings(locationId: string) {
     onSuccess: (view) => {
       if (isSettings(view)) queryClient.setQueryData(aiSettingsKey(locationId), view);
     },
-    onSettled: () => {
+    onSettled: (_view, _err, update) => {
       void queryClient.invalidateQueries({ queryKey: aiSettingsKey(locationId) });
+      if ("signature" in update) invalidateAiReadiness(queryClient, locationId);
     },
   });
 }
@@ -94,7 +97,11 @@ function withFact(list: AiFactsList, fact: AiFact): AiFactsList {
 export function useAiFactMutations(locationId: string) {
   const queryClient = useQueryClient();
   const key = aiFactsKey(locationId);
-  const put = (fact: AiFact) => queryClient.setQueryData<AiFactsList>(key, (list) => (list ? withFact(list, fact) : list));
+  // The owner's active facts are a readiness check; a fact confirmed from the business brief can be one too.
+  const put = (fact: AiFact) => {
+    queryClient.setQueryData<AiFactsList>(key, (list) => (list ? withFact(list, fact) : list));
+    invalidateAiReadiness(queryClient, locationId);
+  };
   // A fact deleted elsewhere: read the list again so it disappears here too.
   const onError = (err: unknown) => {
     if (isFactGone(err)) void queryClient.invalidateQueries({ queryKey: key });
@@ -108,10 +115,12 @@ export function useAiFactMutations(locationId: string) {
   });
   const remove = useMutation({
     mutationFn: (factId: string) => deleteAiFact(locationId, factId),
-    onSuccess: (_answer, factId) =>
+    onSuccess: (_answer, factId) => {
       queryClient.setQueryData<AiFactsList>(key, (list) =>
         list ? { ...list, facts: list.facts.filter((entry) => entry.fact_id !== factId), total: Math.max(0, list.total - 1) } : list,
-      ),
+      );
+      invalidateAiReadiness(queryClient, locationId);
+    },
     onError,
   });
 

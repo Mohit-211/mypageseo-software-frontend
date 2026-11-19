@@ -4,6 +4,7 @@ import type { AiSettings } from "@/api";
 import { FormSaveBar } from "@/components/layout/shared/form-fields";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { shortBusinessName } from "@/lib/ai-settings/names";
 import {
   AI_SETTING_LIMITS,
   CONTACT_LINE_SOURCE_COPY,
@@ -77,7 +78,7 @@ export function ReplySettingsSection({
               id="ai-signature"
               label="Signature"
               max={limits.signature}
-              placeholder={`e.g. The team at ${shortName(locationName)}`}
+              placeholder={`e.g. The team at ${shortBusinessName(locationName)}`}
               hint={
                 <>
                   <p>How replies are signed.</p>
@@ -140,11 +141,6 @@ export function ReplySettingsSection({
       ) : null}
     </div>
   );
-}
-
-/** "Harbor Dental" for "Harbor Dental – Downtown Toronto": a placeholder that fits the field. */
-function shortName(name: string): string {
-  return name.split(/\s+[–—-]\s+/)[0]?.trim() || name;
 }
 
 /** One text setting: its label line, the field (or its value, read-only), the hint or error, and the count. */

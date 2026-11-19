@@ -3,7 +3,6 @@ import { skipToken, useMutation, useQueries, useQueryClient } from "@tanstack/re
 import { toast } from "sonner";
 import { LoaderCircle, Pin, Send, Sparkles, X } from "lucide-react";
 import { analyzeReviews, generateReplyDrafts, sendReplies, type Review, type ReviewsQuery, type SendRepliesResponse } from "@/api";
-import { AiCostChip } from "@/components/ai/ai-cost-chip";
 import { TablePagination } from "@/components/layout/shared/data-table";
 import { ErrorState, ListSkeleton } from "@/components/layout/shared/feedback/states";
 import { InfoTip } from "@/components/layout/shared/info-tip";
@@ -11,30 +10,62 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useCanEdit } from "@/hooks/use-access";
 import { useNow } from "@/hooks/use-now";
-import { estimateAnalysisCost, estimateReplyDraftCost, formatTokenCount } from "@/lib/ai/ai-costs";
 import { noteAiSuccess } from "@/lib/ai/ai-signal";
 import type { AiStatus } from "@/lib/ai/ai-status";
-import { useToastAiError } from "@/lib/ai/toast-ai-error";
+import { canAnalyzeReview } from "@/lib/reviews/analysis-view";
+import {
+  draftRunClean,
+  draftRunTitle,
+  runInChunks,
+  summarizeDraftRun,
+  type ChunkProgress,
+  type DraftRunKind,
+  type DraftRunResult,
+} from "@/lib/reviews/draft-results";
 import { replySettled } from "@/lib/reviews/draft-view";
 import { sendBlockedByAuthorization } from "@/lib/reviews/reply-authorization-copy";
-import { putReviewInCache, putSendResultsInCache } from "@/lib/reviews/review-cache";
-import { reviewErrorMessage } from "@/lib/reviews/review-errors";
+import { creditCost } from "@/lib/reviews/reply-credits";
+import { putReviewInCache, putSendResultsInCache, setCachedCredits } from "@/lib/reviews/review-cache";
+import { reviewErrorMessage, useToastReplyError } from "@/lib/reviews/review-errors";
 import { focusReviewCard, reviewLookupKey, useSpotlightReview } from "@/lib/reviews/review-spotlight";
-import { SENT_REPLIES_NOTE, noteReplyAuthorizationRequired, singleSendResult, summarizeSend, type SendSummary } from "@/lib/reviews/send-results";
+import {
+  SENT_REPLIES_NOTE,
+  noteReplyAuthorizationRequired,
+  sentInfoFrom,
+  singleSendResult,
+  summarizeSend,
+  type SendSummary,
+  type SentReviewInfo,
+} from "@/lib/reviews/send-results";
 import { useReplyAuthorization } from "@/lib/reviews/use-reply-authorization";
-import { reviewsKey, useReviewsList } from "@/lib/reviews/use-reviews";
+import { reviewsKey, useReplyAiLimits, useReviewsList } from "@/lib/reviews/use-reviews";
 import { cn } from "@/lib/utils";
+import { AiWorkProgress } from "./ai-work-progress";
 import { BulkSendResults } from "./bulk-send-results";
+import { DraftResultsPanel } from "./draft-results";
+import { ReplyCostChip } from "./reply-cost-chip";
 import { ReviewCard } from "./review-card";
 
 export const REVIEWS_PAGE_SIZE = 20;
 
-/** Reviews per AI request (`POST reviews/drafts` and `/analyze` take 1–20 ids). */
-const MAX_AI_BATCH = 20;
+type BulkKind = DraftRunKind | "send";
 
-type BulkKind = "drafts" | "analyze" | "send";
+type BulkRequest = {
+  kind: BulkKind;
+  ids: string[];
+  /** The reviews asked about, for names and ratings in the results. */
+  named?: readonly SentReviewInfo[];
+};
 
-type BulkOutcome = { kind: "drafts" | "analyze"; title: string; description?: string } | { kind: "send"; summary: SendSummary };
+type BulkOutcome = { kind: DraftRunKind; result: DraftRunResult } | { kind: "send"; summary: SendSummary };
+
+/** A drafts request's answer, or Analyze's, as one chunk of a run. */
+const chunkOf = (answer: { generated?: number; analyzed?: number; reused: number; tokens_spent: number; skipped?: { review_id: string; reason: string }[] }) => ({
+  done: answer.generated ?? answer.analyzed ?? 0,
+  reused: answer.reused,
+  tokensSpent: answer.tokens_spent,
+  skipped: answer.skipped ?? [],
+});
 
 const EMPTY_SELECTION: ReadonlySet<string> = new Set();
 
@@ -71,6 +102,11 @@ export type ReviewsFeedProps = {
   unansweredOnly?: boolean;
   /** A list to read only (reviews deleted on Google): no selection and no bulk actions. */
   readOnly?: boolean;
+  /**
+   * Selection and bulk actions (default true). Off for a list whose reviews go one at a time, such as the
+   * updates of a reply on Google (2026-11-17): their cards still edit and send.
+   */
+  bulk?: boolean;
   /** `?review=<id>`: scrolled to when it's on this page, else shown pinned above the list. */
   spotlight?: string | null;
   /** Opens a review (`?review=<id>`) or, with null, closes the pinned one. */
@@ -80,8 +116,14 @@ export type ReviewsFeedProps = {
 
 /**
  * A page of review cards with bulk actions: tick reviews to draft replies with AI, analyze them or
- * send their drafts (each AI button shows its real price), and page through the rest. The order and
- * the filters come from the page (server-side, newest first by default).
+ * send their drafts (each AI button shows what it uses: the location's AI replies left, or the tokens
+ * for a new block of 10), and page through the rest. The order and the filters come from the page
+ * (server-side, newest first by default).
+ *
+ * Drafting and analyzing several (Phase 25b, 2026-11-17): a request takes at most `ai.draft_all_max`
+ * reviews (6 by default), so a bigger selection goes in batches, one after the other, with one progress
+ * bar. Reviews the AI skipped (not written in time, AI paused, changed meanwhile…) stay in a results
+ * panel with "Draft them again". A send of several that Google was too slow for offers "Send the rest".
  *
  * Sending several (Phase 25a) checks every text again: what wasn't sent, and why, stays in a results
  * panel above the list, each with "Open it". An agency without its client's reply authorization can't
@@ -103,12 +145,13 @@ export function ReviewsFeed({
   caption,
   unansweredOnly = false,
   readOnly = false,
+  bulk: bulkActions = true,
   spotlight = null,
   onSpotlightChange,
   className,
 }: ReviewsFeedProps) {
   const queryClient = useQueryClient();
-  const toastAiError = useToastAiError();
+  const toastReplyError = useToastReplyError();
   const canEdit = useCanEdit();
   const now = useNow(60_000);
   const topRef = useRef<HTMLDivElement>(null);
@@ -116,7 +159,8 @@ export function ReviewsFeed({
   const selectAllRef = useRef<HTMLButtonElement>(null);
   const list = useReviewsList(locationId, { ...query, page, limit: REVIEWS_PAGE_SIZE });
   const authorization = useReplyAuthorization(locationId);
-  const selectable = canEdit && !readOnly;
+  const limits = useReplyAiLimits(locationId);
+  const selectable = canEdit && !readOnly && bulkActions;
 
   // The selection belongs to one page of one filter: a new filter or page starts empty (no effect needed).
   const scope = JSON.stringify([query, page]);
@@ -126,6 +170,11 @@ export function ReviewsFeed({
   // The last "Send selected" that held something back, until dismissed (one location's).
   const [results, setResults] = useState<{ locationId: string; summary: SendSummary } | null>(null);
   const ownResults = results?.locationId === locationId ? results.summary : null;
+  // The last "Draft" / "Analyze" of several that left reviews undone, until dismissed (one location's).
+  const [draftResults, setDraftResults] = useState<{ locationId: string; result: DraftRunResult; stoppedText: string | null } | null>(null);
+  const ownDraftResults = draftResults?.locationId === locationId ? draftResults : null;
+  // The batches of a running "Draft" / "Analyze" (one progress bar for all of them).
+  const [progress, setProgress] = useState<{ kind: DraftRunKind; value: ChunkProgress } | null>(null);
 
   // The card that had focus, and where it stood: when the list leaves it out (sent, its draft
   // discarded…), focus goes to the card now in its place rather than falling to the page. A card
@@ -202,12 +251,17 @@ export function ReviewsFeed({
   }, [shownIds]);
 
   const chosen = selectable ? reviews.filter((review) => selected.has(review.review_id)) : [];
-  const eligible = chosen.filter((review) => review.ai_reply_eligible).slice(0, MAX_AI_BATCH);
-  const analysable = chosen.filter((review) => review.comment?.trim()).slice(0, MAX_AI_BATCH);
+  // Every eligible review goes, `ai.draft_all_max` per request, one request after another.
+  const eligible = chosen.filter((review) => review.ai_reply_eligible);
+  // Only reviews without a current analysis v2 (one that is current is reused for free).
+  const analysable = chosen.filter((review) => canAnalyzeReview(review));
   const withDrafts = chosen.filter((review) => review.draft && !LIVE_REPLY.has(review.reply_state) && !review.deleted_on_google_at);
-  const draftCost = estimateReplyDraftCost(eligible, ai.costs.reply_drafts_per_10);
-  const analysisCost = estimateAnalysisCost(analysable, ai.costs.analysis_per_10);
-  const balance = ai.balance === undefined ? {} : { balance: ai.balance };
+  // 2026-11-17: a draft uses one of the location's AI replies; a current AI draft, or one a person wrote or
+  // edited, comes back as it is (free) unless redrafted.
+  const toDraft = eligible.filter((review) => !review.draft || (review.draft.stale && review.draft.source === "ai" && !review.draft.edited)).length;
+  const draftCost = creditCost(Math.max(1, toDraft), limits.credits, ai.costs.reply_drafts_per_10);
+  const analysisCost = creditCost(Math.max(1, analysable.length), limits.credits, ai.costs.analysis_per_10, "analyses");
+  const batches = (count: number) => Math.ceil(count / Math.max(1, limits.batchSize));
   // A read-only or suspended account: sending is refused too (`POST reviews/send` needs billing).
   const accountBlocked = ai.blockedBy === "subscription" || ai.blockedBy === "suspended";
   const sendBlockedReason = accountBlocked
@@ -237,26 +291,27 @@ export function ReviewsFeed({
   };
 
   const bulk = useMutation({
-    mutationFn: async ({ kind, ids, sent }: { kind: BulkKind; ids: string[]; sent?: Review[] }): Promise<BulkOutcome> => {
+    mutationFn: async ({ kind, ids, named = [] }: BulkRequest): Promise<BulkOutcome> => {
       // Each answer goes into the cache at once: a card kept on screen, or opened above the list, shows it without a lookup.
-      if (kind === "drafts") {
-        const result = await generateReplyDrafts(locationId, ids);
-        for (const item of result.drafts ?? []) putReviewInCache(queryClient, locationId, item);
-        const parts = [result.reused ? `${result.reused} reused` : "", result.skipped.length ? `${result.skipped.length} skipped` : ""].filter(Boolean);
-        return {
-          kind,
-          title: `${result.generated} ${result.generated === 1 ? "reply" : "replies"} drafted${parts.length ? ` (${parts.join(", ")})` : ""}`,
-          description: `Check them before sending. ${formatTokenCount(result.tokens_spent)} used.`,
-        };
-      }
-      if (kind === "analyze") {
-        const result = await analyzeReviews(locationId, ids);
-        for (const item of result.reviews ?? []) putReviewInCache(queryClient, locationId, item);
-        return {
-          kind,
-          title: `${result.analyzed} ${result.analyzed === 1 ? "review" : "reviews"} analyzed`,
-          description: `${result.reused ? `${result.reused} already had a current analysis. ` : ""}${formatTokenCount(result.tokens_spent)} used.`,
-        };
+      if (kind === "drafts" || kind === "analyze") {
+        const run = await runInChunks(
+          ids,
+          limits.batchSize,
+          async (part) => {
+            if (kind === "drafts") {
+              const answer = await generateReplyDrafts(locationId, part);
+              for (const item of answer.drafts ?? []) putReviewInCache(queryClient, locationId, item);
+              setCachedCredits(queryClient, locationId, answer);
+              return chunkOf(answer);
+            }
+            const answer = await analyzeReviews(locationId, part);
+            for (const item of answer.reviews ?? []) putReviewInCache(queryClient, locationId, item);
+            setCachedCredits(queryClient, locationId, answer);
+            return chunkOf(answer);
+          },
+          (value) => setProgress({ kind, value }),
+        );
+        return { kind, result: summarizeDraftRun(kind, ids, run.answers, named, run.stopped, run.notTried) };
       }
       let result: SendRepliesResponse;
       try {
@@ -268,16 +323,30 @@ export function ReviewsFeed({
         result = { results: [single], sent: 0, failed: 0 };
       }
       putSendResultsInCache(queryClient, locationId, result.results);
-      return { kind, summary: summarizeSend(result, sent ?? []) };
+      return { kind, summary: summarizeSend(result, named) };
     },
     onMutate: ({ kind }) => {
       if (kind === "send") setResults(null);
+      else setDraftResults(null);
     },
     onSuccess: (outcome) => {
       setSelected(EMPTY_SELECTION);
       if (outcome.kind !== "send") {
-        noteAiSuccess();
-        toast.success(outcome.title, outcome.description ? { description: outcome.description } : undefined);
+        const result = outcome.result;
+        if (result.done > 0 || result.reused > 0) noteAiSuccess();
+        if (draftRunClean(result)) {
+          toast.success(draftRunTitle(result), result.kind === "drafts" ? { description: "Check them before sending." } : undefined);
+          return;
+        }
+        // Something was skipped, or a later batch failed: the panel says what and why (it takes focus).
+        setDraftResults({
+          locationId,
+          result,
+          // A 402 part way: the panel adds "Buy tokens" (or whom to ask) from `result.stopped`.
+          stoppedText: result.stopped
+            ? reviewErrorMessage(result.stopped, "The rest couldn't be done. Try again in a moment.", { blockSize: limits.blockSize }).message
+            : null,
+        });
         return;
       }
       const summary = outcome.summary;
@@ -288,18 +357,34 @@ export function ReviewsFeed({
       // Something was held back: the panel says what and why (it takes focus).
       setResults({ locationId, summary });
     },
-    onError: (err, { kind }) => {
-      if (kind === "send") {
+    onError: (err, request) => {
+      if (request.kind === "send") {
         // An agency without its client's authorization: the page's banner says what to do.
         if (noteReplyAuthorizationRequired(queryClient, locationId, err)) return;
         toast.error(reviewErrorMessage(err, "The replies couldn't be sent.").message);
-      } else toastAiError(err, { fallback: kind === "drafts" ? "The replies couldn't be drafted" : "The reviews couldn't be analyzed" });
+        return;
+      }
+      // Nothing was done: the 402 says how many replies are left and needed; a 502 that nothing was used.
+      toastReplyError(err, {
+        fallback: request.kind === "drafts" ? "The replies couldn't be drafted" : "The reviews couldn't be analyzed",
+        blockSize: limits.blockSize,
+        onRetry: () => bulk.mutate(request),
+      });
     },
     onSettled: () => {
+      setProgress(null);
       void queryClient.invalidateQueries({ queryKey: reviewsKey(locationId) });
       void queryClient.invalidateQueries({ queryKey: ["billing"] });
     },
   });
+
+  /** "Draft them again" / "Analyze them again" from the results panel, with the names it showed. */
+  const retryRun = (result: DraftRunResult, ids: string[]) => {
+    const named = result.groups.flatMap((group) =>
+      group.items.map((item) => ({ review_id: item.reviewId, reviewer: { display_name: item.reviewer, is_anonymous: item.reviewer === "Anonymous" }, rating: item.rating })),
+    );
+    bulk.mutate({ kind: result.kind, ids, named });
+  };
 
   const toggle = (id: string, checked: boolean) => {
     const next = new Set(selected);
@@ -333,8 +418,39 @@ export function ReviewsFeed({
     setResults(null);
   };
 
-  // What a send held back, and the review opened from it: shown whatever this view holds.
-  const resultsPanel = ownResults ? <BulkSendResults summary={ownResults} onOpenReview={openReview} onDismiss={closeResults} /> : null;
+  const sendingRest = bulk.isPending && bulk.variables?.kind === "send";
+  const draftingAgain = bulk.isPending && bulk.variables?.kind !== "send";
+  // What a send held back, what a draft left undone, and the review opened from them: shown whatever this view holds.
+  const resultsPanel = (
+    <>
+      {ownResults ? (
+        <BulkSendResults
+          summary={ownResults}
+          onOpenReview={openReview}
+          onSendRest={
+            sendBlockedReason === null
+              ? (ids) => bulk.mutate({ kind: "send", ids, named: sentInfoFrom(ownResults) })
+              : undefined
+          }
+          sendingRest={sendingRest}
+          onDismiss={closeResults}
+        />
+      ) : null}
+      {ownDraftResults ? (
+        <DraftResultsPanel
+          result={ownDraftResults.result}
+          stoppedText={ownDraftResults.stoppedText}
+          onRetry={ai.canRun ? (ids) => retryRun(ownDraftResults.result, ids) : undefined}
+          retrying={draftingAgain}
+          onOpenReview={openReview}
+          onDismiss={() => {
+            closeResults();
+            setDraftResults(null);
+          }}
+        />
+      ) : null}
+    </>
+  );
   const pinnedCard =
     spotlight !== null && listed && !inList ? (
       <section aria-label="The review you opened" className="space-y-2 rounded-xl border border-primary/25 bg-brand-tint/50 p-2 sm:p-3">
@@ -420,41 +536,53 @@ export function ReviewsFeed({
             variant="ai"
             disabled={busy || !ai.canRun || eligible.length === 0}
             title={!ai.canRun ? ai.reason : eligible.length === 0 ? "AI drafts replies to reviews without a reply that have no suspicious indicators." : undefined}
-            onClick={() => bulk.mutate({ kind: "drafts", ids: eligible.map((review) => review.review_id) })}
+            onClick={() => bulk.mutate({ kind: "drafts", ids: eligible.map((review) => review.review_id), named: eligible })}
           >
             {busyKind === "drafts" ? <LoaderCircle aria-hidden className="animate-spin" /> : <Sparkles aria-hidden />}
             Draft {eligible.length} {eligible.length === 1 ? "reply" : "replies"}
-            {eligible.length > 0 ? <AiCostChip tokens={draftCost} variant="inverse" /> : null}
+            {/* Reviews whose draft is current come back as they are, free: no price when that's all of them. */}
+            {toDraft > 0 ? <ReplyCostChip cost={draftCost} variant="inverse" /> : null}
           </Button>
           <Button
             size="sm"
             variant="outline"
             className="border-ai/30 text-ai hover:border-ai/50 hover:bg-ai-surface hover:text-ai-hover"
             disabled={busy || !ai.canRun || analysable.length === 0}
-            title={!ai.canRun ? ai.reason : analysable.length === 0 ? "Only reviews with text can be analyzed." : undefined}
-            onClick={() => bulk.mutate({ kind: "analyze", ids: analysable.map((review) => review.review_id) })}
+            title={!ai.canRun ? ai.reason : analysable.length === 0 ? "The selected reviews have no text, or already have a current analysis." : undefined}
+            onClick={() => bulk.mutate({ kind: "analyze", ids: analysable.map((review) => review.review_id), named: analysable })}
           >
             {busyKind === "analyze" ? <LoaderCircle aria-hidden className="animate-spin" /> : <Sparkles aria-hidden />}
-            Analyze
-            {analysable.length > 0 ? <AiCostChip tokens={analysisCost} {...balance} /> : null}
+            Analyze {analysable.length > 0 ? analysable.length : ""}
+            {analysable.length > 0 ? <ReplyCostChip cost={analysisCost} balance={ai.balance} /> : null}
           </Button>
           <Button
             size="sm"
             variant="outline"
             disabled={busy || withDrafts.length === 0 || sendBlockedReason !== null}
             title={sendBlockedReason ?? (withDrafts.length === 0 ? "None of the selected reviews has a draft waiting to be sent." : undefined)}
-            onClick={() => bulk.mutate({ kind: "send", ids: withDrafts.map((review) => review.review_id), sent: withDrafts })}
+            onClick={() => bulk.mutate({ kind: "send", ids: withDrafts.map((review) => review.review_id), named: withDrafts })}
           >
             {busyKind === "send" ? <LoaderCircle aria-hidden className="animate-spin" /> : <Send aria-hidden />}
             Send {withDrafts.length} {withDrafts.length === 1 ? "draft" : "drafts"}
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => setSelected(EMPTY_SELECTION)}>
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => setSelected(EMPTY_SELECTION)}>
             <X aria-hidden /> Clear
           </Button>
-          {chosen.length > MAX_AI_BATCH ? <span className="text-xs text-muted-foreground">AI works on {MAX_AI_BATCH} reviews at a time.</span> : null}
+          {!busy && Math.max(eligible.length, analysable.length) > limits.batchSize && ai.canRun ? (
+            <span className="text-xs text-muted-foreground">
+              AI works on {limits.batchSize} reviews at a time: {batches(Math.max(eligible.length, analysable.length))} batches, one after another.
+            </span>
+          ) : null}
           {!ai.canRun && ai.reason ? <span className="text-xs text-muted-foreground">{ai.reason}</span> : null}
           {/* The account's reason is AI's too (shown above); the authorization is about sending only. */}
           {!accountBlocked && sendBlockedReason && withDrafts.length > 0 ? <span className="text-xs text-muted-foreground">{sendBlockedReason}</span> : null}
+          {progress ? (
+            <AiWorkProgress
+              progress={progress.value}
+              label={progress.kind === "analyze" ? "Analyzing reviews" : "Drafting replies"}
+              className="basis-full pt-1"
+            />
+          ) : null}
         </div>
       ) : null}
 

@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import {
   ArrowRight,
   Building2,
+  CirclePause,
   ListChecks,
   ListTodo,
   Link2,
@@ -24,8 +25,17 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { useCanEdit } from "@/hooks/use-access";
 import { useGbpConnect } from "@/lib/gbp/use-gbp-connect";
-import { MAX_NEXT_STEPS, nextStepCta, type NextStep, type NextStepCta, type NextStepSource, type NextStepViewer } from "@/lib/dashboard/next-steps";
+import {
+  MAX_NEXT_STEPS,
+  approvalStepLocations,
+  nextStepCta,
+  type NextStep,
+  type NextStepCta,
+  type NextStepSource,
+  type NextStepViewer,
+} from "@/lib/dashboard/next-steps";
 import type { WritingMode } from "@/lib/dashboard/replies";
+import { useAiPostsWaiting } from "@/lib/dashboard/review-queue";
 import { cn } from "@/lib/utils";
 
 /** Each kind of task keeps the colour and icon of the section where it's done. */
@@ -44,6 +54,9 @@ function lookFor(step: NextStep, cta: NextStepCta | null): { icon: LucideIcon; t
   const to = cta?.kind === "link" ? cta.to : "";
   // Phase 25a: replies Google rejected aren't public, a problem like a failed post: a red mark whatever the button opens.
   if (step.source === "reviews" && step.kind === "reply_rejected") return { icon: MessageSquareX, tone: "reputation", statusTone: "critical" };
+  // Phase 25b: automatic replies stopped, so new 4–5★ reviews wait for a person: an amber pause, not the AI violet
+  // of the AI Settings page it opens.
+  if (step.source === "reviews" && step.kind === "auto_reply_paused") return { icon: CirclePause, tone: "reputation", statusTone: "warning" };
   if (to.includes("/ai/")) return { icon: Sparkles, tone: "ai" };
   // "<Competitor> ranks ahead of you" is about a competitor, wherever its button leads (Profile Comparison).
   if (step.source === "ranking" && step.kind === "competitor_ahead") return { icon: Swords, tone: "competitors" };
@@ -71,7 +84,9 @@ export function NextStepsPanel({
   writing?: WritingMode;
 }) {
   const canEdit = useCanEdit();
-  const viewer: NextStepViewer = { canEdit, writing };
+  // "N posts wait for approval" opens "Posts to review" where AI posts are among them.
+  const aiPostsWaiting = useAiPostsWaiting(approvalStepLocations(steps));
+  const viewer: NextStepViewer = { canEdit, writing, aiPostsWaiting };
   // The backend sends only its top few: a full list is "the top 5", not the whole workload.
   const capped = steps.length >= MAX_NEXT_STEPS;
   return (

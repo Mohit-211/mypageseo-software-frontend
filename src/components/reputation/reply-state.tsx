@@ -1,12 +1,13 @@
 /**
  * Where a review's reply stands (Phase 25a adds Google's moderation and reviews deleted on Google):
- * - `ReplyStateBadge`: one pill: Replied, Waiting for Google, Rejected by Google, Not sent, a draft,
- *   Needs reply, or Deleted on Google.
- * - `ReplyOnGoogle`: the reply people see (`sent`) or will see once Google approves it (`pending`).
+ * - `ReplyStateBadge`: one pill: Replied (Phase 25b: "Replied automatically" for an automatic reply), Waiting for
+ *   Google, Rejected by Google, Not sent, a draft, Needs reply, or Deleted on Google.
+ * - `ReplyOnGoogle`: the reply people see (`sent`) or will see once Google approves it (`pending`); "Sent
+ *   automatically" when it was an automatic reply (`sent_via: "auto"`).
  * - `RejectedReply`: the reply Google rejected (not public) with Google's reason.
  */
 import type { ReactNode } from "react";
-import { AlertTriangle, Ban, Check, CornerDownRight, EyeOff, Hourglass, MessageSquare, PenLine, Sparkles } from "lucide-react";
+import { AlertTriangle, Ban, Bot, Check, CornerDownRight, EyeOff, Hourglass, MessageSquare, PenLine, Sparkles } from "lucide-react";
 import type { Review } from "@/api";
 import { StatusBadge } from "@/components/layout/shared/status-badge";
 import { formatDateTime } from "@/lib/datetime";
@@ -26,7 +27,11 @@ export function ReplyStateBadge({ review, aiDraft }: { review: Review; aiDraft: 
   }
   switch (review.reply_state) {
     case "sent":
-      return (
+      return review.sent_via === "auto" ? (
+        <StatusBadge tone="success" icon={Bot} size="sm">
+          Replied automatically
+        </StatusBadge>
+      ) : (
         <StatusBadge tone="success" icon={Check} size="sm">
           Replied
         </StatusBadge>
@@ -83,13 +88,26 @@ export function ReplyOnGoogle({
   className?: string;
 }) {
   const pending = review.reply_state === "pending";
+  const automatic = review.sent_via === "auto";
   const at = review.sent_at ?? (typeof review.reply === "object" ? (review.reply?.update_time ?? null) : null);
   return (
     <div className={cn("mt-4", className)}>
       <div className={cn("rounded-lg border-l-[3px] px-3.5 py-2.5", pending ? "border-info/70 bg-info-surface" : "border-primary/60 bg-surface-strong")}>
         <p className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs font-semibold text-foreground">
-          {pending ? <Hourglass aria-hidden className="size-3.5 text-info" /> : <CornerDownRight aria-hidden className="size-3.5 text-primary" />}
-          {pending ? "Your reply is waiting for Google" : "Your reply"}
+          {pending ? (
+            <Hourglass aria-hidden className="size-3.5 text-info" />
+          ) : automatic ? (
+            <Bot aria-hidden className="size-3.5 text-primary" />
+          ) : (
+            <CornerDownRight aria-hidden className="size-3.5 text-primary" />
+          )}
+          {pending
+            ? automatic
+              ? "Sent automatically, waiting for Google"
+              : "Your reply is waiting for Google"
+            : automatic
+              ? "Sent automatically"
+              : "Your reply"}
           {at ? (
             <time dateTime={at} title={formatDateTime(at)} className="font-normal text-muted-foreground">
               · {pending ? "sent " : ""}

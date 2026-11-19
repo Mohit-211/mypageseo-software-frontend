@@ -53,6 +53,14 @@ export function postTimeline(post: Post): string {
   }
 }
 
+/**
+ * A series post's review deadline (`approval.expires_at`): "Review by Thu, Nov 19 · 3:00 PM". Past it, the post
+ * goes back to drafts (`error.code: review_expired`). Null without a deadline.
+ */
+export function formatReviewBy(expiresAt: string | null | undefined): string | null {
+  return expiresAt && parseDate(expiresAt) ? `Review by ${formatPostMoment(expiresAt, { weekday: true })}` : null;
+}
+
 /** A post date as a local Date (the calendar date, plus the time when there is one). */
 function localDate(value: PostDate): Date | null {
   const date = parseDate(value.date);

@@ -1,7 +1,8 @@
 /**
  * "Change it" (Phase 25a): the inline box where the user tells the AI what to change in a reply draft
  * (1–500 characters). The AI rewrites the draft through the same checks as a new draft and leaves out
- * the parts that would break the reply rules ("We left out: …"). It costs one reply draft.
+ * the parts that would break the reply rules ("We left out: …"). Since 2026-11-17 it uses one of the
+ * location's AI replies (a token buys a block of 10 when none is left).
  *
  * The card owns the call (`POST …/reviews/:reviewId/draft/revise`) and its busy state; this box keeps
  * what was typed and shows the inline answers the card hands back (all of it left out, a change
@@ -9,19 +10,20 @@
  */
 import { useId, useState, type KeyboardEvent } from "react";
 import { LoaderCircle, Sparkles } from "lucide-react";
-import { AiCostChip } from "@/components/ai/ai-cost-chip";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import type { CreditCost } from "@/lib/reviews/reply-credits";
 import { CHANGE_IT_MAX_CHARS } from "@/lib/reviews/reply-checks";
 import type { InlineNotice } from "@/lib/reviews/review-errors";
 import { cn } from "@/lib/utils";
 import { DraftNote } from "./draft-checks";
+import { ReplyCostChip } from "./reply-cost-chip";
 
 export type ChangeItBoxProps = {
   /** The reviewer's name, for the field's accessible name. */
   reviewer: string;
-  /** Tokens one rewrite costs (`ai.costs.reply_drafts_per_10`: one reply draft). */
-  cost: number;
+  /** What one rewrite costs: one of the location's AI replies (`creditCost(1, credits, reply_drafts_per_10)`). */
+  cost: CreditCost;
   balance?: number;
   /** `ai.canRun`; when false, `reason` says why (Rewrite stays visible, disabled). */
   canRun: boolean;
@@ -104,13 +106,18 @@ export function ChangeItBox({ reviewer, cost, balance, canRun, reason, pending, 
         <Button size="sm" variant="ai" disabled={!ready} aria-busy={pending || undefined} title={blocked ? reason : undefined} onClick={() => void submit()}>
           {pending ? <LoaderCircle aria-hidden className="animate-spin motion-reduce:animate-none" /> : <Sparkles aria-hidden />}
           {pending ? "Rewriting…" : "Rewrite"}
-          <AiCostChip tokens={cost} variant="inverse" {...(balance === undefined ? {} : { balance })} />
+          <ReplyCostChip cost={cost} variant="inverse" balance={balance} />
         </Button>
         <Button size="sm" variant="ghost" disabled={pending} onClick={onCancel}>
           Cancel
         </Button>
         {blocked && reason ? <span className="text-xs text-muted-foreground">{reason}</span> : null}
       </div>
+      {pending ? (
+        <p role="status" className="mt-2 text-xs text-muted-foreground">
+          The AI rewrites it and checks it again. This can take up to a minute and a half.
+        </p>
+      ) : null}
     </div>
   );
 }

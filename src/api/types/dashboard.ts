@@ -4,8 +4,16 @@ import type { LocationStatus } from "./locations";
 
 type Unavailable = { available: false; reason: string };
 
-/** `source` decides where the action leads. */
+/**
+ * A recommended action. `source` decides where the action leads; since 2026-11-17 no `detail` names an app page
+ * (the app's buttons choose the page for each viewer).
+ *
+ * KEY RULE (2026-11-17, G12): `id` is the action's KIND (`reviews:attention`, `posts:approval`,
+ * `reviews:auto_reply_paused`, …), so it repeats across locations: key rows, React keys and dismissals by
+ * `location_id` + `id`, never by `id` alone. `reviews:attention` reads "N urgent reviews" as sent (no rewrite).
+ */
 export type DashboardAction = {
+  /** The action's kind: repeats across locations (key by `location_id` + `id`). */
   id: string;
   source: "connection" | "setup" | "ranking" | "gbp" | "citations" | "reviews" | "posts" | string;
   location_id?: string | null;
@@ -68,6 +76,7 @@ export type ReviewsBlock =
       rating_change?: number | null;
       new_in_range?: number;
       count: number | null;
+      /** Uncapped since 2026-11-17 (G15): it counted at most 10 per location from the GBP reports before. */
       unreplied?: number | null;
       new_this_month?: number;
       positive?: number;

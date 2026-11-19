@@ -1,7 +1,29 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { AlertTriangle, Ban, CheckCircle2, CircleX, Eye, FileX, Info, MessageSquareWarning, SearchX, Trash2, X, type LucideIcon } from "lucide-react";
+import { Link } from "react-router-dom";
+import {
+  AlertTriangle,
+  Ban,
+  CheckCircle2,
+  CircleX,
+  Clock,
+  Eye,
+  FileX,
+  History,
+  Info,
+  LifeBuoy,
+  LoaderCircle,
+  MessageSquareWarning,
+  RefreshCw,
+  Repeat2,
+  SearchX,
+  Send,
+  Trash2,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import { StatusBadge } from "@/components/layout/shared/status-badge";
 import { Button } from "@/components/ui/button";
+import { useGbpConnect } from "@/lib/gbp/use-gbp-connect";
 import { SENT_REPLIES_NOTE, sendSummaryTitle, type SendGroup, type SendGroupKey, type SendIssue, type SendSummary } from "@/lib/reviews/send-results";
 import { cn } from "@/lib/utils";
 import { ReviewStars } from "./review-stars";
@@ -10,12 +32,18 @@ const GROUP_ICON: Record<SendGroupKey, LucideIcon> = {
   checks_failed: Ban,
   needs_review: Eye,
   reply_changed_on_google: MessageSquareWarning,
+  draft_predates_reply: History,
+  replaces_published_reply: Repeat2,
+  deadline: Clock,
   failed: CircleX,
   deleted_on_google: Trash2,
   no_draft: FileX,
   not_found: SearchX,
   other: Info,
 };
+
+/** Where a suspended or misconfigured account goes for help (as the AI copy deck). */
+const SUPPORT_PATH = "/support?new=1";
 
 /** Reviews listed per group before "Show N more". */
 const VISIBLE = 5;
@@ -26,16 +54,24 @@ const VISIBLE = 5;
  * reviewer, the rating, what a check found (or what Google has) and "Open it" (scrolls to the card,
  * or pins it above the list). Shown in place of a toast until dismissed; it takes focus when a new
  * result arrives, so it's read even after the selection bar that started it has gone.
+ *
+ * 2026-11-17: replies Google was too slow for (`deadline`) get "Send the rest", which sends exactly
+ * those again; failed sends offer Reconnect Google or contact support when their `code` says so.
  */
 export function BulkSendResults({
   summary,
   onOpenReview,
+  onSendRest,
+  sendingRest = false,
   onDismiss,
   className,
 }: {
   summary: SendSummary;
   /** "Open it": the page scrolls to the review or pins it (`?review=`). Without it, no button. */
   onOpenReview?: ((reviewId: string) => void) | undefined;
+  /** "Send the rest": sends the reviews skipped as `deadline` again (`summary.resendIds`). Without it, no button. */
+  onSendRest?: ((ids: string[]) => void) | undefined;
+  sendingRest?: boolean;
   onDismiss: () => void;
   className?: string;
 }) {
@@ -90,7 +126,14 @@ export function BulkSendResults({
       {summary.groups.length > 0 ? (
         <div className="divide-y divide-border">
           {summary.groups.map((group) => (
-            <ResultGroup key={group.key} group={group} onOpenReview={onOpenReview} />
+            <ResultGroup
+              key={group.key}
+              group={group}
+              onOpenReview={onOpenReview}
+              onSendRest={group.key === "deadline" && summary.resendIds.length > 0 ? onSendRest : undefined}
+              resendIds={summary.resendIds}
+              sendingRest={sendingRest}
+            />
           ))}
         </div>
       ) : null}
@@ -118,8 +161,21 @@ export function BulkSendResults({
   );
 }
 
-function ResultGroup({ group, onOpenReview }: { group: SendGroup; onOpenReview?: ((reviewId: string) => void) | undefined }) {
+function ResultGroup({
+  group,
+  onOpenReview,
+  onSendRest,
+  resendIds,
+  sendingRest,
+}: {
+  group: SendGroup;
+  onOpenReview?: ((reviewId: string) => void) | undefined;
+  onSendRest?: ((ids: string[]) => void) | undefined;
+  resendIds: string[];
+  sendingRest: boolean;
+}) {
   const [expanded, setExpanded] = useState(false);
+  const { connect } = useGbpConnect();
   const headingId = useId();
   const shown = expanded ? group.items : group.items.slice(0, VISIBLE);
   const hidden = group.items.length - shown.length;
@@ -142,12 +198,34 @@ function ResultGroup({ group, onOpenReview }: { group: SendGroup; onOpenReview?:
           Show {hidden.toLocaleString()} more
         </Button>
       ) : null}
+      {onSendRest || group.actions.length > 0 ? (
+        <div className="mt-2.5 flex flex-wrap gap-2">
+          {onSendRest ? (
+            <Button size="sm" disabled={sendingRest} aria-busy={sendingRest || undefined} onClick={() => onSendRest(resendIds)}>
+              {sendingRest ? <LoaderCircle aria-hidden className="animate-spin motion-reduce:animate-none" /> : <Send aria-hidden />}
+              Send the rest ({resendIds.length.toLocaleString()})
+            </Button>
+          ) : null}
+          {group.actions.includes("reconnect") ? (
+            <Button size="sm" variant="outline" onClick={() => connect()}>
+              <RefreshCw aria-hidden /> Reconnect Google
+            </Button>
+          ) : null}
+          {group.actions.includes("support") ? (
+            <Button asChild size="sm" variant="outline">
+              <Link to={SUPPORT_PATH}>
+                <LifeBuoy aria-hidden /> Contact support
+              </Link>
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
     </section>
   );
 }
 
 function ResultRow({ item, group, onOpenReview }: { item: SendIssue; group: SendGroup; onOpenReview?: ((reviewId: string) => void) | undefined }) {
-  const google = group.key === "reply_changed_on_google";
+  const google = group.key === "reply_changed_on_google" || group.key === "draft_predates_reply";
   return (
     <li className="flex flex-col gap-2 rounded-lg border border-border bg-card px-3 py-2.5 sm:flex-row sm:items-start sm:gap-3">
       <div className="min-w-0 flex-1 space-y-1">

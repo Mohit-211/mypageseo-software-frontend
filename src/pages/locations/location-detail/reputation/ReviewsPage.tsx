@@ -1,9 +1,10 @@
 import { useRef } from "react";
 import { Link } from "react-router-dom";
-import { CheckCircle2, Hourglass, MessageSquareHeart, MessageSquareText, PenLine, ShieldCheck, Sparkles, Trash2, X } from "lucide-react";
+import { CheckCircle2, Hourglass, MessageSquareHeart, MessageSquareText, PenLine, Repeat2, ShieldCheck, Sparkles, Trash2, X } from "lucide-react";
 import { PageHeader } from "@/components/layout/shared/data-display";
 import { EmptyState, ErrorState, PageSkeleton } from "@/components/layout/shared/feedback/states";
 import { BackgroundActivity } from "@/components/location/background-activity";
+import { AutoReplySummaryLine } from "@/components/reputation/auto-reply-status";
 import { BulkReplies } from "@/components/reputation/bulk-replies";
 import { ReplyAuthorizationBanner, ReplyAuthorizationStatus } from "@/components/reputation/reply-authorization";
 import { ReviewInsightsCard } from "@/components/reputation/review-insights";
@@ -86,6 +87,8 @@ function ReviewsPage() {
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <ReviewsSyncMeta summary={data} />
             <ReplyAuthorizationStatus {...authorizationNames} />
+            {/* Phase 25b: "Automatic replies: on · 3 sent this week · 1 held for a person", only while the switch is on. */}
+            <AutoReplySummaryLine locationId={locationId} summary={data} />
           </div>
         ) : undefined
       }
@@ -178,6 +181,7 @@ function ReviewsPage() {
         ai={ai}
         variant="bar"
         onShowDrafts={() => showList({ reply: "draft", flag: null, deleted: false })}
+        onShowUpdates={() => showList({ reply: "update", flag: null, deleted: false })}
         onOpenReview={openReview}
       />
 
@@ -199,6 +203,8 @@ function ReviewsPage() {
             caption={SORT_LABEL[filters.sort]}
             unansweredOnly={filters.reply === "needs" || filters.reply === "none"}
             readOnly={filters.deleted}
+            // 2026-11-17: updates of a reply on Google go one at a time (a send of several skips them).
+            bulk={filters.reply !== "update"}
             spotlight={spotlight}
             onSpotlightChange={setSpotlight}
             empty={<FilteredEmpty filters={filters} filtered={filtered} onClear={clear} locationId={locationId} canEdit={canEdit} />}
@@ -250,6 +256,17 @@ function FilteredEmpty({
         icon={Hourglass}
         title="Nothing waiting for Google"
         description="Google has finished reviewing every reply you sent. New replies wait here for a few minutes, sometimes a day, before they show."
+        action={clearButton}
+      />
+    );
+  }
+  if (onlyView && !filters.deleted && filters.reply === "update" && !filters.flag) {
+    return (
+      <EmptyState
+        variant="all-done"
+        icon={Repeat2}
+        title="No updates waiting"
+        description="When you change a reply that is already on Google, the new version waits here until you send it. Updates go one at a time."
         action={clearButton}
       />
     );

@@ -15,9 +15,10 @@ import type { PendingLocationAction } from "@/lib/billing/pending-location-payme
 import { clientErrorText, useClientRequired } from "@/lib/clients/clients";
 import { formatRelative } from "@/lib/datetime";
 import { invalidateGbpQueries } from "@/lib/gbp/use-gbp-connect";
-import { locationSetupPath, runLocationAction } from "@/lib/locations/location-actions";
+import { locationSetupPath } from "@/lib/locations/location-actions";
 import { useLocationBillingGate } from "@/lib/locations/use-location-billing-gate";
 import { byText, byTime, sortRows } from "@/lib/sort";
+import { addOrBindLocation, bindSyncText } from "./bind-result";
 
 /**
  * Business Profiles picked from Google that aren't locations yet (`GET locations` →
@@ -39,8 +40,11 @@ export function PendingGbpSection({ picks, clients, primary = false }: { picks: 
   const add = async (action: PendingLocationAction) => {
     setBusy(action.kind === "bind" ? action.pickId : null);
     try {
-      const locationId = await runLocationAction(action);
+      const { locationId, gbpSync } = await addOrBindLocation(action);
       await invalidateGbpQueries(queryClient);
+      // A location that was already set up: its first Google sync runs in the background (2026-11-17).
+      const synced = bindSyncText(action.title, gbpSync);
+      if (synced) toast.success(synced.title, { description: synced.description });
       navigate(locationSetupPath(locationId));
     } catch (err) {
       if (gate.handle(err, action)) return;

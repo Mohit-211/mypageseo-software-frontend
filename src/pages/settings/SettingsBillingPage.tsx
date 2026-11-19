@@ -19,6 +19,7 @@ import {
   Tag,
   UserRound,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 import {
   apiErrorData,
   buyLocationSlots,
@@ -52,9 +53,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAccess } from "@/hooks/use-access";
-import { AI_COST_ITEMS, formatTokens, useAiCosts } from "@/lib/ai/ai-costs";
+import { AI_COST_ITEMS, formatBlockPrice, formatTokens, useAiCosts } from "@/lib/ai/ai-costs";
+import { creditLocationName, ledgerLocationName } from "@/lib/billing/ai-credits";
 import { useBilling } from "@/lib/billing/use-billing";
 import { formatDate } from "@/lib/datetime";
+import { locationPath } from "@/lib/mypageseo/section-links";
+import { useWorkspace } from "@/lib/mypageseo/workspace";
 import { cn, formatMoney, saveBlob } from "@/lib/utils";
 
 const STATE_LABEL: Record<BillingSummary["state"], { label: string; tone: StatusTone }> = {
@@ -401,15 +405,16 @@ function PriceRow({ label, unit, price }: { label: string; unit?: string; price:
         <span className="block text-sm text-foreground">{label}</span>
         {unit ? <span className="block text-xs text-muted-foreground">{unit}</span> : null}
       </span>
-      <span className={cn("shrink-0 text-sm font-semibold tabular-nums", price === "Free" ? "text-success" : "text-foreground")}>{price}</span>
+      <span className={cn("shrink-0 text-right text-sm font-semibold tabular-nums", price === "Free" ? "text-success" : "text-foreground")}>{price}</span>
     </li>
   );
 }
 
-/** What each priced action costs: refreshes, then every AI action in plain words. */
+/** What each priced action costs: refreshes, then every AI action in plain words ("1 token = 10 replies"). */
 function PriceList({ billing }: { billing: BillingSummary }) {
   const costs = useAiCosts();
   const refresh = billing.tokens.cost_per_refresh;
+  const blockSize = billing.tokens.ai_credits?.block_size;
   return (
     <div className="rounded-xl border border-border bg-card p-4">
       <h3 className="text-sm font-semibold text-foreground">What tokens pay for</h3>
@@ -426,14 +431,20 @@ function PriceList({ billing }: { billing: BillingSummary }) {
       </p>
       <ul className="divide-y divide-border">
         {AI_COST_ITEMS.map((item) => (
-          <PriceRow key={item.id} label={item.label} unit={item.unit} price={formatTokens(costs[item.id])} />
+          // A block's price names its size ("1 token = 10 replies"), so its row says the rest (`block.unit`).
+          <PriceRow key={item.id} label={item.label} unit={item.block?.unit ?? item.unit} price={formatBlockPrice(item, costs, blockSize)} />
         ))}
       </ul>
     </div>
   );
 }
 
-function LedgerRow({ entry }: { entry: TokenLedgerEntry }) {
+/**
+ * One token history row. AI replies and analyses (2026-11-17) have one row per block of 10 bought or refunded,
+ * named after its location when it is one this person can open (a removed location, or one outside a member's
+ * clients, isn't: the row shows no name then).
+ */
+function LedgerRow({ entry, locationName }: { entry: TokenLedgerEntry; locationName: string | null }) {
   const credit = entry.amount > 0;
   return (
     <li className="flex items-center gap-3 py-2">
@@ -448,7 +459,18 @@ function LedgerRow({ entry }: { entry: TokenLedgerEntry }) {
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm text-foreground">{entry.note ?? entry.type.replace(/_/g, " ")}</span>
-        <span className="block text-xs text-muted-foreground">{formatDate(entry.at)}</span>
+        {/* A long location name is cut short on a phone, never the date. */}
+        <span className="flex min-w-0 gap-1 text-xs text-muted-foreground">
+          {locationName ? (
+            <>
+              <span className="min-w-0 truncate" title={locationName}>
+                {locationName}
+              </span>
+              <span aria-hidden>·</span>
+            </>
+          ) : null}
+          <span className="shrink-0">{formatDate(entry.at)}</span>
+        </span>
       </span>
       <span className={cn("shrink-0 text-sm font-semibold tabular-nums", credit ? "text-success" : "text-foreground")}>
         <span className="sr-only">{credit ? "Added" : "Spent"} </span>
@@ -462,6 +484,7 @@ function LedgerRow({ entry }: { entry: TokenLedgerEntry }) {
 function TokensPanel({ billing, canPay }: { billing: BillingSummary; canPay: boolean }) {
   const packs = useQuery({ queryKey: ["billing", "token-packs"], queryFn: ({ signal }) => getTokenPacks(signal), retry: false });
   const ledger = useQuery({ queryKey: ["billing", "ledger"], queryFn: ({ signal }) => getTokenLedger(20, signal), retry: false });
+  const { locations } = useWorkspace();
   const [coupon, setCoupon] = useState("");
   const [quotes, setQuotes] = useState<Record<string, CouponQuote>>({});
   const [busy, setBusy] = useState<string | null>(null);
@@ -589,6 +612,8 @@ function TokensPanel({ billing, canPay }: { billing: BillingSummary; canPay: boo
             <p className="text-sm text-muted-foreground">The account owner can buy more tokens here.</p>
           )}
 
+          <AiCreditsList billing={billing} />
+
           <div>
             <h3 className="text-sm font-semibold text-foreground">Recent activity</h3>
             {ledger.isPending ? (
@@ -599,11 +624,16 @@ function TokensPanel({ billing, canPay }: { billing: BillingSummary; canPay: boo
               <>
                 <ul className="mt-1 divide-y divide-border">
                   {(showAll ? entries : entries.slice(0, LEDGER_PREVIEW)).map((entry) => (
-                    <LedgerRow key={entry.id} entry={entry} />
+                    <LedgerRow key={entry.id} entry={entry} locationName={ledgerLocationName(entry, locations)} />
                   ))}
                 </ul>
                 {entries.length > LEDGER_PREVIEW ? (
-                  <Button variant="link" size="sm" className="h-auto p-0" onClick={() => setShowAll((open) => !open)}>
+                  <Button
+                    variant="link"
+                    size="sm"
+                    className="relative h-auto p-0 pointer-coarse:after:absolute pointer-coarse:after:-inset-x-1.5 pointer-coarse:after:-inset-y-2.5 pointer-coarse:after:content-['']"
+                    onClick={() => setShowAll((open) => !open)}
+                  >
                     {showAll ? "Show less" : `Show all ${entries.length}`}
                   </Button>
                 ) : null}
@@ -615,6 +645,70 @@ function TokensPanel({ billing, canPay }: { billing: BillingSummary; canPay: boo
         <PriceList billing={billing} />
       </div>
     </section>
+  );
+}
+
+/**
+ * AI replies and analyses left per location (2026-11-17): bought in blocks of 10 per location, what is left stays
+ * with the location. `tokens.ai_credits` lists the locations this person may see that have some left; the price
+ * comes from the plan ("1 token = 10 replies" at the default), never hard-coded.
+ */
+function AiCreditsList({ billing }: { billing: BillingSummary }) {
+  const costs = useAiCosts();
+  const { locations } = useWorkspace();
+  const credits = billing.tokens.ai_credits;
+  // A server before 2026-11-17 sends nothing: no section.
+  if (!credits) return null;
+  const replies = AI_COST_ITEMS.find((item) => item.id === "reply_drafts_per_10");
+  const analyses = AI_COST_ITEMS.find((item) => item.id === "analysis_per_10");
+  const repliesPrice = replies ? formatBlockPrice(replies, costs, credits.block_size) : null;
+  const analysesPrice = analyses ? formatBlockPrice(analyses, costs, credits.block_size) : null;
+  const rows = credits.locations;
+  return (
+    <div>
+      <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+        AI replies and analyses left <AiBadge variant="soft" />
+      </h3>
+      <p className="mt-0.5 text-xs text-muted-foreground">
+        Review replies and analyses are bought in blocks for each location, and what's left stays with it.
+        {repliesPrice ? ` Replies: ${repliesPrice}.` : ""}
+        {analysesPrice ? ` Analyses: ${analysesPrice}.` : ""}
+      </p>
+      {rows.length === 0 ? (
+        <p className="mt-2 text-sm text-muted-foreground">No location has AI replies or analyses left. The next AI reply buys a new block.</p>
+      ) : (
+        <ul className="mt-1 divide-y divide-border">
+          {rows.map((row) => {
+            const name = creditLocationName(row, locations);
+            const known = locations.some((location) => location.id === row.location_id);
+            return (
+              <li key={row.location_id} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 py-2">
+                <span className="flex min-w-0 items-center gap-1.5 text-sm text-foreground">
+                  <MapPin aria-hidden className="size-3.5 shrink-0 text-primary" />
+                  {known ? (
+                    // A 36px tap target on touch screens (::after); the name is cut short inside, so the link itself
+                    // doesn't clip that area.
+                    <Link
+                      to={locationPath(row.location_id, "ai/replies")}
+                      className="relative min-w-0 rounded-sm font-medium underline-offset-4 outline-hidden hover:text-primary hover:underline focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:after:absolute pointer-coarse:after:inset-x-0 pointer-coarse:after:-inset-y-2 pointer-coarse:after:content-['']"
+                    >
+                      <span className="block truncate">{name}</span>
+                    </Link>
+                  ) : (
+                    <span className="truncate font-medium">{name}</span>
+                  )}
+                </span>
+                <span className="text-sm tabular-nums text-muted-foreground">
+                  <span className="font-semibold text-foreground">{row.replies_left.toLocaleString()}</span> {row.replies_left === 1 ? "reply" : "replies"}
+                  {" · "}
+                  <span className="font-semibold text-foreground">{row.analyses_left.toLocaleString()}</span> {row.analyses_left === 1 ? "analysis" : "analyses"}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }
 

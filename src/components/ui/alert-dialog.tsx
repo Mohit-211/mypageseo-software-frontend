@@ -3,6 +3,7 @@ import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog";
 
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
+import { WindowOnScreen } from "./dialog";
 import { useFocusReturn } from "./focus-return";
 
 const AlertDialog = AlertDialogPrimitive.Root;
@@ -29,7 +30,7 @@ AlertDialogOverlay.displayName = AlertDialogPrimitive.Overlay.displayName;
 const AlertDialogContent = React.forwardRef<
   React.ElementRef<typeof AlertDialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Content>
->(({ className, onOpenAutoFocus, onCloseAutoFocus, onFocusCapture, ...props }, ref) => {
+>(({ className, children, onOpenAutoFocus, onCloseAutoFocus, onFocusCapture, ...props }, ref) => {
   // Opened from state or a row menu (no Trigger): focus goes back to what opened it on close.
   // Radix still focuses Cancel on open: its own handler runs after this one.
   const focusReturn = useFocusReturn({ onOpenAutoFocus, onCloseAutoFocus, onFocusCapture });
@@ -44,7 +45,10 @@ const AlertDialogContent = React.forwardRef<
         )}
         {...props}
         {...focusReturn}
-      />
+      >
+        <WindowOnScreen />
+        {children}
+      </AlertDialogPrimitive.Content>
     </AlertDialogPortal>
   );
 });

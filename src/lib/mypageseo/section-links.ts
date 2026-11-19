@@ -24,8 +24,15 @@ export const LOCATION_SECTIONS = {
   ai: "ai",
   "ai/posts": "ai/posts",
   "ai/replies": "ai/replies",
-  /** Sections: `#replies`, `#restricted`, `#facts` (Facts for the AI), `#images`. */
+  /**
+   * Sections: `#replies`, `#restricted`, `#facts` (Facts for the AI), `#images`; Phase 25b/25c: `#logo`, `#style`
+   * (the style memo) and `#auto-replies` (the automatic replies card).
+   */
   "ai/settings": "ai/settings",
+  /** Phase 25b: the business brief (linked from AI Settings and the readiness checklist). */
+  "ai/brief": "ai/brief",
+  /** Phase 25c: the photo library (linked from AI Settings, readiness and the post editor). */
+  "ai/photos": "ai/photos",
 } as const;
 
 export type LocationSection = keyof typeof LOCATION_SECTIONS;
@@ -50,6 +57,8 @@ export const LOCATION_SECTION_LABELS: Record<LocationSection, string> = {
   "ai/posts": "AI Posts",
   "ai/replies": "AI Review Replies",
   "ai/settings": "AI Settings",
+  "ai/brief": "Business brief",
+  "ai/photos": "Photo library",
 };
 
 /** `/locations/:id/<section>` plus an optional `?search` / `#hash` suffix. */

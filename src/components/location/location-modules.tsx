@@ -9,7 +9,6 @@ import {
   CheckCircle2,
   Link2,
   ListChecks,
-  MessageSquareReply,
   Newspaper,
   PenLine,
   Sparkles,
@@ -29,7 +28,7 @@ import { useCanEdit } from "@/hooks/use-access";
 import { useAiStatus } from "@/lib/ai/ai-status";
 import { citationsUnavailableText } from "@/lib/citations/citations";
 import { gradeText, plural, trendOf } from "@/lib/dashboard/format";
-import { needsReplyPath, writingModeFor } from "@/lib/dashboard/replies";
+import { writingModeFor } from "@/lib/dashboard/replies";
 import { formatShortDate } from "@/lib/datetime";
 import { useGbpConnect } from "@/lib/gbp/use-gbp-connect";
 import { locationPath } from "@/lib/mypageseo/section-links";
@@ -46,9 +45,6 @@ function FooterLink({ to, children, className }: { to: string; children: ReactNo
     </Link>
   );
 }
-
-/** The overview's `reviews.unreplied` counts at most this many (the newest unanswered reviews in the GBP report). */
-const UNREPLIED_SAMPLE = 10;
 
 /** Why a section has nothing to show yet, in plain words. */
 const UNAVAILABLE: Record<string, string> = {
@@ -110,14 +106,12 @@ export function LocationModuleTiles({ location, overview, loading }: { location:
   // "Need a reply": every review without one (the Reviews page's "Needs reply" count). "Urgent": the
   // unanswered 1–3★ and flagged ones among them (`awaiting_attention`).
   const stats = reviewsSummary.data?.stats ?? null;
-  // The overview's own `unreplied` counts only the newest unanswered reviews (at most
-  // UNREPLIED_SAMPLE), so it stands in only when the Reviews summary has no count (Google not
-  // connected, the call failed, no stats yet), and a full sample reads "10+". While the summary
-  // loads, the footer waits for the real count.
+  // The overview's own `unreplied` is uncapped since 2026-11-17 (the Reviews page's count), so it stands
+  // in whenever the Reviews summary has no count (Google not connected, the call failed, no stats yet).
+  // While the summary loads, the footer waits for it.
   const summaryLoading = connected && reviewsSummary.isPending;
-  const sample = reviews?.available ? reviews.unreplied : null;
-  const unreplied = stats ? stats.unreplied : sample !== null && sample < UNREPLIED_SAMPLE ? sample : null;
-  const unrepliedAtLeast = !stats && sample !== null && sample >= UNREPLIED_SAMPLE;
+  const overviewUnreplied = reviews?.available ? reviews.unreplied : null;
+  const unreplied = stats ? stats.unreplied : overviewUnreplied;
   const urgent = stats?.awaiting_attention ?? 0;
   const draftsPending = stats?.drafts_pending ?? 0;
 
@@ -279,11 +273,7 @@ export function LocationModuleTiles({ location, overview, loading }: { location:
         footer={
           !reviews?.available ? (
             reviews?.reason === "gbp_not_connected" ? connectFooter : undefined
-          ) : summaryLoading ? undefined : unrepliedAtLeast ? (
-            <FooterLink to={needsReplyPath(id)}>
-              <MessageSquareReply aria-hidden className="size-3.5" /> {UNREPLIED_SAMPLE}+ need a reply
-            </FooterLink>
-          ) : unreplied === null ? undefined : unreplied > 0 ? (
+          ) : summaryLoading ? undefined : unreplied === null ? undefined : unreplied > 0 ? (
             <ReplyFooter locationId={id} unreplied={unreplied} writing={writing} />
           ) : (
             <span className="inline-flex items-center gap-1 font-medium text-success">

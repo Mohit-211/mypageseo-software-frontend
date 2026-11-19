@@ -4,6 +4,7 @@ import type {
   CompetitorSuggestionsResponse,
   CreateLocationResult,
   LocationCenterResult,
+  LocationDeleteResult,
   LocationHeader,
   LocationOverview,
   LocationsListParams,
@@ -48,8 +49,12 @@ export async function updateLocation(
   return unwrapData(await api.patch(ENDPOINTS.locations.detail(locationId), patch));
 }
 
-/** Soft delete. */
-export async function deleteLocation(locationId: string): Promise<{ deleted: boolean }> {
+/**
+ * Soft delete. Its queued jobs and active AI runs are cancelled (`jobs_cancelled`); its AI credits close (a block
+ * nobody used is refunded; the unused replies of a started block, at most 9, are lost: the confirm dialog can say
+ * so from the reviews summary's `ai.credits`).
+ */
+export async function deleteLocation(locationId: string): Promise<LocationDeleteResult> {
   return unwrapData(await api.delete(ENDPOINTS.locations.detail(locationId)));
 }
 
@@ -141,11 +146,15 @@ export async function getTrackingEstimate(
   return unwrapData(await api.get(ENDPOINTS.locations.trackingEstimate(locationId), { query: params, ...withSignal(signal) }));
 }
 
-/** Phase 22 AI keyword suggestions at setup: free; 20 runs per location per day (429 `suggestion_limit_reached`). */
+/**
+ * Phase 22 AI keyword suggestions at setup: free; 20 runs per location per day (429 `suggestion_limit_reached`).
+ * A request takes about 79 s at most. 2026-11-17: `website_note: "blocked_by_robots"`: the site's robots.txt keeps
+ * our reader out of its home page, so the ideas come from the profile only.
+ */
 export type KeywordSuggestions = {
   suggestions: { keyword: string; reason: string; source: "website" | "profile" | "category" | string }[];
   website_used: boolean;
-  website_note: "no_website" | "unreachable" | "not_html" | null;
+  website_note: "no_website" | "unreachable" | "not_html" | "blocked_by_robots" | null;
   can_suggest_more: boolean;
   runs_left_today: number;
 };

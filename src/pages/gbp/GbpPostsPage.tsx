@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
@@ -8,6 +8,7 @@ import {
   CalendarDays,
   CheckCircle2,
   ChevronDown,
+  ClipboardCheck,
   Clock,
   MapPin,
   Moon,
@@ -17,7 +18,7 @@ import {
   Sparkles,
   XCircle,
 } from "lucide-react";
-import { getOrganizationPostsCalendar, type CalendarItem, type PostsSummary } from "@/api";
+import { getOrganizationPostsCalendar, type CalendarItem, type CalendarLocation } from "@/api";
 import { PageHeader, Panel, StatusBadge } from "@/components/layout/shared/data-display";
 import { EmptyState, ErrorState, PageSkeleton } from "@/components/layout/shared/feedback/states";
 import { KpiTile } from "@/components/layout/shared/kpi-tile";
@@ -28,10 +29,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useCanEdit } from "@/hooks/use-access";
 import { locationPath, pickNavLocationId } from "@/lib/mypageseo/section-links";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
+import { ORGANIZATION_POSTS_KEY } from "@/lib/posts/ai-runs";
 import { useMonth } from "@/lib/posts/calendar";
 import { formatPostMoment } from "@/lib/posts/post-format";
 import { POST_GROUP_OF } from "@/lib/posts/post-order";
-import { postErrorText, postsSummaryQuery } from "@/lib/posts/use-posts";
+import { reviewQueuePath, useReviewQueueCount } from "@/lib/posts/review-queue";
+import { postErrorText } from "@/lib/posts/use-posts";
 import { byText, byTime, sortRows } from "@/lib/sort";
 
 const MONTH_NAME = new Intl.DateTimeFormat(undefined, { month: "long" });
@@ -62,14 +65,17 @@ function byLocation(items: readonly CalendarItem[]): Map<string, LocationMonth> 
 
 /**
  * What needs someone at a location, whenever it happened: posts that didn't publish (failed or
- * rejected) and posts waiting for approval. The same numbers as that location's Posts page, from
- * `GET posts/summary`. A month of the calendar can't tell: it dates a post by when it went out or
- * was due, so a failure from last month would be missed.
+ * rejected by Google) and posts waiting for approval. The same numbers as that location's Posts page:
+ * since 2026-11-17 (G16) each `locations[]` row of `GET /posts/calendar` carries its stored counts
+ * (`posts`) and `gbp_connected`, so no `posts/summary` per location is needed. A month of the calendar
+ * can't tell on its own: it dates a post by when it went out or was due, so a failure from last month
+ * would be missed.
  */
 type Attention = { problems: number; waiting: number };
 
-function attentionOf(summary: PostsSummary | undefined): Attention | null {
-  return summary ? { problems: summary.stats.failed + summary.stats.rejected, waiting: summary.stats.pending_approval } : null;
+/** A location row's counts; null when the server sent none (an older server). */
+function attentionOf(row: CalendarLocation | undefined): Attention | null {
+  return row?.posts ? { problems: row.posts.failed + row.posts.rejected, waiting: row.posts.pending_approval } : null;
 }
 
 /** The location Posts page filter that shows what needs fixing first. */
@@ -78,20 +84,14 @@ function attentionTab(attention: Attention | null): string {
 }
 
 /**
- * The API has no organization-wide posts summary yet, so each location in view costs one request.
- * Its numbers change only when a post does, and a change made in the app invalidates them, so they
- * stay fresh for 5 minutes and aren't fetched again each time the window regains focus.
- */
-const SUMMARY_OPTIONS = { staleTime: 5 * 60_000, refetchOnWindowFocus: false } as const;
-
-/**
  * Posts across every location (`GET /posts/calendar`): a month calendar, this month's numbers and
  * each location's activity, with a way into every location's Posts page (where writing, approving
- * and fixing happen). Each day lists its posts in time order.
+ * and fixing happen) and into "Posts to review" (the AI posts waiting for a person, across locations).
+ * Each day lists its posts in time order.
  *
- * "Needs attention" and each location's problem chips come from its posts summary instead, so they
- * match the location's own Posts page whatever month is open; a location without Google is marked
- * as such rather than as quiet.
+ * "Needs attention", each location's problem chips and "Google not connected" come from the calendar's
+ * `locations[]` rows, so they match the location's own Posts page whatever month is open; a location
+ * without Google is marked as such rather than as quiet.
  */
 function GbpPostsPage() {
   const workspace = useWorkspace();
@@ -99,27 +99,25 @@ function GbpPostsPage() {
   const canEdit = useCanEdit();
   const { month, shift, today, from, to } = useMonth();
   const [locationId, setLocationId] = useState("all");
+  const ready = workspace.status === "ready" && workspace.locations.length > 0;
   const calendar = useQuery({
-    queryKey: ["posts", "calendar", workspace.organization?.id ?? null, from, to, locationId],
+    queryKey: [...ORGANIZATION_POSTS_KEY, "calendar", workspace.organization?.id ?? null, from, to, locationId],
     queryFn: ({ signal }) => getOrganizationPostsCalendar(from, to, locationId === "all" ? undefined : [locationId], signal),
-    enabled: workspace.status === "ready" && workspace.locations.length > 0,
+    enabled: ready,
     retry: false,
   });
+  const toReview = useReviewQueueCount(ready);
 
   const locations = useMemo(() => sortRows(workspace.locations, byText((location) => location.businessName)), [workspace.locations]);
   const showingAll = locationId === "all";
-  // The calendar's location filter scopes everything under it: the numbers, the Locations list and
-  // the summaries those read.
+  // The calendar's location filter scopes everything under it: the numbers and the Locations list.
   const scope = useMemo(() => (showingAll ? locations : locations.filter((location) => location.id === locationId)), [locations, locationId, showingAll]);
-  // One summary per location in scope (the same cached answer each location's Posts page and
-  // Overview read): what needs attention at any time, and whether Google is connected.
-  const summaries = useQueries({
-    queries: scope.map((location) => ({ ...postsSummaryQuery(location.id), ...SUMMARY_OPTIONS, enabled: workspace.status === "ready" })),
-  });
+  const rows = useMemo(() => new Map((calendar.data?.locations ?? []).map((row) => [row.location_id, row])), [calendar.data]);
   const items = calendar.data?.items;
   const perLocation = useMemo(() => byLocation(items ?? []), [items]);
   const navLocationId = pickNavLocationId({ activeLocationId: workspace.activeLocation?.id, locationIds: locations.map((location) => location.id) });
   const monthName = MONTH_NAME.format(month);
+  const waitingForReview = toReview.data ?? 0;
 
   const header = (
     <PageHeader
@@ -130,6 +128,19 @@ function GbpPostsPage() {
       actions={
         locations.length > 0 ? (
           <>
+            <Button asChild variant="outline">
+              <Link to={reviewQueuePath()}>
+                <ClipboardCheck aria-hidden /> Posts to review
+                {waitingForReview > 0 ? (
+                  <>
+                    <span className="min-w-5 rounded-full border border-warning/35 bg-warning-surface px-1.5 text-center text-xs font-semibold leading-5 text-warning-foreground tabular-nums">
+                      {waitingForReview}
+                    </span>
+                    <span className="sr-only"> waiting</span>
+                  </>
+                ) : null}
+              </Link>
+            </Button>
             {navLocationId ? (
               <Button asChild variant="outline">
                 <Link to={locationPath(navLocationId, "ai/posts")}>
@@ -179,23 +190,21 @@ function GbpPostsPage() {
   const published = count(["published"]);
   const upcoming = count(["scheduled"]);
 
-  // Posts summaries, by location (`summaries` follows the order of `scope`).
-  const summaryResults = new Map(scope.map((location, index) => [location.id, summaries[index]]));
-  const summaryOf = (id: string) => summaryResults.get(id)?.data;
-  // A location the summary reports without Google can't post: it is never "quiet".
-  const notConnected = (id: string) => summaryOf(id)?.connection.gbp_connected === false;
+  // A location the calendar reports without Google can't post: it is never "quiet".
+  const notConnected = (id: string) => rows.get(id)?.gbp_connected === false;
 
   // "Needs attention" follows the calendar's location filter, like the month numbers next to it.
-  const summariesPending = summaries.some((result) => result.isPending);
-  const summariesFailed = summaries.some((result) => result.isError);
+  const countsPending = calendar.isPending;
+  // The calendar failed, or a location in scope came back without its counts (an older server).
+  const countsMissing = calendar.isError || (calendar.isSuccess && scope.some((location) => !attentionOf(rows.get(location.id))));
   const needing = scope.flatMap((location) => {
-    const attention = attentionOf(summaryOf(location.id));
+    const attention = attentionOf(rows.get(location.id));
     return attention && attention.problems + attention.waiting > 0 ? [{ id: location.id, ...attention }] : [];
   });
   const problems = needing.reduce((sum, entry) => sum + entry.problems, 0);
   const waiting = needing.reduce((sum, entry) => sum + entry.waiting, 0);
   const attention = problems + waiting;
-  const allClear = attention === 0 && !summariesPending && !summariesFailed;
+  const allClear = attention === 0 && !countsPending && !countsMissing;
   const onlyNeeding = needing.length === 1 ? needing[0] : undefined;
 
   const connected = scope.filter((location) => !notConnected(location.id));
@@ -227,7 +236,7 @@ function GbpPostsPage() {
           value={attention}
           icon={attention ? AlertTriangle : ShieldCheck}
           statusTone={attention ? "warning" : allClear ? "success" : "neutral"}
-          loading={summariesPending}
+          loading={countsPending}
           to={onlyNeeding ? locationPath(onlyNeeding.id, "gbp/posts", attentionTab(onlyNeeding)) : "#locations"}
           hint={
             attention ? (
@@ -247,7 +256,7 @@ function GbpPostsPage() {
             value={`${quiet} of ${connected.length}`}
             icon={Moon}
             tone="posts"
-            loading={calendar.isPending || summariesPending}
+            loading={calendar.isPending}
             to="#locations"
             hint={
               connected.length === 0 ? (
@@ -314,7 +323,7 @@ function GbpPostsPage() {
           <ul className="-m-4 divide-y divide-border">
             {scope.map((location) => {
               const stats = perLocation.get(location.id);
-              const needs = attentionOf(summaryOf(location.id));
+              const needs = attentionOf(rows.get(location.id));
               const unconnected = notConnected(location.id);
               return (
                 <li key={location.id} className="flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">

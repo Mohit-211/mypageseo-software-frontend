@@ -6,6 +6,7 @@ import { X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useFocusReturn } from "./focus-return";
+import { keepOpenOnToasts, useWindowOnScreen } from "./open-windows";
 
 const Dialog = DialogPrimitive.Root;
 
@@ -30,10 +31,20 @@ const DialogOverlay = React.forwardRef<
 ));
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
+/**
+ * Counts the window it is in as open while it is (ui/open-windows.ts): render it inside a Radix dialog's `Content`,
+ * which is mounted only while the window is open or closing. Every window has one: DialogContent, SheetContent,
+ * AlertDialogContent, the phone navigation and the search.
+ */
+function WindowOnScreen() {
+  useWindowOnScreen();
+  return null;
+}
+
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, onOpenAutoFocus, onCloseAutoFocus, onFocusCapture, ...props }, ref) => {
+>(({ className, children, onOpenAutoFocus, onCloseAutoFocus, onFocusCapture, onPointerDownOutside, onInteractOutside, ...props }, ref) => {
   // Opened from state or the URL (no Trigger): focus goes back to what opened it on close.
   const focusReturn = useFocusReturn({ onOpenAutoFocus, onCloseAutoFocus, onFocusCapture });
   return (
@@ -46,8 +57,12 @@ const DialogContent = React.forwardRef<
           className,
         )}
         {...props}
+        // A press on a toast (drawn above every window) never closes the dialog (ui/open-windows.ts).
+        onPointerDownOutside={keepOpenOnToasts(onPointerDownOutside)}
+        onInteractOutside={keepOpenOnToasts(onInteractOutside)}
         {...focusReturn}
       >
+        <WindowOnScreen />
         {children}
         <DialogPrimitive.Close className="absolute right-3 top-3 grid size-8 cursor-pointer place-items-center rounded-md text-muted-foreground transition-colors outline-hidden hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none pointer-coarse:size-9">
           <X className="size-4" aria-hidden />
@@ -107,4 +122,5 @@ export {
   DialogFooter,
   DialogTitle,
   DialogDescription,
+  WindowOnScreen,
 };

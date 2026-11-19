@@ -3,6 +3,7 @@ import type { UseQueryResult } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   BadgePercent,
+  BookOpenText,
   CalendarDays,
   ChevronDown,
   ExternalLink,
@@ -34,6 +35,7 @@ import {
   formatFactDates,
   hiddenReason,
   isDatedKind,
+  isFromBrief,
   offersRefusedText,
 } from "@/lib/ai-settings/fact-form";
 import { useAiFactMutations } from "@/lib/ai-settings/use-ai-settings";
@@ -90,10 +92,11 @@ function useClamped(ref: RefObject<HTMLElement | null>, text: string | null | un
 }
 
 /**
- * ③ "Facts for the AI" (`#facts`): the business's own facts, offers, events and contests, newest
- * first. Each shows its dates and timing, whether the AI sees it now, and a switch that keeps it from
- * the AI; Add / Edit / Delete for people who can edit. Offers are left out of "Add" where Google
- * refuses them (lodging, a regulated product), with the reason.
+ * "Facts for the AI" (`#facts`): the business's own facts, offers, events and contests, newest
+ * first. Each shows its dates and timing, whether the AI sees it now (and why not: switched off,
+ * over, or an offer the AI can't use, `offer_refusal`), a "From the brief" tag for a fact confirmed
+ * from the business brief, and a switch that keeps it from the AI; Add / Edit / Delete for people who
+ * can edit. Offers are left out of "Add" where Google refuses them (lodging, a regulated product).
  */
 export function FactsSection({ locationId, facts, canEdit }: { locationId: string; facts: UseQueryResult<AiFactsList, unknown>; canEdit: boolean }) {
   const { update, remove } = useAiFactMutations(locationId);
@@ -216,7 +219,8 @@ export function FactsSection({ locationId, facts, canEdit }: { locationId: strin
           locationId={locationId}
           kind={dialog.kind}
           fact={dialog.fact}
-          today={list.today ?? null}
+          today={list.now?.date ?? list.today ?? null}
+          nowTime={list.now?.time ?? null}
           onClose={() => setDialog(null)}
         />
       ) : null}
@@ -294,7 +298,7 @@ function FactRow({
 }) {
   const headline = factHeadline(fact);
   const timing = fact.timing ? FACT_TIMING_COPY[fact.timing] : null;
-  const dates = formatFactDates(fact.start, fact.end, list.today);
+  const dates = formatFactDates(fact.start, fact.end, list.now?.date ?? list.today);
   const hidden = hiddenReason(fact, list.offers);
   const details = (isDatedKind(fact.kind) ? fact.text?.trim() : null) || null;
   const terms = fact.terms?.trim() || null;
@@ -324,6 +328,11 @@ function FactRow({
             {timing ? (
               <StatusBadge tone={timing.tone} size="sm" dot>
                 {timing.label}
+              </StatusBadge>
+            ) : null}
+            {isFromBrief(fact) ? (
+              <StatusBadge tone="neutral" size="sm" icon={BookOpenText}>
+                From the brief
               </StatusBadge>
             ) : null}
             {fact.in_fact_sheet ? (

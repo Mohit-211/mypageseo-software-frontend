@@ -1,7 +1,29 @@
 import type { RankStatus } from "./rankings";
 import type { CitationCounts, CitationHealthSummary } from "./citations";
+import type { AiTokenCosts } from "./ai";
 /** Google's attribution for Places content: show `text` near business names, ratings and reviews. */
 export type Attribution = { provider: string; text: string };
+
+/**
+ * `DELETE locations/:id` (soft delete). `jobs_cancelled.post_ai_runs` (2026-11-16): its active AI runs on posts,
+ * deleted with their jobs (what they spent is refunded); `ai_brief_refresh` (25b): its queued brief build. Its AI
+ * credits close: a block nobody used is refunded, the unused replies of a started block (at most 9) are lost.
+ */
+export type LocationDeleteResult = {
+  deleted: boolean;
+  gbp_unbound?: boolean;
+  jobs_cancelled?: {
+    rank_run: number;
+    gbp_sync: number;
+    gbp_report: number;
+    posts: number;
+    ai_website_refresh?: number;
+    ai_brief_refresh?: number;
+    post_ai_runs?: number;
+  };
+  /** The organization's location slots after the removal. */
+  usage?: { used: number; limit: number; free: number; max: number };
+};
 
 /** A picked, unbound Business Profile location: `GET locations` → `pending_gbp`. Not a location yet. */
 export type PendingGbpPick = {
@@ -154,6 +176,7 @@ export type LocationOverview = LocationHeader & {
         actions_change: number | null;
       }
     | Unavailable;
+  /** `unreplied` counts every unanswered review (uncapped since 2026-11-17, G15): drop any "at least 10". */
   reviews: { available: true; rating: number | null; count: number | null; unreplied: number | null } | Unavailable;
   /** `no_citations_yet` (no list) or `not_checked_yet` (a list, nothing checked) when unavailable. */
   citations?:
@@ -420,8 +443,13 @@ export type BillingSummary = {
     monthly_grant?: number;
     last_grant_at?: string | null;
     next_grant_at?: string | null;
-    /** Tokens per AI action, e.g. `post_draft` (1) and `post_image` (3). */
-    ai_costs?: Record<string, number>;
+    /** Tokens per AI action: the plan's six prices (`post_topics` is gone since 2026-11-17). */
+    ai_costs?: AiTokenCosts;
+    /**
+     * 2026-11-17: the locations the caller may see that have AI replies or analyses left (a location with none is
+     * left out; a member limited to clients sees only theirs).
+     */
+    ai_credits?: { block_size: number; locations: AiCreditsLocation[] };
   };
   billing_details?: BillingDetails | null;
   online_payments: boolean;
@@ -460,12 +488,27 @@ export type InvoiceList = { invoices: BillingInvoice[]; page: number; limit: num
 
 export type CouponQuote = { pack_id: string; currency: string; price: number; discount: number; total: number };
 
+/** One location's AI replies and analyses left (`GET billing` → `tokens.ai_credits.locations`). */
+export type AiCreditsLocation = { location_id: string; name: string; replies_left: number; analyses_left: number };
+
+/**
+ * A token history row. 2026-11-17: one `spend` per block of AI replies or analyses bought (`ref:
+ * "ai_credits:<block>"`, `location_id`, note "AI replies: block of 10" / "AI review analyses: block of 10", plus
+ * " (automatic reply)") and one `refund` per block refunded ("Refund: AI replies not used", plus " (location
+ * removed)"); no row per reply. Name the location from `location_id` only when it is one you can load (a removed
+ * location, or one outside a member's clients, isn't): show those rows without a location name.
+ */
 export type TokenLedgerEntry = {
   id: string;
   type: "purchase" | "spend" | "refund" | "grant" | "monthly_grant" | "adjustment" | "expiry";
   amount: number;
   balance_after: number;
+  /** What the row is about, e.g. `ai_credits:<block_id>`. */
+  ref?: string | null;
+  location_id?: string | null;
   note: string | null;
+  /** Who it was for (a user id), when known. */
+  by?: string | null;
   at: string;
 };
 

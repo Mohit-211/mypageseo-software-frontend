@@ -3,7 +3,10 @@
  * - `SendAnywayDialog` (409 `confirm_warnings_required`): the warnings, then "Send anyway" (the same
  *   send with `confirm_warnings: true`) or "Go back and edit".
  * - `GoogleReplyDialog` (409 `reply_changed_on_google`): Google already has a reply the app didn't
- *   show. "Replace it with my draft" (send again), "Delete my draft", or "Keep both for now".
+ *   show. "Replace it with my draft", "Delete my draft", or "Keep both for now". 2026-11-17 (G3): the
+ *   draft is then left behind, so "Replace it with my draft" saves it first (it becomes an update) and
+ *   sends it; the same dialog (`variant="predates"`) answers a draft written before the reply now on
+ *   Google (409 `draft_predates_reply`, or one the card knows is left behind).
  *
  * Both open from a send that is still finishing, so nothing on the page had focus to go back to:
  * `returnFocus` puts it where it belongs however they close (the card's Send button, or the card),
@@ -96,6 +99,7 @@ export function GoogleReplyDialog({
   onOpenChange,
   googleReply,
   draftText,
+  variant = "changed",
   onReplace,
   onDelete,
   returnFocus,
@@ -106,7 +110,12 @@ export function GoogleReplyDialog({
   googleReply: GoogleReply | null;
   /** The draft that wasn't sent. */
   draftText: string;
-  /** "Replace it with my draft": send the draft again (it replaces the reply now shown). */
+  /**
+   * `changed`: a send just found a reply on Google the app didn't show (409 `reply_changed_on_google`).
+   * `predates`: the draft was written before the reply now on Google (409 `draft_predates_reply`).
+   */
+  variant?: "changed" | "predates";
+  /** "Replace it with my draft": save the draft again (an update of the reply on Google), then send it. */
   onReplace: () => void;
   /** "Delete my draft": keep Google's reply. */
   onDelete: () => void;
@@ -123,9 +132,11 @@ export function GoogleReplyDialog({
         }}
       >
         <DialogHeader>
-          <DialogTitle>Google already has a reply</DialogTitle>
+          <DialogTitle>{variant === "predates" ? "Written before the reply on Google" : "Google already has a reply"}</DialogTitle>
           <DialogDescription>
-            This review has a reply on Google that wasn't shown here: it was added or changed on Google. Your draft wasn't sent. Choose which reply to keep.
+            {variant === "predates"
+              ? "This draft was written before the reply now on Google, so it wasn't sent. Replace Google's reply with your draft, or delete the draft."
+              : "This review has a reply on Google that wasn't shown here: it was added or changed on Google. Your draft wasn't sent. Choose which reply to keep."}
           </DialogDescription>
         </DialogHeader>
         <div className="grid min-w-0 gap-3">

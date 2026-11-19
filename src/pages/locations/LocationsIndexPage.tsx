@@ -24,6 +24,7 @@ import { GoogleAccountsPanel } from "@/components/gbp-connect/google-accounts-pa
 import { PendingGbpSection } from "@/components/gbp-connect/pending-gbp-section";
 import { ClientSelect } from "@/components/location/client-select";
 import { LocationRowsTable } from "@/components/location/location-rows-table";
+import { RemoveLocationDialog } from "@/components/location/remove-location-dialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -354,13 +355,10 @@ function LocationsPage() {
         }}
       />
 
-      <ConfirmDialog
-        open={deleteTarget !== null}
+      {/* Also says when the location's unused AI replies of a started block would be lost (2026-11-17). */}
+      <RemoveLocationDialog
+        location={deleteTarget}
         onOpenChange={(open) => (open ? undefined : setDeleteTarget(null))}
-        title={`Delete ${deleteTarget?.name ?? "this location"}?`}
-        description="Tracking stops and scheduled checks are cancelled. History is kept, and the place can be added again later. The paid slot isn’t refunded; it stays paid and reusable for another location until the period ends."
-        cancelLabel="Keep location"
-        confirmLabel="Delete"
         onConfirm={() => {
           const target = deleteTarget;
           setDeleteTarget(null);

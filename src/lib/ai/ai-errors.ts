@@ -20,15 +20,26 @@
  *   403 `read_only` (client_user).
  * - 429 `suggestion_limit_reached` (keyword ideas: 20 runs per location per UTC day), 429 `rate_limited`
  *   `{ retry_after_seconds | next_allowed_at }`.
- * - Phase 25: 409 `revision_in_progress` ("Change it" already running); `ai_not_compliant` (an auto-post
- *   draft failed Google's post rules; tokens refunded).
+ * - Phase 25: 409 `revision_in_progress` ("Change it" on a reply already running); `ai_not_compliant` (an
+ *   auto-post draft failed Google's post rules; tokens refunded).
+ * - Phase 25b: 503 `ai_org_budget_reached`: the organization used its share of today's AI ("AI is paused for your
+ *   organization today"; it resumes at the next 00:00 UTC, like `ai_budget_reached`).
+ * - 2026-11-17 (background AI runs on posts): 503 `run_not_queued` ("Couldn't start. Nothing was spent; try
+ *   again."), 409 `generation_in_progress` (another AI action holds the post or action; `data.run` is that run, or
+ *   null for a series post its series is writing), 409 `series_paused` (resume the series first), and the codes a
+ *   run can end with (`runErrorFrom(run)` in `src/lib/posts/ai-runs.ts` turns a failed run into the same error):
+ *   `timed_out`, `interrupted`, `internal_error`, `enqueue_failed`, `access_removed`, `location_removed`. A failed
+ *   run costs nothing, and the words say so.
+ * - 2026-11-17: the 402 `insufficient_tokens` of review replies and analyses carries `reviews` and `replies_left`
+ *   (or `analyses_left`): "2 replies left, 6 needed: 1 token buys 10 more".
  *
  * `aiErrorText` is pure. `useAiErrorText()` fills the owner/billing options from the signed-in user.
  * To show a toast (and record the outcome for `useAiStatus`), use `toastAiError` / `useToastAiError`.
  */
-import { apiErrorData, isApiError } from "@/api";
+import { apiErrorData, getSessionSubject, isApiError } from "@/api";
 import { useAccess } from "@/hooks/use-access";
 import { formatTime } from "@/lib/datetime";
+import { insufficientCreditsText } from "@/lib/reviews/reply-credits";
 import { formatTokenCount, formatTokens } from "./ai-costs";
 import { formatResumeTime, nextUtcMidnight } from "./ai-time";
 
@@ -48,6 +59,16 @@ export const AI_ERROR_REASONS = [
   "ai_not_compliant",
   "gbp_not_connected",
   "v4_access_pending",
+  "ai_org_budget_reached",
+  "run_not_queued",
+  "generation_in_progress",
+  "series_paused",
+  "timed_out",
+  "interrupted",
+  "internal_error",
+  "enqueue_failed",
+  "access_removed",
+  "location_removed",
 ] as const;
 export type AiErrorReason = (typeof AI_ERROR_REASONS)[number];
 
@@ -101,10 +122,36 @@ export function aiErrorReason(error: unknown): string | undefined {
   return isApiError(error) ? error.reason : undefined;
 }
 
-/** True when AI itself can't run right now (not switched on, or paused for today), as opposed to one failed request. */
+/** True when this deck has its own words for the error's `reason` (callers with their own copy can route those here). */
+export function isAiErrorReason(reason: string | null | undefined): reason is AiErrorReason {
+  return typeof reason === "string" && (AI_ERROR_REASONS as readonly string[]).includes(reason);
+}
+
+/**
+ * True when AI itself can't run right now (not switched on, or paused for today for everyone or for this
+ * organization), as opposed to one failed request.
+ */
 export function isAiUnavailableError(error: unknown): boolean {
   const reason = aiErrorReason(error);
-  return reason === "ai_not_configured" || reason === "ai_budget_reached";
+  return reason === "ai_not_configured" || reason === "ai_budget_reached" || reason === "ai_org_budget_reached";
+}
+
+/** What a run holding the post is doing, for the 409 `generation_in_progress` words. */
+const RUN_DOING: Record<string, string> = {
+  draft: "A post is being written here",
+  revise: "This post is being changed",
+  image: "A picture is being made here",
+  series_next: "The next post of this series is being written",
+  plan: "Post ideas are being planned",
+};
+
+/** "Sam Lee started it." when a teammate's run holds it (nothing for your own, or a client user's slim run). */
+function startedBy(run: Record<string, unknown> | null): string {
+  const by = run?.requested_by;
+  if (!by || typeof by !== "object") return "";
+  const { user_id: userId, name } = by as { user_id?: unknown; name?: unknown };
+  if (typeof name !== "string" || !name.trim() || userId === getSessionSubject()) return "";
+  return ` ${name.trim()} started it.`;
 }
 
 const numberOf = (value: unknown): number | undefined => {
@@ -154,6 +201,41 @@ export function aiErrorText(error: unknown, options: AiErrorTextOptions = {}): A
       const back = formatResumeTime(nextUtcMidnight(now), now);
       return { ...base, tone: "info", title: "AI is paused for today", description: `Today's AI limit has been reached, so nothing was charged. It's back at ${back}.` };
     }
+    case "ai_org_budget_reached": {
+      // One organization may use only a share of the day's AI (Phase 25b); it resumes with the next day.
+      const now = options.now ?? Date.now();
+      const back = formatResumeTime(nextUtcMidnight(now), now);
+      return {
+        ...base,
+        tone: "info",
+        title: "AI is paused for your organization today",
+        description: `Your organization has used today's AI, so nothing was charged. It resumes at ${back}.`,
+      };
+    }
+    case "run_not_queued":
+    case "enqueue_failed":
+      return { ...base, tone: "warning", retryable: true, title: "Couldn't start", description: "Nothing was spent. Try again." };
+    case "timed_out":
+      return { ...base, tone: "warning", retryable: true, title: "It couldn't start in time", description: "Nothing was spent. Try again." };
+    case "interrupted":
+      return { ...base, tone: "warning", retryable: true, title: "It was interrupted", description: "It stopped before it finished, so nothing was spent. Try again." };
+    case "internal_error":
+      return { ...base, tone: "critical", retryable: true, title: fallback, description: "Something went wrong on our side, so nothing was spent. Try again." };
+    case "generation_in_progress": {
+      // Another AI action holds this post or action (`data.run`), or its series is writing it (`data.run: null`).
+      const run = data.run && typeof data.run === "object" ? (data.run as Record<string, unknown>) : null;
+      if (!run) {
+        return { ...base, tone: "info", title: "AI is already writing this post", description: "Its series is writing it. Wait a few minutes, then reload." };
+      }
+      const doing = (typeof run.kind === "string" && RUN_DOING[run.kind]) || "AI is already working on this";
+      return { ...base, tone: "info", title: "AI is already working on this", description: `${doing}.${startedBy(run)} Wait for it to finish, then try again.` };
+    }
+    case "series_paused":
+      return { ...base, tone: "info", title: "This series is paused", description: "Resume the series first, then try again." };
+    case "access_removed":
+      return { ...base, tone: "info", title: "You can't change these posts any more", description: "Your access to this location changed. Nothing was spent." };
+    case "location_removed":
+      return { ...base, tone: "info", title: "This location was removed", description: "Nothing was spent." };
     case "ai_failed":
       // No answer, or (Phase 25a) nothing usable in it: refunded either way, and this says so.
       return {
@@ -168,8 +250,12 @@ export function aiErrorText(error: unknown, options: AiErrorTextOptions = {}): A
     case "insufficient_tokens": {
       const cost = numberOf(data.cost);
       const balance = numberOf(data.balance);
-      const need =
-        cost !== undefined && cost > 0
+      // Review replies and analyses (2026-11-17): the location's AI replies left, the reviews asked for and the
+      // blocks missing: "2 replies left, 6 needed: 1 token buys 10 more".
+      const credits = insufficientCreditsText(error);
+      const need = credits
+        ? `${credits}${balance !== undefined ? `, and you have ${formatTokenCount(balance)}` : ""}.`
+        : cost !== undefined && cost > 0
           ? `This needs ${formatTokens(cost)}${balance !== undefined ? ` and you have ${formatTokenCount(balance)}` : ""}.`
           : "You don't have enough tokens for this.";
       return canBuyTokens

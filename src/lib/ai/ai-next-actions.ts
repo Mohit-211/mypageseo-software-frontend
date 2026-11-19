@@ -4,9 +4,10 @@
  *
  * Rules, most useful first (at most `MAX_AI_NEXT_ACTIONS`):
  * 1. Google isn't connected → connect it (reviews and publishing need it);
- * 2. reviews without a reply or a draft (`summary.ai.draftable`) → draft replies (`ai.draft_all_cost`);
+ * 2. reviews without a reply or a draft (`summary.ai.draftable`) → draft replies (`ai.draft_all_cost`: the
+ *    tokens of the blocks of 10 replies needed beyond the location's replies left);
  * 3. reply drafts waiting (`stats.drafts_pending`) → check and send them (free);
- * 4. no Google post in the last 30 days (`posts summary`) → post ideas (`post_topics`);
+ * 4. no Google post in the last 30 days (`posts summary`) → post ideas (free since 2026-11-17);
  * 5. an auto-post series has a problem (`stats.series_problems`) → fix it;
  * 6. no tracked keywords → add keywords (keyword ideas are free);
  * 7. review insights never generated and enough reviews to read → generate them (`insights`).
@@ -144,7 +145,7 @@ export function buildAiNextActions(input: AiNextActionsInput): AiNextAction[] {
         ? `${plural(reviews.draftable, "review is", "reviews are")} ready for an AI reply`
         : `${plural(reviews.waiting, "review has", "reviews have")} no reply yet`,
       description: canRun
-        ? "AI drafts them all in one go, in each reviewer's language. You check every draft before it's sent."
+        ? "AI drafts a reply to each one, in the reviewer's language. You check every draft before it's sent."
         : blocker === "paused"
           ? `AI is ${aiBack}. Reply to them yourself meanwhile.`
           : "Reply to them yourself now; drafting them with AI is almost ready.",
@@ -172,11 +173,12 @@ export function buildAiNextActions(input: AiNextActionsInput): AiNextAction[] {
       id: "post_ideas",
       title: "No Google post in the last 30 days",
       description: canRun
-        ? "Regular posts keep your profile active. Get post ideas written for this business."
+        ? "Regular posts keep your profile active. Post ideas for this business are free."
         : blocker === "paused"
           ? `Regular posts keep your profile active. Write one now; AI ideas are ${aiBack}.`
           : "Regular posts keep your profile active. Write one now; AI ideas are almost ready.",
-      ...(canRun ? { cost: costs.post_topics } : {}),
+      // Planned free since 2026-11-17 (no topics price any more).
+      ...(canRun ? { cost: costs.post_ideas } : {}),
       cta: canRun ? "Get post ideas" : "Write a post",
       // Straight to the section: the old `?ideas=1` cost AI Posts an extra navigation (a blank frame).
       to: canRun ? locationPath(id, "ai/posts", "#ideas") : locationPath(id, "ai/posts"),
@@ -184,11 +186,16 @@ export function buildAiNextActions(input: AiNextActionsInput): AiNextAction[] {
     });
   }
 
+  // 2026-11-17 (G10): `series_problems` counts a series that paused itself (posts not reviewed in time, posts held,
+  // a post Google rejected) always, and one whose last post failed only while the planner is on: words for both.
   if (posts && posts.seriesProblems > 0) {
     actions.push({
       id: "series_problem",
       title: posts.seriesProblems === 1 ? "An auto-post series needs attention" : `${posts.seriesProblems} auto-post series need attention`,
-      description: "A scheduled AI post couldn't be written or published. See what happened and fix it.",
+      description:
+        posts.seriesProblems === 1
+          ? "It paused itself or couldn't write a post. See what happened and fix it."
+          : "Each one paused itself or couldn't write a post. See what happened and fix them.",
       cta: "Review auto-posts",
       to: locationPath(id, "ai/posts", "#auto"),
       ai: false,

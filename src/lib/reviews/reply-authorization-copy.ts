@@ -10,6 +10,7 @@
  * (falls back to "our client"), `location` the location's name.
  */
 import { isApiError, type ReplyAuthorization } from "@/api";
+import { byActor, grantRole } from "@/lib/ai-settings/names";
 import { formatDate } from "@/lib/datetime";
 import { REPLY_AUTH_CONSENT_VERSION } from "./reply-checks";
 
@@ -119,11 +120,17 @@ export function replyAuthorizationDialog(method: GrantMethod, names: ReplyAuthor
   };
 }
 
-/** "Replies authorized by Maple Leaf Group on Nov 13, 2026" (the quiet line once it's granted). */
-export function authorizedByText(authorization: ReplyAuthorization, names: ReplyAuthorizationNames, byMe: boolean): string {
-  const who = byMe ? "you" : authorization.method === "owner_attestation" ? "the account owner" : (clean(names.client) ?? "your client");
+/**
+ * "Replies authorized by Ana Diaz on Nov 13, 2026" (the quiet line once it's granted). Who, by the 2026-11-17 names
+ * rule shared with series approvals and AI Settings (`src/lib/ai-settings/names.ts`): "you"; the person's name; else
+ * the client's own consent reads "Harbor Dental" ("someone at Harbor Dental" for a client user) and the owner's
+ * attestation "the account owner" ("your agency" for a client user). `viewerIsClientUser`: the signed-in user is a
+ * client user.
+ */
+export function authorizedByText(authorization: ReplyAuthorization, names: ReplyAuthorizationNames, byMe: boolean, viewerIsClientUser = false): string {
+  const by = byActor({ name: authorization.user_name, mine: byMe, role: grantRole(authorization.method), client: names.client }, { clientUser: viewerIsClientUser });
   const when = authorization.at ? formatDate(authorization.at, "") : "";
-  return `Replies authorized by ${who}${when ? ` on ${when}` : ""}`;
+  return `Replies authorized${by}${when ? ` on ${when}` : ""}`;
 }
 
 /** The confirmation before withdrawing it. */

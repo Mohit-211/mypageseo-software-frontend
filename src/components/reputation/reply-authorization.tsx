@@ -7,6 +7,7 @@ import { ConfirmDialog, FormAlert } from "@/components/layout/shared/form-fields
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useAccess } from "@/hooks/use-access";
 import { formatDateTime } from "@/lib/datetime";
 import { useWorkspace } from "@/lib/mypageseo/workspace";
 import {
@@ -183,19 +184,21 @@ function GrantDialog({ locationId, method, names, onClose }: { locationId: strin
 
 /**
  * Once replies are authorized (agency organizations): a quiet line for the page header's facts,
- * "Replies authorized by Maple Leaf Group on Nov 13, 2026", with "Withdraw" for whoever can (the
- * client's users and the owner). Nothing in a business organization or before it's granted.
+ * "Replies authorized by Ana Diaz on Nov 13, 2026" (2026-11-17: the person's name, `user_name`; a client
+ * user reads "your agency" for the agency's staff, whose names it doesn't get), with "Withdraw" for
+ * whoever can (the client's users and the owner). Nothing in a business organization or before it's granted.
  */
 export function ReplyAuthorizationStatus({ locationId, locationName, clientName }: LocationNames) {
   const { authorization, grantMethod } = useReplyAuthorization(locationId);
   const names = useNames(locationName, clientName);
   const me = useSyncExternalStore(subscribeToAccessToken, getSessionSubject, () => null);
+  const clientUser = useAccess().role === "client_user";
   const queryClient = useQueryClient();
   const withdraw = useSetReplyAuthorization(locationId);
   const [confirming, setConfirming] = useState(false);
   if (!authorization?.required || !authorization.granted) return null;
 
-  const text = authorizedByText(authorization, names, Boolean(me && authorization.user_id === me));
+  const text = authorizedByText(authorization, names, Boolean(me && authorization.user_id === me), clientUser);
   const confirm = grantMethod ? withdrawCopy(grantMethod, names) : null;
 
   const run = async () => {

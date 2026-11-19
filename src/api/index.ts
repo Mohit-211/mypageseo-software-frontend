@@ -48,4 +48,5 @@ export type * from "./types/rankings";
 export type * from "./types/profile";
 export type * from "./types/staff";
 export type * from "./types/posts";
+export type * from "./types/post-ai";
 export type * from "./types/citations";

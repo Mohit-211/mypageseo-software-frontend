@@ -53,6 +53,16 @@ function quickViews(stats: Stats, deletedCount: number | undefined): QuickView[]
     },
     { id: "drafts", label: "Drafts", count: stats.drafts_pending, reply: "draft", flag: null, title: "Replies written or drafted with AI that haven't been sent yet." },
     {
+      // 2026-11-17 (G3): drafts that replace a reply already on Google, sent one at a time.
+      id: "updates",
+      label: REPLY_FILTER_LABEL.update,
+      count: stats.reply_updates_pending,
+      reply: "update",
+      flag: null,
+      title: "Drafts that replace a reply already on Google. Send each one from its review.",
+      optional: true,
+    },
+    {
       // Phase 25a: a to-do (it counts as unanswered), so next to the drafts, in red while it has any.
       id: "rejected",
       label: REPLY_FILTER_LABEL.rejected,
@@ -113,9 +123,9 @@ function quickViews(stats: Stats, deletedCount: number | undefined): QuickView[]
 
 /**
  * The Reviews page's filters, all kept in the address: quick views with counts (all, needs reply,
- * drafts, rejected by Google, needs attention, suspicious, waiting for Google, replied, deleted on
- * Google), the search box, star ratings and the order. Views that are often empty show up only when
- * they have reviews (or are open).
+ * drafts, updates to send (2026-11-17), rejected by Google, needs attention, suspicious, waiting for
+ * Google, replied, deleted on Google), the search box, star ratings and the order. Views that are often
+ * empty show up only when they have reviews (or are open).
  */
 export function ReviewsToolbar({
   stats,

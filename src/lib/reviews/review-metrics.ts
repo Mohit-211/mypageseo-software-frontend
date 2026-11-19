@@ -40,6 +40,14 @@ export function noReplyCount(stats: Pick<Stats, "unreplied" | "drafts_pending" |
   return Math.max(0, stats.unreplied - stats.drafts_pending - (stats.replies_rejected ?? 0));
 }
 
+/**
+ * "Drafts to check": the drafts waiting to be sent (`drafts_pending`, failed sends included) plus, since 2026-11-17,
+ * the drafts that update a reply on Google (`reply_updates_pending`, sent one at a time).
+ */
+export function draftsToCheckCount(stats: Pick<Stats, "drafts_pending" | "reply_updates_pending">): number {
+  return Math.max(0, stats.drafts_pending) + Math.max(0, stats.reply_updates_pending ?? 0);
+}
+
 /** Reviews flagged for attention (not suspicious). */
 export function attentionCount(stats: Pick<Stats, "flagged" | "suspicious">): number {
   return Math.max(0, stats.flagged - stats.suspicious);

@@ -2,10 +2,19 @@ import { useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { CheckCircle2, Eye, LoaderCircle, Lock, Send, ShieldCheck, Sparkles, Star } from "lucide-react";
-import { draftAllReviews, getReviews, isApiError, sendReplies, type Review, type ReviewsSummary, type SendRepliesResponse } from "@/api";
+import { CheckCircle2, Eye, LoaderCircle, Lock, MessageSquareReply, Repeat2, Send, ShieldCheck, Sparkles, Star } from "lucide-react";
+import {
+  draftAllReviews,
+  generateReplyDrafts,
+  getReview,
+  getReviews,
+  isApiError,
+  sendReplies,
+  type Review,
+  type ReviewsSummary,
+  type SendRepliesResponse,
+} from "@/api";
 import { AiBadge } from "@/components/ai/ai-badge";
-import { AiCostChip } from "@/components/ai/ai-cost-chip";
 import { InfoTip } from "@/components/layout/shared/info-tip";
 import {
   AlertDialog,
@@ -20,26 +29,38 @@ import {
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useCanEdit } from "@/hooks/use-access";
-import { formatTokenCount, perStartedTen } from "@/lib/ai/ai-costs";
+import { formatTokenCount } from "@/lib/ai/ai-costs";
 import { noteAiSuccess } from "@/lib/ai/ai-signal";
 import type { AiStatus } from "@/lib/ai/ai-status";
-import { useToastAiError } from "@/lib/ai/toast-ai-error";
 import { keywordsPath } from "@/lib/keywords/paths";
+import { draftRunTitle, runInChunks, summarizeDraftRun, type ChunkProgress, type DraftRunResult } from "@/lib/reviews/draft-results";
 import { sendBlockedByAuthorization } from "@/lib/reviews/reply-authorization-copy";
-import { putReviewInCache, putSendResultsInCache } from "@/lib/reviews/review-cache";
-import { reviewErrorMessage } from "@/lib/reviews/review-errors";
+import { creditCost, creditsText, draftBatchSize } from "@/lib/reviews/reply-credits";
+import { putReviewInCache, putSendResultsInCache, setCachedCredits } from "@/lib/reviews/review-cache";
+import { reviewErrorMessage, useToastReplyError } from "@/lib/reviews/review-errors";
 import { draftableCount } from "@/lib/reviews/review-metrics";
-import { SENT_REPLIES_NOTE, noteReplyAuthorizationRequired, singleSendResult, summarizeSend, type SendSummary } from "@/lib/reviews/send-results";
+import {
+  SENT_REPLIES_NOTE,
+  noteReplyAuthorizationRequired,
+  sentInfoFrom,
+  singleSendResult,
+  summarizeSend,
+  type SendSummary,
+  type SentReviewInfo,
+} from "@/lib/reviews/send-results";
 import { useReplyAuthorization } from "@/lib/reviews/use-reply-authorization";
 import { reviewsKey, reviewsSummaryQuery } from "@/lib/reviews/use-reviews";
 import { cn } from "@/lib/utils";
+import { AiWorkProgress } from "./ai-work-progress";
 import { BulkSendResults } from "./bulk-send-results";
+import { DraftResultsPanel } from "./draft-results";
+import { ReplyCostChip } from "./reply-cost-chip";
 
 /** Reviews per `POST reviews/send` call (the API's limit). */
 const SEND_BATCH = 100;
 
-/** Reviews per "Draft all" call when the summary doesn't say (`ai.draft_all_max`: 20 since Phase 25a). */
-const DEFAULT_DRAFT_ALL_MAX = 20;
+/** Skipped reviews of a "Draft all" page whose names are read for the results (`GET …/reviews/:reviewId`). */
+const NAMES_TO_READ = 12;
 
 const plural = (count: number, one: string, many: string) => `${count.toLocaleString()} ${count === 1 ? one : many}`;
 
@@ -71,6 +92,8 @@ export type BulkRepliesProps = {
   variant?: "hero" | "bar";
   /** Shows the drafts in the list below ("Check the drafts"). */
   onShowDrafts?: () => void;
+  /** Shows the drafts that replace a reply on Google (2026-11-17); without it, `onShowDrafts`. */
+  onShowUpdates?: () => void;
   /** "Open it" on a review a send held back: scrolls to its card, or pins it above the list (`?review=`). */
   onOpenReview?: (reviewId: string) => void;
   className?: string;
@@ -78,11 +101,19 @@ export type BulkRepliesProps = {
 
 /**
  * "Draft all": AI drafts a reply for every review without one (except those with suspicious
- * indicators), up to `ai.draft_all_max` per call (20), then "Continue (N left)", which sends the
- * previous answer's `next_cursor` back so each call goes on where the last one stopped. Stars-only
+ * indicators), up to `ai.draft_all_max` per call (6 by default since Phase 25b, a server setting: read
+ * it), then "Continue (N left)", which sends the previous answer's `next_cursor` back so each call goes
+ * on where the last one stopped (reviews not written in time are drafted again by Continue). Stars-only
  * 4–5★ reviews (no text) are drafted only when asked ("Include stars-only reviews", at most 3 per
  * location a week). "Send all drafts" publishes every waiting draft in batches after a confirmation,
- * then shows what wasn't sent and why (BulkSendResults). Sending is always the user's click.
+ * then shows what wasn't sent and why (BulkSendResults), with "Send the rest" for the replies Google
+ * was too slow for. Drafts that replace a reply on Google go one at a time, from their review.
+ * Sending is always the user's click.
+ *
+ * 2026-11-17: AI replies come in blocks of 10 per location: "AI replies left: 4 · 1 token = 10 replies"
+ * (from the summary's `ai.credits` and `token_costs`, never hard-coded), and the button shows what the
+ * click uses: the replies left ("21 left") or the tokens for the blocks it needs. Every answer's
+ * `replies_left` updates the counters at once.
  *
  * Never hidden because AI is off or paused: the button stays, disabled, with the reason, so people
  * can find the feature. Hidden only for a read-only client_user, who can't write replies. A read-only
@@ -93,9 +124,9 @@ export type BulkRepliesProps = {
  * older answer. Render it with `key={locationId}`: what it holds (a "Continue", send results, the
  * confirmation) belongs to one location.
  */
-export function BulkReplies({ locationId, summary, ai, variant = "bar", onShowDrafts, onOpenReview, className }: BulkRepliesProps) {
+export function BulkReplies({ locationId, summary, ai, variant = "bar", onShowDrafts, onShowUpdates, onOpenReview, className }: BulkRepliesProps) {
   const queryClient = useQueryClient();
-  const toastAiError = useToastAiError();
+  const toastReplyError = useToastReplyError();
   const canEdit = useCanEdit();
   const authorization = useReplyAuthorization(locationId);
   const [continued, setContinued] = useState<Continuation | null>(null);
@@ -103,6 +134,10 @@ export function BulkReplies({ locationId, summary, ai, variant = "bar", onShowDr
   const [confirmSend, setConfirmSend] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
   const [results, setResults] = useState<SendSummary | null>(null);
+  // The last "Draft all" page that skipped reviews (not written in time, changed meanwhile…), until dismissed.
+  const [skips, setSkips] = useState<{ result: DraftRunResult; stoppedText: string | null } | null>(null);
+  // The "Draft all" call running now, for its progress bar (it can take up to about 75 s).
+  const [drafting, setDrafting] = useState<ChunkProgress | null>(null);
   const sectionRef = useRef<HTMLElement>(null);
 
   const summaryDraftable = draftableCount(summary);
@@ -113,8 +148,13 @@ export function BulkReplies({ locationId, summary, ai, variant = "bar", onShowDr
   // count saves a flash of the old number, and the summary takes over as soon as it's read again.
   const draftable = ownContinue?.fresh ? ownContinue.remaining : summaryDraftable;
   const drafts = summary.stats?.drafts_pending ?? 0;
-  const perCall = summary.ai?.draft_all_max ?? DEFAULT_DRAFT_ALL_MAX;
+  // 2026-11-17 (G3): drafts that replace a reply on Google are sent one at a time, never by "Send all".
+  const updates = summary.stats?.reply_updates_pending ?? 0;
+  // Phase 25b: `ai.draft_all_max` (6 by default) per call; a server setting, so read, never hard-coded.
+  const perCall = draftBatchSize(summary);
   const per10 = summary.ai?.token_costs?.reply_drafts_per_10 ?? ai.costs.reply_drafts_per_10;
+  const credits = summary.ai?.credits ?? null;
+  const blockSize = credits?.block_size;
   // Phase 25a: stars-only 4–5★ reviews (no text) wait outside `draftable`, at most `stars_only_left` a week.
   const starsWaiting = Math.max(0, summary.ai?.stars_only_draftable ?? 0);
   const starsLeft = Math.max(0, summary.ai?.stars_only_left ?? 0);
@@ -126,7 +166,11 @@ export function BulkReplies({ locationId, summary, ai, variant = "bar", onShowDr
   // The button counts the reviews with text; the stars-only option shows its own numbers next to it,
   // so "Continue (N left)" doesn't change when the summary is read again.
   const toDraft = starsOnlyMode ? starsNow : draftable;
-  const cost = summary.ai?.draft_all_cost === undefined ? undefined : summary.ai.draft_all_cost + (withStars ? perStartedTen(starsNow, per10) : 0);
+  // 2026-11-17: what "Draft all" uses, as `draft_all_cost` counts it: the location's replies left first, then
+  // blocks of 10 at `reply_drafts_per_10`; the stars-only reviews it adds come on top (an upper bound: a review
+  // the analysis flags gives its reply back).
+  const cost = creditCost(starsOnlyMode ? starsNow : draftable + (withStars ? starsNow : 0), credits, per10);
+  const credit = credits ? creditsText(credits, summary.ai?.token_costs, "replies") : null;
 
   /** Reads the reviews (summary, lists, counts) and the balance again; resolves once the reviews are back. */
   const refresh = () => {
@@ -135,34 +179,54 @@ export function BulkReplies({ locationId, summary, ai, variant = "bar", onShowDr
   };
 
   const draftAll = useMutation({
-    mutationFn: (request: { cursor: string | null; includeStarsOnly: boolean }) =>
-      draftAllReviews(locationId, { cursor: request.cursor, include_stars_only: request.includeStarsOnly }),
-    onSuccess: (result) => {
-      noteAiSuccess();
-      // The new drafts at once, wherever a card shows them (a review opened above the list included).
+    mutationFn: async (request: { cursor: string | null; includeStarsOnly: boolean; count: number }) => {
+      setDrafting({ done: 0, total: request.count, current: request.count, startedAt: Date.now() });
+      const result = await draftAllReviews(locationId, { cursor: request.cursor, include_stars_only: request.includeStarsOnly });
+      // The reviews a page skipped, by name (the answer gives their ids only); a name that can't be read stays generic.
+      const skipped = result.skipped ?? [];
+      const named = await Promise.all(
+        skipped.slice(0, NAMES_TO_READ).map((skip) => getReview(locationId, skip.review_id).then((answer) => answer.review, () => null)),
+      );
+      const page = summarizeDraftRun(
+        "drafts",
+        [...(result.drafts ?? []).map((item) => item.review_id), ...skipped.map((skip) => skip.review_id)],
+        [{ done: result.drafted, reused: 0, tokensSpent: result.tokens_spent, skipped }],
+        named.filter((review): review is Review => review !== null),
+      );
+      return { result, page };
+    },
+    onSuccess: ({ result, page }) => {
+      if (result.drafted > 0) noteAiSuccess();
+      // The new drafts at once, wherever a card shows them (a review opened above the list included), and the
+      // location's AI replies left (2026-11-17) in every counter and chip.
       for (const item of result.drafts ?? []) putReviewInCache(queryClient, locationId, item);
+      setCachedCredits(queryClient, locationId, result);
       // Stop when nothing is left, or when the answer gives no cursor to go on from.
       const more = result.remaining > 0 && result.next_cursor !== null;
       setContinued(more && result.next_cursor ? { locationId, cursor: result.next_cursor, remaining: result.remaining, fresh: true, basis: null } : null);
+      // Skipped reviews (2026-11-17): Continue drafts the ones not written in time again; the others are listed.
+      setSkips(page.groups.length > 0 ? { result: page, stoppedText: null } : null);
       toast.success(result.drafted > 0 ? `${plural(result.drafted, "reply", "replies")} drafted` : "No new drafts", {
         description: more
           ? `${result.remaining.toLocaleString()} still to draft: press Continue when you're ready.`
-          : `Check the drafts, then send them. ${formatTokenCount(result.tokens_spent)} used.`,
+          : `Check the drafts, then send them.${result.tokens_spent > 0 ? ` ${formatTokenCount(result.tokens_spent)} used.` : ""}`,
       });
     },
     onError: (err, request) => {
-      // The cursor is opaque and can expire: start again from the oldest review next time.
+      // The cursor is a position and never expires (2026-11-17); one that can't be read means: start over.
       if (request.cursor && isApiError(err) && err.reason === "invalid_input") {
         setContinued(null);
         toast.error("The list of reviews changed", { description: "Press the button again to draft from the oldest review without a reply." });
         return;
       }
-      toastAiError(err, { fallback: "The replies couldn't be drafted" });
+      // The 402 says how many replies are left and needed; a 502 that nothing was used.
+      toastReplyError(err, { fallback: "The replies couldn't be drafted", ...(blockSize ? { blockSize } : {}), onRetry: () => draftAll.mutate(request) });
     },
     // Once the summary has been read again, its own count takes over from the answer's, and the
     // "Continue" remembers that count. Not returned: the mutation would wait for the refetch before
     // it stops "Drafting…".
     onSettled: () => {
+      setDrafting(null);
       void refresh().then(() => {
         const fresh = queryClient.getQueryData<ReviewsSummary>(reviewsSummaryQuery(locationId).queryKey);
         setContinued((current) => (current?.fresh ? { ...current, fresh: false, basis: fresh ? draftableCount(fresh) : null } : current));
@@ -171,13 +235,19 @@ export function BulkReplies({ locationId, summary, ai, variant = "bar", onShowDr
   });
 
   const sendAll = useMutation({
-    mutationFn: async (): Promise<SendSummary> => {
-      // Every unreplied review with a draft, 100 per page (live replies and reviews deleted on Google aren't listed).
-      const pending: Review[] = [];
-      for (let page = 1; ; page += 1) {
-        const list = await getReviews(locationId, { has_draft: true, replied: false, page, limit: SEND_BATCH });
-        pending.push(...list.reviews);
-        if (pending.length >= list.total || list.reviews.length === 0) break;
+    mutationFn: async (request: { ids?: string[]; named?: readonly SentReviewInfo[] } = {}): Promise<{ summary: SendSummary; named: SentReviewInfo[] }> => {
+      // "Send the rest": exactly the reviews Google was too slow for. Otherwise every unreplied review with a
+      // draft, 100 per page (live replies, their updates and reviews deleted on Google aren't listed).
+      const pending: SentReviewInfo[] = [];
+      if (request.ids) {
+        const byId = new Map((request.named ?? []).map((item) => [item.review_id, item]));
+        pending.push(...request.ids.map((id) => byId.get(id) ?? { review_id: id }));
+      } else {
+        for (let page = 1; ; page += 1) {
+          const list = await getReviews(locationId, { has_draft: true, replied: false, page, limit: SEND_BATCH });
+          pending.push(...list.reviews);
+          if (pending.length >= list.total || list.reviews.length === 0) break;
+        }
       }
       const totals: SendRepliesResponse = { results: [], sent: 0, failed: 0 };
       let interrupted: string | null = null;
@@ -209,10 +279,10 @@ export function BulkReplies({ locationId, summary, ai, variant = "bar", onShowDr
       }
       // What happened to each review, at once, wherever a card shows it (until the lists are read again).
       putSendResultsInCache(queryClient, locationId, totals.results);
-      return summarizeSend(totals, pending, interrupted);
+      return { summary: summarizeSend(totals, pending, interrupted), named: pending };
     },
     onMutate: () => setResults(null),
-    onSuccess: (outcome) => {
+    onSuccess: ({ summary: outcome }) => {
       if (outcome.attempted === 0) {
         toast.info("No drafts to send", { description: "They may have been sent or removed meanwhile." });
         return;
@@ -239,10 +309,60 @@ export function BulkReplies({ locationId, summary, ai, variant = "bar", onShowDr
     },
   });
 
-  if (!canEdit) return null;
-  if (variant === "bar" && draftable === 0 && drafts === 0 && results === null) return null;
+  /**
+   * "Draft them again" for reviews a "Draft all" page skipped (the AI couldn't write a usable reply, or not in
+   * time): `POST …/reviews/drafts` with those ids, `ai.draft_all_max` per request, one progress bar.
+   */
+  const retry = useMutation({
+    mutationFn: async (request: { ids: string[]; named: readonly SentReviewInfo[] }) => {
+      const run = await runInChunks(
+        request.ids,
+        perCall,
+        async (part) => {
+          const answer = await generateReplyDrafts(locationId, part);
+          for (const item of answer.drafts ?? []) putReviewInCache(queryClient, locationId, item);
+          setCachedCredits(queryClient, locationId, answer);
+          return { done: answer.generated, reused: answer.reused, tokensSpent: answer.tokens_spent, skipped: answer.skipped };
+        },
+        (value) => setDrafting(value),
+      );
+      return summarizeDraftRun("drafts", request.ids, run.answers, request.named, run.stopped, run.notTried);
+    },
+    onSuccess: (result) => {
+      if (result.done > 0) noteAiSuccess();
+      const undone = result.groups.length > 0 || result.stopped !== null;
+      setSkips(
+        undone
+          ? {
+              result,
+              stoppedText: result.stopped
+                ? reviewErrorMessage(result.stopped, "The rest couldn't be drafted. Try again in a moment.", blockSize ? { blockSize } : {}).message
+                : null,
+            }
+          : null,
+      );
+      toast.success(draftRunTitle(result), { description: "Check the drafts, then send them." });
+    },
+    onError: (err, request) =>
+      toastReplyError(err, { fallback: "The replies couldn't be drafted", ...(blockSize ? { blockSize } : {}), onRetry: () => retry.mutate(request) }),
+    onSettled: () => {
+      setDrafting(null);
+      void refresh();
+    },
+  });
 
-  const busy = draftAll.isPending || sendAll.isPending;
+  /** The names the skipped list showed, so the next panel keeps them. */
+  const retryDrafts = (ids: string[]) => {
+    const named = (skips?.result.groups ?? []).flatMap((group) =>
+      group.items.map((item) => ({ review_id: item.reviewId, reviewer: { display_name: item.reviewer, is_anonymous: item.reviewer === "Anonymous" }, rating: item.rating })),
+    );
+    retry.mutate({ ids, named });
+  };
+
+  if (!canEdit) return null;
+  if (variant === "bar" && draftable === 0 && drafts === 0 && updates === 0 && results === null && skips === null) return null;
+
+  const busy = draftAll.isPending || sendAll.isPending || retry.isPending;
   const allDone = draftable === 0 && drafts === 0 && starsWaiting === 0;
   const blocked = !ai.canRun;
   // A read-only or suspended account: AI is off and the backend refuses sending too.
@@ -284,12 +404,18 @@ export function BulkReplies({ locationId, summary, ai, variant = "bar", onShowDr
         aria-busy={draftAll.isPending || undefined}
         disabled={busy || blocked || toDraft === 0}
         title={blocked ? ai.reason : toDraft === 0 && starsLimitReached ? "This week's 3 stars-only drafts are used. More next week." : undefined}
-        onClick={() => draftAll.mutate({ cursor: continuing && ownContinue ? ownContinue.cursor : null, includeStarsOnly: withStars })}
+        onClick={() =>
+          draftAll.mutate({
+            cursor: continuing && ownContinue ? ownContinue.cursor : null,
+            includeStarsOnly: withStars,
+            count: Math.max(1, Math.min(perCall, toDraft + (withStars && !starsOnlyMode ? starsNow : 0))),
+          })
+        }
         className={variant === "hero" ? "w-full sm:w-auto" : undefined}
       >
         {draftAll.isPending ? <LoaderCircle aria-hidden className="animate-spin" /> : <Sparkles aria-hidden />}
         {draftLabel}
-        {cost !== undefined && toDraft > 0 && !draftAll.isPending ? <AiCostChip tokens={cost} variant="inverse" /> : null}
+        {toDraft > 0 && !draftAll.isPending ? <ReplyCostChip cost={cost} variant="inverse" /> : null}
       </Button>
     ) : null;
 
@@ -342,10 +468,31 @@ export function BulkReplies({ locationId, summary, ai, variant = "bar", onShowDr
     const target = stays ? sectionRef.current : document.querySelector<HTMLElement>("#main-content [data-page-header] h1");
     target?.focus({ preventScroll: stays });
     setResults(null);
+    setSkips(null);
   };
+
+  // A page's reviews not written in time: Continue drafts them again (2026-11-17), so "Draft them again" offers
+  // only the others worth another try (the AI couldn't write a usable reply).
+  const deadlineIds = new Set(skips?.result.groups.find((group) => group.key === "deadline")?.items.map((item) => item.reviewId) ?? []);
+  const skipsShown = skips && continuing ? { ...skips.result, retryIds: skips.result.retryIds.filter((id) => !deadlineIds.has(id)) } : (skips?.result ?? null);
+  const sendingRest = sendAll.isPending && Boolean(sendAll.variables?.ids);
+  const draftingAgain = draftAll.isPending || retry.isPending;
 
   const notes = (
     <>
+      {/* 2026-11-17: the location's AI replies, from the summary (never hard-coded): "AI replies left: 4 · 1 token = 10 replies". */}
+      {credit && (draftable > 0 || starsOnlyMode || variant === "hero") ? (
+        <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
+          <MessageSquareReply aria-hidden className="size-3.5 shrink-0 text-ai" />
+          <span className="font-medium text-foreground">{credit.left}</span>
+          <span aria-hidden>·</span>
+          <span>{credit.price}</span>
+          <InfoTip label="About AI replies" className="shrink-0">
+            Each reply the AI writes, including "Change it", uses one of this location's AI replies. When none are left, the next one buys a block of{" "}
+            {credits?.block_size ?? 10} for the price shown. Replies left stay with the location, and a reply that isn't written comes back.
+          </InfoTip>
+        </p>
+      ) : null}
       {accountNote && (draftable > 0 || drafts > 0) ? (
         <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
           <Lock aria-hidden className="mt-px size-3.5 shrink-0" />
@@ -377,12 +524,12 @@ export function BulkReplies({ locationId, summary, ai, variant = "bar", onShowDr
           AI drafts up to {perCall} replies at a time{continuing ? "" : ": press Continue for the rest"}.
         </p>
       ) : null}
-      {draftAll.isPending ? (
-        <p role="status" className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <LoaderCircle aria-hidden className="size-3.5 animate-spin text-ai motion-reduce:animate-none" />
-          Drafting up to {Math.min(perCall, Math.max(toDraft, 1))} {Math.min(perCall, Math.max(toDraft, 1)) === 1 ? "reply" : "replies"}. It can take up to a minute;
-          you can keep reading meanwhile.
-        </p>
+      {drafting ? (
+        <AiWorkProgress
+          progress={drafting}
+          label={`Drafting ${plural(drafting.total, "reply", "replies")}`}
+          note="This can take up to a minute and a half. You can keep reading meanwhile."
+        />
       ) : null}
       {progress ? (
         <p role="status" className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -390,7 +537,50 @@ export function BulkReplies({ locationId, summary, ai, variant = "bar", onShowDr
           {progress}
         </p>
       ) : null}
-      {results ? <BulkSendResults summary={results} onOpenReview={onOpenReview} onDismiss={closeResults} /> : null}
+      {/* 2026-11-17 (G3): updates of a reply on Google go one at a time, from their review. */}
+      {updates > 0 ? (
+        <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
+          <Repeat2 aria-hidden className="size-3.5 shrink-0 text-info" />
+          <span>
+            {updates === 1 ? "1 draft replaces a reply on Google" : `${updates.toLocaleString()} drafts replace a reply on Google`}: send{" "}
+            {updates === 1 ? "it" : "each one"} from {updates === 1 ? "its" : "their"} review.
+          </span>
+          {onShowUpdates || onShowDrafts ? (
+            <Button
+              variant="link"
+              size="sm"
+              className="relative h-auto p-0 text-xs after:absolute after:-inset-x-1.5 after:-inset-y-3 after:content-['']"
+              onClick={() => (onShowUpdates ?? onShowDrafts)?.()}
+            >
+              Show {updates === 1 ? "it" : "them"}
+            </Button>
+          ) : null}
+        </p>
+      ) : null}
+      {skipsShown ? (
+        <DraftResultsPanel
+          result={skipsShown}
+          stoppedText={skips?.stoppedText ?? null}
+          onRetry={ai.canRun ? (ids) => retryDrafts(ids) : undefined}
+          retrying={draftingAgain}
+          onOpenReview={onOpenReview}
+          onDismiss={closeResults}
+          footer={
+            continuing && deadlineIds.size > 0 ? (
+              <p className="text-xs text-muted-foreground">Continue drafts the ones not written in time again.</p>
+            ) : null
+          }
+        />
+      ) : null}
+      {results ? (
+        <BulkSendResults
+          summary={results}
+          onOpenReview={onOpenReview}
+          onSendRest={sendBlockedReason === null ? (ids) => sendAll.mutate({ ids, named: sentInfoFrom(results) }) : undefined}
+          sendingRest={sendingRest}
+          onDismiss={closeResults}
+        />
+      ) : null}
     </>
   );
 
@@ -409,7 +599,7 @@ export function BulkReplies({ locationId, summary, ai, variant = "bar", onShowDr
           <AlertDialogAction
             onClick={() => {
               setConfirmSend(false);
-              sendAll.mutate();
+              sendAll.mutate({});
             }}
           >
             Send replies
@@ -445,14 +635,22 @@ export function BulkReplies({ locationId, summary, ai, variant = "bar", onShowDr
                       : `AI can draft replies to ${plural(draftable, "review", "reviews")} in one go`
                   : drafts > 0
                     ? `${plural(drafts, "draft is", "drafts are")} ready to check`
-                    : "Your last send"}
+                    : updates > 0 && results === null && skips === null
+                      ? `${plural(updates, "draft replaces", "drafts replace")} a reply on Google`
+                      : results !== null
+                        ? "Your last send"
+                        : "Your last drafts"}
               </p>
               <p className="text-muted-foreground">
                 {draftable > 0
                   ? "Each in the reviewer's language. Nothing is sent until you send it."
                   : drafts > 0
                     ? "Read them below, then send them to Google."
-                    : "What was sent, and what wasn't, is below."}
+                    : updates > 0 && results === null && skips === null
+                      ? "Updates go one at a time: open each one and send it from its review."
+                      : results !== null
+                        ? "What was sent, and what wasn't, is below."
+                        : "What wasn't drafted, and why, is below."}
               </p>
             </div>
           </div>
@@ -471,7 +669,9 @@ export function BulkReplies({ locationId, summary, ai, variant = "bar", onShowDr
   const onlyStars = starsOnlyMode && drafts === 0;
   const step = allDone ? 4 : draftable > 0 || onlyStars ? 1 : 2;
   const headline = allDone
-    ? "All caught up"
+    ? updates > 0
+      ? `${plural(updates, "update of a reply on Google waits", "updates of replies on Google wait")}`
+      : "All caught up"
     : draftable > 0
       ? continuing
         ? `${draftable.toLocaleString()} more ${draftable === 1 ? "reply" : "replies"} to draft`
@@ -482,18 +682,22 @@ export function BulkReplies({ locationId, summary, ai, variant = "bar", onShowDr
         ? `${plural(drafts, "draft is", "drafts are")} ready to check`
         : `${plural(starsWaiting, "stars-only review is", "stars-only reviews are")} waiting`;
   const description: ReactNode = allDone ? (
-    "Every review has a reply. New reviews show up here after the next check with Google."
+    updates > 0 ? (
+      "Every review has a reply. These drafts replace a reply already on Google: open each one and send it from its review."
+    ) : (
+      "Every review has a reply. New reviews show up here after the next check with Google."
+    )
   ) : draftable > 0 ? (
     <>
-      AI writes a reply to each one in the reviewer's language and uses one of your{" "}
+      AI writes a reply to each one that answers what the reviewer said, in their language, and uses one of your{" "}
       <Link
         to={keywordsPath(locationId)}
         className="rounded-sm font-medium text-primary underline-offset-2 outline-hidden hover:underline focus-visible:ring-2 focus-visible:ring-ring"
       >
         keywords
       </Link>{" "}
-      only where the review is about it. Every draft is checked before you see it, and reviews with suspicious indicators are skipped. Nothing is sent until you
-      send it.
+      only where the review is about it. Every draft is checked and scored before you see it, and reviews with suspicious indicators are skipped. Nothing is
+      sent until you send it.
     </>
   ) : onlyStars ? (
     "These reviews have a star rating but no text. AI can write a thank-you of one or two sentences to each, up to 3 per location a week. Nothing is sent until you send it."

@@ -299,7 +299,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
     icon: SlidersHorizontal,
     tone: "ai",
     section: "ai/settings",
-    match: [`${L}/ai/settings/*`],
+    // The business brief and the photo library are opened from AI Settings (Phase 25b/25c), so they keep it current.
+    match: [`${L}/ai/settings/*`, `${L}/ai/brief/*`, `${L}/ai/photos/*`],
     keywords: "house rules signature contact line restricted mode facts for the ai offers events contests logo ai images photos tone voice",
   },
   {
