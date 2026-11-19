@@ -1,8 +1,7 @@
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
-import { toast } from "sonner";
 import { ArrowRight, CalendarClock, FileText, ImageOff, Lightbulb, Newspaper, PenLine, PlugZap, Plus, Repeat, Send, Sparkles, Tags } from "lucide-react";
-import { getPost, type Post, type PostAiRun } from "@/api";
+import type { Post, PostAiRun } from "@/api";
 import { AiStatusBanner } from "@/components/ai/ai-status-banner";
 import { PageHeader, SectionHeader } from "@/components/layout/shared/data-display";
 import { EmptyState, ErrorState, ListSkeleton, PageSkeleton } from "@/components/layout/shared/feedback/states";
@@ -14,18 +13,18 @@ import { PostEditor } from "@/components/posts/post-editor";
 import { PostList } from "@/components/posts/post-list";
 import { TopicsBacklog } from "@/components/posts/topics-backlog";
 import { Button } from "@/components/ui/button";
+import { windowOnScreen } from "@/components/ui/open-windows";
 import { useCanEdit } from "@/hooks/use-access";
 import { useNow } from "@/hooks/use-now";
 import { useGbpConnect } from "@/lib/gbp/use-gbp-connect";
 import { useLocationRoute } from "@/lib/locations/location-route-context";
 import { locationPath } from "@/lib/mypageseo/section-links";
 import { useActivePostRuns } from "@/lib/posts/ai-runs";
-import { usePostOpenHost } from "@/lib/posts/open-post";
+import { openPost, toastPost, usePostOpenHost } from "@/lib/posts/open-post";
 import { usePostAiState } from "@/lib/posts/post-ai-state";
 import { formatPostMoment } from "@/lib/posts/post-format";
 import { AI_POST_SEGMENTS, countAiPosts, isAiPostSegment, sortAiPosts, type AiPostSegment } from "@/lib/posts/post-order";
 import type { PostEditorTarget } from "@/lib/posts/post-seed";
-import { useToastPostError } from "@/lib/posts/post-toasts";
 import { useRunOutcomeNotices } from "@/lib/posts/use-post-runs";
 import { PLANNER_PAUSED_TITLE, autoPostsState } from "@/lib/posts/series-planner";
 import { postErrorText, useAllPosts, usePostSeries, usePostsSummary } from "@/lib/posts/use-posts";
@@ -88,7 +87,6 @@ function AiPostsView() {
   const canEdit = useCanEdit();
   const summary = usePostsSummary(locationId);
   const ai = usePostAiState(locationId, summary.data, summary.dataUpdatedAt);
-  const toastError = useToastPostError();
   // The location's AI runs, polled while any works: the writer, the topics, the cards and the editor read them.
   useActivePostRuns(locationId);
   const aiPosts = useAllPosts(locationId, null, { source: "ai" });
@@ -137,20 +135,19 @@ function AiPostsView() {
     listRef.current?.scrollIntoView({ block: "start" });
   };
   const openEditor = (target: PostEditorTarget) => setEditing(target);
-  /** A draft the writer just finished: it opens in the editor, unless another post is open there. */
+  /**
+   * A draft the writer just finished: it opens in the editor, never over a window (the editor or any other): then a
+   * toast says so, and its "Open it" waits until every window is closed (open-post.ts).
+   */
   const onDraftReady = (post: Post, run: PostAiRun) => {
-    if (editing) {
-      toast.success("Your post is ready", { description: "It's in your drafts. Open it from the writer when you're done here." });
+    if (editing || windowOnScreen()) {
+      toastPost("success", "Your post is ready", { id: `post-run-end:${run.run_id}`, description: "It's in your drafts." }, { locationId, postId: post.post_id, run });
       return;
     }
     openEditor({ kind: "edit", post, run });
   };
-  /** "Open it" on a finished run: the post as it is now (someone may have changed it since). */
-  const openRunPost = (post: Pick<Post, "post_id">, run: PostAiRun) => {
-    void getPost(locationId, post.post_id)
-      .then((fresh) => openEditor({ kind: "edit", post: fresh, run }))
-      .catch((err: unknown) => toastError(err, "That post couldn't be opened."));
-  };
+  /** "Open it" on a finished run: the post as it is now (someone may have changed it since), never over a window. */
+  const openRunPost = (post: Pick<Post, "post_id">, run: PostAiRun) => openPost({ locationId, postId: post.post_id, run });
   // How the viewer's own runs ended when the card or editor that started one is gone (the editor closed, a post
   // that left "Coming up"). The writer lists its drafts itself (ready, or failed with "Try again").
   useRunOutcomeNotices(locationId, { skip: (run) => run.kind === "draft" });

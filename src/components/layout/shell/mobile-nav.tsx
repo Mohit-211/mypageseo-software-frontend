@@ -10,7 +10,8 @@ import { Sidebar } from "./sidebar";
  * modal dialog (focus stays inside, Escape and the backdrop close it); the layout closes it on
  * every navigation. Closed without leaving the page, focus goes back to the menu button; after a
  * link to another page, the page's own focus handling takes over. A press on a toast leaves it
- * open, and it counts as an open window (ui/open-windows.ts), as the app's dialogs do.
+ * open, and it counts as an open window (ui/open-windows.ts), as the app's dialogs do; it holds
+ * nothing to lose, so "Open it" closes it and goes on.
  */
 export function MobileNav({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const focusReturn = useFocusReturn({});
@@ -25,7 +26,7 @@ export function MobileNav({ open, onOpenChange }: { open: boolean; onOpenChange:
           aria-describedby={undefined}
           className="fixed inset-y-0 left-0 z-50 flex w-[min(18rem,calc(100vw-3rem))] flex-col shadow-elevated outline-none lg:hidden data-[state=open]:animate-in data-[state=open]:slide-in-from-left data-[state=closed]:animate-out data-[state=closed]:slide-out-to-left motion-reduce:animate-none"
         >
-          <WindowOnScreen />
+          <WindowOnScreen onGiveWay={() => onOpenChange(false)} />
           <DialogPrimitive.Title className="sr-only">Navigation</DialogPrimitive.Title>
           <Sidebar className="h-full" onNavigate={() => onOpenChange(false)} />
           <DialogPrimitive.Close

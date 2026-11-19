@@ -10,9 +10,14 @@
  *
  * Toasts share one id per reason, so repeated clicks update one toast instead of stacking them.
  * Inside React prefer `useToastAiError()`: it fills the owner/billing options and navigates in-app.
+ *
+ * While a window is open (the post editor, a dialog), a toast with a button waits until it closes (ui/toast-hold.ts),
+ * so a failure inside the window would show nothing. Then the action's link goes into the words instead ("…under
+ * Billing, in your account menu."): the toast has no button, shows at once and lets presses through to the window.
  */
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { windowOnScreen } from "@/components/ui/open-windows";
 import { useAccess } from "@/hooks/use-access";
 import { noteAccountError } from "@/lib/billing/account-restriction";
 import { aiErrorText, type AiErrorTextOptions } from "./ai-errors";
@@ -29,12 +34,34 @@ export type ToastAiErrorOptions = AiErrorTextOptions & {
 
 const TOAST_METHOD = { info: "info", warning: "warning", critical: "error" } as const;
 
+/** Where an action's link leads, said in words, for a toast shown over a window (see the file comment). */
+const LINK_WORDS: Record<string, string> = {
+  "Buy tokens": "You can buy them under Billing, in your account menu.",
+  "Go to billing": "You can subscribe under Billing, in your account menu.",
+  "See your plan": "Your plan is under Billing, in your account menu.",
+};
+
+/** A toast over a window can't be paused or closed (presses go through it), so it stays longer to be read. */
+const OVER_WINDOW_MS = 8_000;
+
 export function toastAiError(error: unknown, options: ToastAiErrorOptions = {}): void {
   noteAiError(error);
   noteAccountError(error);
   const { onRetry, navigate, id, ...textOptions } = options;
   const text = aiErrorText(error, textOptions);
   const link = text.action;
+  if (link && windowOnScreen()) {
+    const where = LINK_WORDS[link.label];
+    toast[TOAST_METHOD[text.tone]](text.title, {
+      id: id ?? `ai-error:${text.reason ?? "unknown"}`,
+      description: where ? `${text.description} ${where}` : text.description,
+      duration: OVER_WINDOW_MS,
+      // A toast with this id still waiting from before (with its button) shows now, without it.
+      action: undefined,
+      toasterId: undefined,
+    });
+    return;
+  }
   const go = navigate ?? ((href: string) => window.location.assign(href));
   const action = link
     ? { label: link.label, onClick: () => go(link.href) }

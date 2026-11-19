@@ -65,7 +65,7 @@ import { useCanEdit } from "@/hooks/use-access";
 import { useGbpConnect } from "@/lib/gbp/use-gbp-connect";
 import { markerIsActive, markerRunId, runIsActive, useActivePostRuns, useAiRun } from "@/lib/posts/ai-runs";
 import { approvalReasonLabel, heldLabels, postProblemWords, type PostProblemAction } from "@/lib/posts/approval-labels";
-import { STICKY_TOAST, toastPost } from "@/lib/posts/open-post";
+import { STICKY_TOAST, forgetPostToasts, toastPost } from "@/lib/posts/open-post";
 import { usePostAiState } from "@/lib/posts/post-ai-state";
 import {
   findingsInText,
@@ -136,6 +136,8 @@ export function PostCard({
   const [changing, setChanging] = useState(false);
   const [ownRunId, setOwnRunId] = useState<string | null>(null);
   const [ended, setEnded] = useState<PostAiRun | null>(null);
+  // The ended "Change it" that sent the post back to drafts, once the card shows it as a draft.
+  const [draftSeenFor, setDraftSeenFor] = useState<string | null>(null);
   const [usingPicture, setUsingPicture] = useState(false);
   const media = post.media[0];
   const image = media?.url ?? post.google.media_url;
@@ -146,6 +148,14 @@ export function PostCard({
   const hasText = text.trim().length > 0;
   const StatusIcon = STATUS_ICON[post.status];
   const eventRange = post.event ? formatEventRange(post.event) : null;
+
+  // "Review it, then schedule it again" goes once the post leaves drafts again (scheduled, sent for approval,
+  // published): the list keeps this card by post id, so the note would stay on the scheduled post.
+  if (ended?.status === "done" && ended.kind === "revise" && ended.result?.unscheduled) {
+    if (post.status === "draft") {
+      if (draftSeenFor !== ended.run_id) setDraftSeenFor(ended.run_id);
+    } else if (draftSeenFor === ended.run_id) setEnded(null);
+  }
 
   // What works on the post now: its `ai_run`, or a run started here. The page polls the location's active runs;
   // the card reads its run from that list and polls it itself only when it isn't there.
@@ -202,6 +212,8 @@ export function PostCard({
     setBusy(key);
     try {
       const result = (await action()) as Post | undefined;
+      // Dealt with here: a toast about this post ("Open it", "back in drafts") would be stale.
+      if (key === "delete" || key === "publish" || key === "retry" || key === "approve") forgetPostToasts(post.post_id);
       const updated = result && typeof result === "object" && "status" in result ? result : undefined;
       if (updated && (updated.status === "failed" || updated.status === "rejected")) {
         toast.error(postProblemWords(updated)?.text ?? "Google didn't accept the post.", { description: "The post is kept; fix it and try again." });
@@ -544,6 +556,8 @@ export function PostCard({
         destructive
         onConfirm={() => {
           setConfirmDelete(false);
+          // Confirmed: its toasts ("back in drafts", "Open it") go now, so none comes back while it is being deleted.
+          forgetPostToasts(post.post_id);
           void run("delete", () => deletePost(locationId, post.post_id), "Post deleted.");
         }}
       />

@@ -26,9 +26,21 @@ function openerFrom(focused: EventTarget | null): HTMLElement | null {
  * the same place the shell puts it after a page change (AppLayout), else the page area. Null
  * outside the signed-in shell, where Radix's own handling stays.
  */
-function pageHeading(): HTMLElement | null {
+export function pageHeading(): HTMLElement | null {
   const main = document.getElementById("main-content");
   return main?.querySelector<HTMLElement>("[data-page-header] h1") ?? main;
+}
+
+/**
+ * A window still open under the one closing (e.g. the post editor under its "Discard your changes?"): the top one,
+ * as windows are added to the page in the order they open. Focus goes into it, never to the page it covers.
+ */
+function windowUnder(closing: EventTarget | null): HTMLElement | null {
+  const open = document.querySelectorAll<HTMLElement>('[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]');
+  for (let i = open.length - 1; i >= 0; i -= 1) {
+    if (open[i] !== closing) return open[i];
+  }
+  return null;
 }
 
 /**
@@ -37,7 +49,8 @@ function pageHeading(): HTMLElement | null {
  * keyboard and screen-reader users restarted at the top of the page. This remembers what had focus
  * when the dialog opened and focuses it again on close. A dialog opened by arriving on its address
  * (`?new=1`, `?keyword=`…) has no opener, or one from the page before that is gone: its focus goes
- * to the page's heading instead, so the next Tab continues in the page.
+ * to the page's heading instead, so the next Tab continues in the page; or, when another window is
+ * still open under it, into that window.
  *
  * It stays out of the way when the caller's own `onCloseAutoFocus` prevented the default, when the
  * page changed while the dialog was open (a link inside it: the page's own focus handling wins), and
@@ -87,7 +100,7 @@ export function useFocusReturn({
         event.preventDefault();
         return;
       }
-      const target = from?.opener?.isConnected ? from.opener : pageHeading();
+      const target = from?.opener?.isConnected ? from.opener : (windowUnder(event.currentTarget) ?? pageHeading());
       if (!target) return;
       event.preventDefault();
       target.focus({ preventScroll: true });

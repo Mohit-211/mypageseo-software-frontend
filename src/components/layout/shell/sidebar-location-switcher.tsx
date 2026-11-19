@@ -117,7 +117,11 @@ export function SidebarLocationSwitcher({ onNavigate }: { onNavigate?: () => voi
       return;
     }
     const target = targetFor(id);
-    if (target && target !== pathname) navigate(target);
+    if (target && target !== pathname) {
+      navigate(target);
+      // The phone drawer closes with the page it was opened on.
+      onNavigate?.();
+    }
   };
 
   return (

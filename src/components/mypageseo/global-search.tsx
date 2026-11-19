@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { useQuery } from "@tanstack/react-query";
@@ -8,8 +8,10 @@ import { preloadPath } from "@/app/route-preload";
 import { IconChip } from "@/components/layout/shared/icon-chip";
 import { useNavLocation } from "@/components/layout/shell/use-shell-nav";
 import { WindowOnScreen } from "@/components/ui/dialog";
+import { pageHeading } from "@/components/ui/focus-return";
 import { keepOpenOnToasts } from "@/components/ui/open-windows";
 import { useAccess } from "@/hooks/use-access";
+import { appPathname } from "@/lib/app-navigation";
 import {
   buildSearchIndex,
   flattenGroups,
@@ -37,9 +39,29 @@ function isTypingTarget(target: EventTarget | null): boolean {
 /**
  * Global search and quick navigation. The header shows it as a wide search field (an icon on
  * phones); it opens a search dialog, also with ⌘K / Ctrl+K from anywhere and "/" outside fields.
+ * Closed, focus goes back where it was: what had it before ⌘K or "/", else the search button on
+ * screen (Radix would focus the last of the two buttons, hidden on wide screens). After a result
+ * is picked, the page's heading takes it: AppLayout's for a new page, here for the page on screen
+ * (a result for it, or one of its #sections, changes no page).
  */
 export function GlobalSearch({ className }: { className?: string }) {
   const [open, setOpen] = useState(false);
+  const returnTo = useRef<HTMLElement | null>(null);
+  const picked = useRef<"other page" | "same page" | null>(null);
+  const fieldButton = useRef<HTMLButtonElement>(null);
+  const iconButton = useRef<HTMLButtonElement>(null);
+  const returnFocus = (event: Event) => {
+    event.preventDefault();
+    const from = returnTo.current;
+    returnTo.current = null;
+    const pick = picked.current;
+    picked.current = null;
+    // A result's new page, or a post opened over the search ("Open it"), has the focus or is about to take it.
+    const active = document.activeElement;
+    if (pick === "other page" || (active && active !== document.body)) return;
+    const button = [fieldButton.current, iconButton.current].find((entry) => entry !== null && entry.offsetParent !== null);
+    ((pick === "same page" ? pageHeading() : null) ?? (from?.isConnected ? from : button))?.focus({ preventScroll: true });
+  };
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -64,6 +86,7 @@ export function GlobalSearch({ className }: { className?: string }) {
       <div className={cn("flex min-w-0 items-center", className)}>
         <DialogPrimitive.Trigger asChild>
           <button
+            ref={fieldButton}
             type="button"
             aria-label={PLACEHOLDER}
             aria-keyshortcuts="Meta+K Control+K"
@@ -82,6 +105,7 @@ export function GlobalSearch({ className }: { className?: string }) {
         </DialogPrimitive.Trigger>
         <DialogPrimitive.Trigger asChild>
           <button
+            ref={iconButton}
             type="button"
             aria-label="Search"
             className="grid size-9 place-items-center rounded-md text-foreground outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring sm:hidden"
@@ -96,12 +120,23 @@ export function GlobalSearch({ className }: { className?: string }) {
           // A press on a toast leaves the search open, with its query (ui/open-windows.ts).
           onPointerDownOutside={keepOpenOnToasts(undefined)}
           onInteractOutside={keepOpenOnToasts(undefined)}
+          onOpenAutoFocus={() => {
+            const active = document.activeElement;
+            returnTo.current = active instanceof HTMLElement && active !== document.body ? active : null;
+          }}
+          onCloseAutoFocus={returnFocus}
           aria-describedby={undefined}
           className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-popover text-popover-foreground shadow-elevated outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 sm:inset-x-4 sm:bottom-auto sm:top-[12vh] sm:mx-auto sm:max-h-[min(36rem,76vh)] sm:max-w-2xl sm:rounded-2xl sm:border sm:border-border sm:data-[state=open]:zoom-in-[0.98] motion-reduce:animate-none"
         >
-          <WindowOnScreen />
+          {/* It holds nothing to lose: "Open it" on a post's toast closes it and goes on. */}
+          <WindowOnScreen onGiveWay={() => setOpen(false)} />
           <DialogPrimitive.Title className="sr-only">Search</DialogPrimitive.Title>
-          <SearchPanel onClose={() => setOpen(false)} />
+          <SearchPanel
+            onClose={(to) => {
+              picked.current = new URL(to, window.location.href).pathname === appPathname() ? "same page" : "other page";
+              setOpen(false);
+            }}
+          />
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
@@ -109,7 +144,7 @@ export function GlobalSearch({ className }: { className?: string }) {
 }
 
 /** Mounted while the dialog is open, so every opening starts from an empty query. */
-function SearchPanel({ onClose }: { onClose: () => void }) {
+function SearchPanel({ onClose }: { onClose: (to: string) => void }) {
   const navigate = useNavigate();
   const { organization, locations, clients, setActiveClientId, setActiveLocationId } = useWorkspace();
   const access = useAccess();
@@ -156,7 +191,7 @@ function SearchPanel({ onClose }: { onClose: () => void }) {
     rememberSearchId(result.id);
     if (result.locationId) setActiveLocationId(result.locationId);
     if (result.clientId) setActiveClientId(result.clientId);
-    onClose();
+    onClose(result.to);
     navigate(result.to);
   }
 

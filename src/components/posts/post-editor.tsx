@@ -243,12 +243,13 @@ const RUN_FAILED_TITLE: Record<PostAiRunKind, string> = {
  *   the backend's rule) blocks Schedule and Publish (the server answers 422 `checks_failed`); the regulated post
  *   rules come from the live check.
  * - Saving an unchanged saved post sends nothing (the backend refuses an empty PATCH): Schedule and Publish go
- *   straight to their own call.
+ *   straight to their own call. A new "Schedule for" time is applied by scheduling only: Save draft schedules a
+ *   scheduled post again for it, and elsewhere says so instead of "Saved." when the time is the only change.
  * - Closing it with unsaved changes (the form, or a new "Schedule for" time) asks first ("Discard your changes?"): the
  *   X, Escape, a click outside, Cancel, and leaving the page (e.g. a toast's "Buy tokens", Back); closing the tab or
  *   reloading asks the browser's own question. It never asks when nothing changed, nor when it closes itself after a
- *   save, schedule, publish or send for approval. While it saves (busy) it can't be closed: leaving the page waits for
- *   the save, then goes on (or asks, if the save failed and changes are left).
+ *   save, schedule, publish or send for approval. While it saves (busy) the form takes no input and it can't be closed:
+ *   leaving the page waits for the save, then goes on (or asks, if the save failed and changes are left).
  * - While it is open, "Open it" on a post's toast never replaces it (`usePostEditorOnScreen`, open-post.ts).
  *
  * `aiOpen` opens the AI panel straight away; `run` is the run that just wrote or changed the post (its notes show).
@@ -297,6 +298,8 @@ export function PostEditor({
   const [aiStarting, setAiStarting] = useState(false);
   const [declined, setDeclined] = useState<ApiError | null>(null);
   const [checkFindings, setCheckFindings] = useState<PostAiFinding[]>([]);
+  // "Save draft" was pressed with a new time it can't keep (only Schedule sets a time): said next to the buttons.
+  const [timeNote, setTimeNote] = useState(false);
   const textRef = useRef<HTMLTextAreaElement>(null);
   const set = <K extends keyof Form>(key: K, value: Form[K]) => {
     setTouched(true);
@@ -344,11 +347,13 @@ export function PostEditor({
   const aiMode: "write" | "change" = hasText ? "change" : "write";
   const writeSavesFirst = saved ? dirty : newWithContent;
   const textSavesFirst = !saved || dirty;
+  // A new "Schedule for" time: only scheduling applies it (a scheduled post's Save draft schedules it again).
+  const timeChanged = !onGoogle && scheduleAt !== scheduleStart;
   /**
    * What closing would lose: a saved post's form differs from the post, or a new post's from the empty form; or a new
-   * "Schedule for" time (only Schedule applies it).
+   * "Schedule for" time.
    */
-  const unsaved = (saved ? dirty : inputJson !== JSON.stringify(toInput(defaults))) || (!onGoogle && scheduleAt !== scheduleStart);
+  const unsaved = (saved ? dirty : inputJson !== JSON.stringify(toInput(defaults))) || timeChanged;
 
   // Leaving the page with unsaved changes (a toast's "Buy tokens", Back) asks the same as closing it; while it saves,
   // leaving waits for the save without asking (`run`), then goes on. One blocker per page: the editor is the only one
@@ -388,6 +393,7 @@ export function PostEditor({
     setAiVersion(null);
     setCheckFindings([]);
     setTouched(true);
+    setTimeNote(false);
     if (next.scheduled_at) {
       const at = localInputValue(new Date(next.scheduled_at));
       setScheduleAt(at);
@@ -556,7 +562,22 @@ export function PostEditor({
     return result;
   };
 
+  // The button pressed (Save draft, Schedule, Publish now) is off while it saves, which drops the focus out of the
+  // editor: when the save ends with the editor still open (it failed, or left issues), the focus goes back to it, and a
+  // question asked then ("Discard your changes?" after Back) returns there on "Keep editing".
+  const pressedRef = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    if (busy !== null) return;
+    const pressed = pressedRef.current;
+    pressedRef.current = null;
+    const active = document.activeElement;
+    if (pressed?.isConnected && (!active || active === document.body)) pressed.focus({ preventScroll: true });
+  }, [busy]);
+
+  /** Saves (or schedules, publishes, sends for approval): the form takes no input meanwhile, so nothing typed is lost. */
   const run = async (key: string, action: () => Promise<Post | void>, done: (post: Post | void) => string) => {
+    const active = document.activeElement;
+    pressedRef.current = active instanceof HTMLElement && active !== document.body ? active : null;
     setBusy(key);
     try {
       const result = await action();
@@ -607,6 +628,29 @@ export function PostEditor({
       await save();
       return runPostAction(locationId, saved.post_id, "publish");
     }, outcome);
+  /**
+   * "Save draft". The PATCH can't carry a time (only `schedule` sets one): a scheduled post with a new "Schedule for"
+   * time is saved, then scheduled again for it, as Schedule would. Elsewhere (a draft, a failed or waiting post, a
+   * time that can't be scheduled, or someone who needs approval: rescheduling would send it for approval) a new time
+   * that is the only change isn't saved: nothing is sent, nothing says "Saved.", and the editor stays open saying how
+   * to use the time.
+   */
+  const saveDraft = () => {
+    const at = scheduleIso;
+    if (timeChanged && saved?.status === "scheduled" && !needsApproval && at && !incomplete && hardLeft.length === 0) {
+      const post = saved;
+      return run("save", async () => {
+        await save();
+        return schedulePost(locationId, post.post_id, at);
+      }, outcome);
+    }
+    if (timeChanged && saved && !dirty) {
+      setTimeNote(true);
+      return;
+    }
+    // A saved post with nothing changed sends nothing and closes as after a save ("Saved.").
+    return run("save", save, (result) => (saved && !dirty ? "Saved." : outcome(result)));
+  };
 
   /**
    * Starts an AI run: saves the form first when asked (the AI works on the saved post), then follows the run. A
@@ -704,7 +748,9 @@ export function PostEditor({
           </p>
         ) : null}
 
-        <div className="space-y-5">
+        {/* While it saves (schedules, publishes, sends for approval) nothing in the form takes input: the editor closes
+            when the call ends, and words typed meanwhile would be lost. */}
+        <fieldset disabled={busy !== null} aria-busy={busy !== null || undefined} className="min-w-0 space-y-5">
           {activeRun && activeRun.kind !== "image" ? (
             <RunProgress run={activeRun}>
               <p className="mt-1 text-xs text-muted-foreground">
@@ -856,7 +902,7 @@ export function PostEditor({
                 </Field>
               </div>
               <p className="text-xs text-muted-foreground">Dates are the location's local dates. Without a time, it covers the whole day.</p>
-              <RecurrenceFields form={form} set={set} issues={issueFor("recurrence")} disabled={fieldsLocked} />
+              <RecurrenceFields form={form} set={set} issues={issueFor("recurrence")} disabled={fieldsLocked || busy !== null} />
             </div>
           ) : null}
 
@@ -921,7 +967,8 @@ export function PostEditor({
           ) : (
             <div className="grid gap-3 sm:grid-cols-[200px_minmax(0,1fr)]">
               <Field label="Button" htmlFor={fieldId("cta")} issues={ctaIssues}>
-                <Select value={form.ctaType} disabled={fieldsLocked} onValueChange={(value) => set("ctaType", value as Form["ctaType"])}>
+                {/* Off by its own prop too: a disabled fieldset doesn't stop the mouse press that opens a Radix Select. */}
+                <Select value={form.ctaType} disabled={fieldsLocked || busy !== null} onValueChange={(value) => set("ctaType", value as Form["ctaType"])}>
                   <SelectTrigger aria-label="Button" {...fieldProps(fieldId("cta"), ctaIssues)}>
                     <SelectValue />
                   </SelectTrigger>
@@ -1004,23 +1051,25 @@ export function PostEditor({
                 min={scheduleRange.min}
                 max={scheduleRange.max}
                 value={scheduleAt}
-                onChange={(event) => setScheduleAt(event.target.value)}
+                onChange={(event) => {
+                  setScheduleAt(event.target.value);
+                  setTimeNote(false);
+                }}
               />
             </Field>
           ) : null}
-        </div>
+        </fieldset>
 
         <DialogFooter className="gap-2 sm:items-end sm:justify-between">
           <Button variant="ghost" onClick={requestClose} disabled={busy !== null}>Cancel</Button>
           <div className="flex min-w-0 flex-col gap-2 sm:items-end">
+            {/* Always there (out of sight when empty), so screen readers hear the note when it shows. */}
+            <p role="status" className={timeNote ? "text-xs font-medium text-foreground sm:text-right" : "sr-only"}>
+              {timeNote ? `Save draft doesn't keep the new time. To use it, select “${needsApproval ? "Send for approval" : "Schedule"}”.` : ""}
+            </p>
             {!onGoogle && blockedReasons.length > 0 ? <p className="text-xs text-muted-foreground sm:text-right">{blockedReasons.join(" ")}</p> : null}
             <div className="flex flex-wrap justify-end gap-2">
-              <Button
-                variant="outline"
-                disabled={busy !== null || fieldsLocked || aiStarting}
-                // Nothing changed: nothing is sent, and the editor closes as after a save.
-                onClick={() => void run("save", save, (result) => (saved && !dirty ? "Saved." : outcome(result)))}
-              >
+              <Button variant="outline" disabled={busy !== null || fieldsLocked || aiStarting} onClick={() => void saveDraft()}>
                 {busy === "save" ? <LoaderCircle aria-hidden className="animate-spin" /> : null}
                 {onGoogle ? "Save on Google" : "Save draft"}
               </Button>
@@ -1181,7 +1230,8 @@ function RecurrenceFields({
           className="space-y-3 rounded-md bg-surface-strong p-3"
         >
           <div className="flex flex-wrap items-center gap-2">
-            <Select value={form.pattern} onValueChange={(value) => set("pattern", value as PostRecurrence["pattern"])}>
+            {/* Each Select is off by its own prop: the fieldset doesn't stop the mouse press that opens one. */}
+            <Select value={form.pattern} disabled={disabled} onValueChange={(value) => set("pattern", value as PostRecurrence["pattern"])}>
               <SelectTrigger className="w-36" aria-label="How often it repeats"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="daily">Daily</SelectItem>
@@ -1215,7 +1265,7 @@ function RecurrenceFields({
           ) : null}
           {form.pattern === "monthly" ? (
             <div className="flex flex-wrap items-center gap-2 text-sm">
-              <Select value={form.monthlyBy} onValueChange={(value) => set("monthlyBy", value as Form["monthlyBy"])}>
+              <Select value={form.monthlyBy} disabled={disabled} onValueChange={(value) => set("monthlyBy", value as Form["monthlyBy"])}>
                 <SelectTrigger className="w-48" aria-label="Which day of the month"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="day">On day of month</SelectItem>
@@ -1225,7 +1275,7 @@ function RecurrenceFields({
               {form.monthlyBy === "day" ? (
                 <Input type="number" min={1} max={31} className="w-20" aria-label="Day of the month" value={form.dayOfMonth} onChange={(event) => set("dayOfMonth", event.target.value)} />
               ) : (
-                <Select value={form.weekOfMonth} onValueChange={(value) => set("weekOfMonth", value as WeekOfMonth)}>
+                <Select value={form.weekOfMonth} disabled={disabled} onValueChange={(value) => set("weekOfMonth", value as WeekOfMonth)}>
                   <SelectTrigger className="w-32" aria-label="Which week"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {(["FIRST", "SECOND", "THIRD", "FOURTH", "LAST"] as const).map((week) => (

@@ -9,10 +9,12 @@
  * nothing from the app, so it makes no import cycle.
  */
 
+type AppLocation = { readonly pathname: string; readonly search: string };
+
 /** The parts of the router this file uses. */
 type AppRouter = {
-  navigate: (to: string) => Promise<void>;
-  readonly state: { readonly location: { readonly pathname: string } };
+  navigate: (to: string, options?: { replace?: boolean }) => Promise<void>;
+  readonly state: { readonly location: AppLocation; readonly navigation: { readonly location?: AppLocation | undefined } };
 };
 
 let router: AppRouter | null = null;
@@ -21,10 +23,19 @@ export function registerAppRouter(next: AppRouter): void {
   router = next;
 }
 
-/** Goes to `to` (an address in the app) as a link does: a new history entry, without reloading the page. */
+/**
+ * Goes to `to` (an address in the app) as a link does: a new history entry, without reloading the page. Pressed again
+ * on its way there (a double click) it adds nothing, and to the address on screen it replaces the entry, as a link to
+ * the current address does.
+ */
 export function appNavigate(to: string): void {
-  if (router) void router.navigate(to);
-  else window.location.assign(to);
+  if (!router) {
+    window.location.assign(to);
+    return;
+  }
+  const { location, navigation } = router.state;
+  if (navigation.location && navigation.location.pathname + navigation.location.search === to) return;
+  void router.navigate(to, location.pathname + location.search === to ? { replace: true } : undefined);
 }
 
 /** The path of the page on screen (the router's; the browser's before the router is set up). */

@@ -34,10 +34,11 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 /**
  * Counts the window it is in as open while it is (ui/open-windows.ts): render it inside a Radix dialog's `Content`,
  * which is mounted only while the window is open or closing. Every window has one: DialogContent, SheetContent,
- * AlertDialogContent, the phone navigation and the search.
+ * AlertDialogContent, the phone navigation and the search. `onGiveWay` closes a window that holds nothing to lose (the
+ * phone navigation, the search), so "Open it" can go on over it.
  */
-function WindowOnScreen() {
-  useWindowOnScreen();
+function WindowOnScreen({ onGiveWay }: { onGiveWay?: () => void }) {
+  useWindowOnScreen(onGiveWay);
   return null;
 }
 

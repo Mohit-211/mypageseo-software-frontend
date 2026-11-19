@@ -55,8 +55,10 @@ function focusNewPage(): void {
 export function AppLayout() {
   const outlet = useOutlet();
   const { pathname } = useLocation();
-  // The drawer belongs to the page it was opened on: any navigation closes it, no effect needed.
+  // The drawer belongs to the page it was opened on: any navigation closes it, no effect needed. It is forgotten
+  // then, so coming back to that page (Back, "Open it" on a toast) never opens it again by itself.
   const [drawerFor, setDrawerFor] = useState<string | null>(null);
+  if (drawerFor !== null && drawerFor !== pathname) setDrawerFor(null);
   const drawerOpen = drawerFor === pathname;
   const preloadStarted = useRef(false);
   const shownPath = useRef<string | null>(null);

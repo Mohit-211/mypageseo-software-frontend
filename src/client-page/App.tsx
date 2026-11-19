@@ -207,6 +207,8 @@ function TopBar({ page, onGuide }: { page: ClientPageData; onGuide: () => void }
           <button
             type="button"
             onClick={onGuide}
+            // Phones show only the icon, so the button needs its own name.
+            aria-label="How to read this report"
             className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-brand-tint hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
           >
             <HelpCircle aria-hidden className="size-4" /> <span className="hidden sm:inline">How to read this</span>
